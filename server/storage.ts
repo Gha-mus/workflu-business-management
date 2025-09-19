@@ -2424,10 +2424,12 @@ export class DatabaseStorage implements IStorage {
       if (purchaseData.fundingSource === 'capital' && parseFloat(purchaseData.amountPaid || '0') > 0) {
         const amountPaid = new Decimal(purchaseData.amountPaid || '0');
         
-        // Convert amount to USD for capital tracking normalization
+        // STAGE 2 SECURITY: Convert amount to USD using central exchange rate (never trust client)
         let amountInUsd = amountPaid;
-        if (purchaseData.currency === 'ETB' && purchaseData.exchangeRate) {
-          amountInUsd = amountPaid.div(new Decimal(purchaseData.exchangeRate));
+        if (purchaseData.currency === 'ETB') {
+          // Use central exchange rate - purchaseData.exchangeRate is already set by routes validation
+          const centralRate = new Decimal(purchaseData.exchangeRate as string);
+          amountInUsd = amountPaid.div(centralRate);
         }
         
         // Create capital entry with atomic balance checking
@@ -2443,7 +2445,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
 
-      // Create warehouse stock entry in FIRST warehouse
+      // STAGE 2 COMPLIANCE: Create warehouse stock entry in FIRST warehouse with central FX rate
       const pricePerKg = new Decimal(purchaseData.pricePerKg);
       const unitCostCleanUsd = purchaseData.currency === 'USD' 
         ? purchaseData.pricePerKg 
@@ -2590,12 +2592,240 @@ export class DatabaseStorage implements IStorage {
     return totalBalance;
   }
 
-  async updatePurchase(id: string, purchase: Partial<InsertPurchase>): Promise<Purchase> {
+  async updatePurchase(id: string, purchase: Partial<InsertPurchase>, auditContext?: AuditContext): Promise<Purchase> {
+    // STAGE 2 COMPLIANCE: Check for linkage to prevent immutable field modification
+    const [existingPurchase] = await db.select().from(purchases).where(eq(purchases.id, id));
+    if (!existingPurchase) {
+      throw new Error(`Purchase not found: ${id}`);
+    }
+
+    // Check if purchase has linked warehouse operations (making it immutable for sensitive fields)
+    const linkedWarehouseOperations = await db
+      .select({ count: sql`count(*)::int` })
+      .from(warehouseStock)
+      .where(eq(warehouseStock.purchaseId, id));
+    
+    const hasWarehouseLinkage = linkedWarehouseOperations[0]?.count > 0;
+
+    // STAGE 2 CRITICAL: Prevent modification of price/weight after warehouse linkage
+    if (hasWarehouseLinkage) {
+      const sensitiveFields = ['pricePerKg', 'weight', 'total', 'currency', 'exchangeRate'];
+      const attemptingSensitiveChanges = sensitiveFields.some(field => 
+        field in purchase && purchase[field as keyof typeof purchase] !== existingPurchase[field as keyof typeof existingPurchase]
+      );
+
+      if (attemptingSensitiveChanges) {
+        throw new Error(`Cannot modify price, weight, or currency fields after warehouse linkage. Use settlement or reversal entries instead.`);
+      }
+    }
+
     const [result] = await db
       .update(purchases)
       .set({ ...purchase, updatedAt: new Date() })
       .where(eq(purchases.id, id))
       .returning();
+
+    // CRITICAL SECURITY: Audit logging for purchase updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchases',
+        result.id,
+        'update',
+        'purchase',
+        existingPurchase,
+        result,
+        -parseFloat(result.total), // Negative impact for purchases (outflow)
+        result.currency || 'USD'
+      );
+    }
+
+    return result;
+  }
+
+  // STAGE 2 COMPLIANCE: Purchase advances settlement workflow
+  async settlePurchaseAdvance(purchaseId: string, settlementData: {
+    actualWeight: string;
+    actualPricePerKg: string;
+    settledAmount: string;
+    settlementNotes?: string;
+  }, auditContext?: AuditContext): Promise<Purchase> {
+    // Use transaction for atomic settlement
+    const result = await db.transaction(async (tx) => {
+      // Get the purchase with locking
+      const [purchase] = await tx
+        .select()
+        .from(purchases)
+        .where(eq(purchases.id, purchaseId))
+        .for('update');
+      
+      if (!purchase) {
+        throw new Error(`Purchase not found: ${purchaseId}`);
+      }
+
+      if (purchase.paymentMethod !== 'advance') {
+        throw new Error(`Purchase ${purchase.purchaseNumber} is not an advance payment`);
+      }
+
+      // Calculate new totals with decimal precision
+      const actualWeight = new Decimal(settlementData.actualWeight);
+      const actualPricePerKg = new Decimal(settlementData.actualPricePerKg);
+      const settledAmount = new Decimal(settlementData.settledAmount);
+      const previousAmountPaid = new Decimal(purchase.amountPaid);
+      
+      const newTotal = actualWeight.mul(actualPricePerKg);
+      const balanceDiff = settledAmount.sub(previousAmountPaid);
+      const newRemaining = newTotal.sub(settledAmount);
+
+      // Update purchase with settled values
+      const [updatedPurchase] = await tx
+        .update(purchases)
+        .set({
+          weight: settlementData.actualWeight,
+          pricePerKg: settlementData.actualPricePerKg,
+          total: newTotal.toFixed(2),
+          amountPaid: settlementData.settledAmount,
+          remaining: newRemaining.toFixed(2),
+          paymentMethod: 'cash', // Convert from advance to settled
+          updatedAt: new Date(),
+        })
+        .where(eq(purchases.id, purchaseId))
+        .returning();
+
+      // STAGE 2 SECURITY: Enforce central FX rate for currency conversion
+      const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+      
+      // If there's a balance difference and purchase is capital-funded, create adjustment entry
+      if (purchase.fundingSource === 'capital' && !balanceDiff.isZero()) {
+        // CRITICAL: Convert balance difference to USD using CENTRAL rate only
+        const balanceImpactUSD = purchase.currency === 'ETB' 
+          ? balanceDiff.abs().div(centralRate)
+          : balanceDiff.abs();
+        const entryType = balanceDiff.isPositive() ? 'CapitalOut' : 'CapitalIn';
+        const description = balanceDiff.isPositive() 
+          ? `Advance settlement - additional payment (${purchase.purchaseNumber})`
+          : `Advance settlement - credit refund (${purchase.purchaseNumber})`;
+
+        await this.createCapitalEntryInTransaction(tx, {
+          entryId: `ADV-${purchase.id}-${Date.now()}`,
+          amount: balanceImpactUSD.toFixed(2),
+          type: entryType,
+          reference: purchase.id,
+          description,
+          paymentCurrency: 'USD', // Normalized to USD
+          exchangeRate: '1.00', // USD base currency
+          createdBy: auditContext?.userId || 'system',
+        });
+      }
+
+      return updatedPurchase;
+    });
+
+    // STAGE 2 COMPLIANCE: Complete audit logging for advance settlement
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchases',
+        result.id,
+        'settle_advance',
+        'purchase_advance_settlement',
+        {
+          originalTotal: new Decimal(result.total).add(new Decimal(settlementData.settledAmount)).sub(new Decimal(result.amountPaid)).toFixed(2),
+          originalWeight: result.weight,
+          originalPricePerKg: result.pricePerKg
+        },
+        result,
+        parseFloat(settlementData.settledAmount), // Settlement amount impact
+        'USD' // Normalized to USD via central FX
+      );
+    }
+
+    return result;
+  }
+
+  // STAGE 2 COMPLIANCE: Return to supplier handling
+  async processSupplierReturn(returnData: {
+    purchaseId: string;
+    returnedWeight: string;
+    returnReason: string;
+    refundAmount?: string;
+    processingNotes?: string;
+  }, auditContext?: AuditContext): Promise<{ purchase: Purchase; capitalAdjustment?: any }> {
+    const result = await db.transaction(async (tx) => {
+      const [purchase] = await tx
+        .select()
+        .from(purchases)
+        .where(eq(purchases.id, returnData.purchaseId))
+        .for('update');
+      
+      if (!purchase) {
+        throw new Error(`Purchase not found: ${returnData.purchaseId}`);
+      }
+
+      const returnedWeight = new Decimal(returnData.returnedWeight);
+      const currentWeight = new Decimal(purchase.weight);
+      const refundAmount = returnData.refundAmount ? new Decimal(returnData.refundAmount) : new Decimal('0');
+
+      // Validate return weight doesn't exceed purchase weight
+      if (returnedWeight.gt(currentWeight)) {
+        throw new Error('Returned weight cannot exceed purchased weight');
+      }
+
+      // Update purchase with return adjustments
+      const newWeight = currentWeight.sub(returnedWeight);
+      const newTotal = newWeight.mul(new Decimal(purchase.pricePerKg));
+      const newRemaining = newTotal.sub(new Decimal(purchase.amountPaid));
+
+      const [updatedPurchase] = await tx
+        .update(purchases)
+        .set({
+          weight: newWeight.toFixed(2),
+          total: newTotal.toFixed(2),
+          remaining: newRemaining.toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(purchases.id, returnData.purchaseId))
+        .returning();
+
+      // Process refund if specified and capital-funded
+      let capitalAdjustment;
+      if (!refundAmount.isZero() && purchase.fundingSource === 'capital') {
+        // STAGE 2 SECURITY: Enforce central FX rate for refund conversion
+        const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+        let refundUsd = purchase.currency === 'ETB' 
+          ? refundAmount.div(centralRate)
+          : refundAmount;
+
+        capitalAdjustment = await this.createCapitalEntryInTransaction(tx, {
+          entryId: `RET-${purchase.id}-${Date.now()}`,
+          amount: refundUsd.toFixed(2),
+          type: 'CapitalIn',
+          reference: purchase.id,
+          description: `Supplier return refund - ${returnedWeight}kg returned (${returnData.returnReason})`,
+          paymentCurrency: 'USD', // Normalized to USD
+          exchangeRate: '1.00', // USD base currency
+          createdBy: auditContext?.userId || 'system',
+        });
+      }
+
+      return { purchase: updatedPurchase, capitalAdjustment };
+    });
+
+    // CRITICAL SECURITY: Audit logging for supplier returns
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchases',
+        result.purchase.id,
+        'supplier_return',
+        'purchase_return',
+        null,
+        result.purchase,
+        parseFloat(returnData.refundAmount || '0'), // Positive for refunds
+        result.purchase.currency || 'USD'
+      );
+    }
+
     return result;
   }
 

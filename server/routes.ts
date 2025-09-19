@@ -9,6 +9,7 @@ import { approvalWorkflowService } from "./approvalWorkflowService";
 import { approvalStartupValidator } from "./approvalStartupValidator";
 import { auditService } from "./auditService";
 import { notificationService } from "./notificationService";
+import { ConfigurationService } from "./configurationService";
 import { alertMonitoringService } from "./alertMonitoringService";
 import { notificationSchedulerService } from "./notificationSchedulerService";
 import { approvalMiddleware, requireApproval } from "./approvalMiddleware";
@@ -1466,12 +1467,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.user.claims.sub,
       });
 
-      // Additional validation: ensure exchange rate is provided for non-USD currencies
-      if (purchaseData.currency !== 'USD' && (!purchaseData.exchangeRate || purchaseData.exchangeRate === '0')) {
-        return res.status(400).json({ 
-          message: "Exchange rate is required for non-USD currencies",
-          field: "exchangeRate"
-        });
+      // STAGE 2 SECURITY: Enforce central FX rate, never trust client-supplied rates (same as Stage 1)
+      let centralExchangeRate: string | undefined;
+      if (purchaseData.currency === 'ETB') {
+        try {
+          const config = ConfigurationService.getInstance();
+          const rate = await config.getCentralExchangeRate();
+          centralExchangeRate = rate.toString();
+          
+          // Override any client-supplied rate with central rate
+          purchaseData.exchangeRate = centralExchangeRate;
+        } catch (error) {
+          return res.status(400).json({ 
+            message: "Central exchange rate not configured. Please set USD_ETB_RATE in settings.",
+            field: "centralExchangeRate"
+          });
+        }
       }
 
       // Calculate total and remaining using decimal-safe math
@@ -1510,6 +1521,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.status(500).json({ message: "Failed to create purchase" });
+    }
+  });
+
+  // STAGE 2 COMPLIANCE: Purchase advances settlement route
+  app.post('/api/purchases/:id/settle', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      // CRITICAL SECURITY: Validate settlement data with Zod schema
+      const settlementSchema = z.object({
+        actualWeight: z.string().min(1, "Actual weight is required"),
+        actualPricePerKg: z.string().min(1, "Actual price per kg is required"),
+        settledAmount: z.string().min(1, "Settled amount is required"),
+        settlementNotes: z.string().optional(),
+      });
+
+      const settlementData = settlementSchema.parse(req.body);
+
+      // STAGE 2 SECURITY: Enforce central FX rate for settlement currency conversion
+      // This will be handled in storage layer with proper validation
+
+      const userId = req.user.claims.sub;
+
+      const result = await storage.settlePurchaseAdvance(id, settlementData, {
+        userId,
+        action: 'settle_advance',
+        entityType: 'purchases',
+        entityId: id
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error settling purchase advance:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to settle advance" });
+    }
+  });
+
+  // STAGE 2 COMPLIANCE: Supplier return processing route
+  app.post('/api/purchases/:id/return', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      // CRITICAL SECURITY: Validate return data with Zod schema
+      const returnSchema = z.object({
+        returnedWeight: z.string().min(1, "Returned weight is required"),
+        returnReason: z.string().min(1, "Return reason is required"),
+        refundAmount: z.string().optional(),
+        processingNotes: z.string().optional(),
+      });
+
+      const validatedReturnData = returnSchema.parse(req.body);
+      const returnData = { ...validatedReturnData, purchaseId: id };
+      const userId = req.user.claims.sub;
+
+      const result = await storage.processSupplierReturn(returnData, {
+        userId,
+        action: 'supplier_return',
+        entityType: 'purchases',
+        entityId: id
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing supplier return:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to process return" });
     }
   });
 
