@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { relations } from 'drizzle-orm';
 import {
   index,
+  uniqueIndex,
   jsonb,
   pgTable,
   timestamp,
@@ -31,6 +32,19 @@ export const userRoleEnum = pgEnum('user_role', ['admin', 'finance', 'purchasing
 
 // Quality grades enum for coffee grading
 export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']);
+
+// Approval system enums
+export const approvalStatusEnum = pgEnum('approval_status', ['pending', 'approved', 'rejected', 'cancelled', 'escalated']);
+export const approvalOperationTypeEnum = pgEnum('approval_operation_type', [
+  'capital_entry', 'purchase', 'sale_order', 'warehouse_operation', 'shipping_operation', 
+  'financial_adjustment', 'user_role_change', 'system_setting_change', 'system_startup', 'system_diagnostics'
+]);
+export const auditActionEnum = pgEnum('audit_action', [
+  'create', 'update', 'delete', 'view', 'approve', 'reject', 'login', 'logout', 'export', 'import'
+]);
+export const permissionScopeEnum = pgEnum('permission_scope', [
+  'system', 'module', 'operation', 'record', 'field'
+]);
 
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
@@ -462,6 +476,226 @@ export const customers = pgTable("customers", {
   tags: text("tags").array(),
   
   createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ===== APPROVAL WORKFLOW AND AUDIT SYSTEM TABLES =====
+
+// Approval chains table - defines approval processes and thresholds
+export const approvalChains = pgTable("approval_chains", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  operationType: approvalOperationTypeEnum("operation_type").notNull(),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  
+  // Thresholds for triggering approval
+  minAmount: decimal("min_amount", { precision: 12, scale: 2 }),
+  maxAmount: decimal("max_amount", { precision: 12, scale: 2 }),
+  currency: varchar("currency").default('USD'),
+  
+  // Approval chain configuration
+  requiredRoles: userRoleEnum("required_roles").array().notNull(), // Ordered array of roles
+  requiredApprovals: integer("required_approvals").notNull().default(1),
+  allowParallelApprovals: boolean("allow_parallel_approvals").notNull().default(false),
+  escalationTimeoutHours: integer("escalation_timeout_hours").default(24),
+  
+  // Auto-approval rules
+  autoApproveBelow: decimal("auto_approve_below", { precision: 12, scale: 2 }),
+  autoApproveSameUser: boolean("auto_approve_same_user").notNull().default(false),
+  
+  // Metadata
+  isActive: boolean("is_active").notNull().default(true),
+  priority: integer("priority").notNull().default(0), // Higher priority chains checked first
+  conditions: jsonb("conditions"), // Additional JSON conditions
+  
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Approval requests table - tracks individual approval workflows
+export const approvalRequests = pgTable("approval_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestNumber: varchar("request_number").notNull().unique(),
+  approvalChainId: varchar("approval_chain_id").notNull().references(() => approvalChains.id, { onDelete: 'restrict' }),
+  
+  // Request details
+  operationType: approvalOperationTypeEnum("operation_type").notNull(),
+  operationId: varchar("operation_id"), // ID of the operation being approved
+  operationData: jsonb("operation_data").notNull(), // Snapshot of operation data
+  
+  // Financial details
+  requestedAmount: decimal("requested_amount", { precision: 12, scale: 2 }),
+  currency: varchar("currency").default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }),
+  
+  // Request metadata
+  title: varchar("title").notNull(),
+  description: text("description"),
+  justification: text("justification"),
+  attachments: text("attachments").array(),
+  priority: varchar("priority").notNull().default('normal'), // low, normal, high, urgent
+  
+  // Status and timing - with integrity constraints
+  status: approvalStatusEnum("status").notNull().default('pending'),
+  submittedAt: timestamp("submitted_at").notNull().defaultNow(),
+  requiredBy: timestamp("required_by"), // Deadline for approval
+  completedAt: timestamp("completed_at"),
+  escalatedAt: timestamp("escalated_at"),
+  
+  // User tracking - with proper foreign keys and cascading
+  requestedBy: varchar("requested_by").notNull().references(() => users.id, { onDelete: 'restrict' }),
+  currentApprover: varchar("current_approver").references(() => users.id, { onDelete: 'set null' }),
+  finalApprover: varchar("final_approver").references(() => users.id, { onDelete: 'set null' }),
+  
+  // Workflow state - with validation constraints
+  currentStep: integer("current_step").notNull().default(1),
+  totalSteps: integer("total_steps").notNull(),
+  approvalHistory: jsonb("approval_history"), // Array of approval steps with timestamps
+  rejectionReason: text("rejection_reason"),
+  
+  // System metadata
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  systemContext: jsonb("system_context"), // Additional system context
+  
+  // SECURITY: Single-use consumption tracking to prevent replay attacks
+  consumedAt: timestamp("consumed_at"), // When approval was consumed/executed
+  consumedBy: varchar("consumed_by").references(() => users.id, { onDelete: 'set null' }), // Who executed the approved operation
+  consumedOperationId: varchar("consumed_operation_id"), // ID of the operation that consumed this approval
+  consumedOperationType: approvalOperationTypeEnum("consumed_operation_type"), // Type verification
+  consumedAmount: decimal("consumed_amount", { precision: 12, scale: 2 }), // Amount verification
+  consumedCurrency: varchar("consumed_currency"), // Currency verification
+  consumedEntityId: varchar("consumed_entity_id"), // Entity ID verification (customer, supplier, etc.)
+  operationChecksum: varchar("operation_checksum"), // Checksum of operation data to prevent tampering
+  
+  // SECURITY: Prevent reuse and ensure single-use consumption
+  isConsumed: boolean("is_consumed").notNull().default(false),
+  consumptionAttempts: integer("consumption_attempts").notNull().default(0), // Track consumption attempts
+  maxConsumptions: integer("max_consumptions").notNull().default(1), // Usually 1 for single-use
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  // Performance indexes for approval queries
+  index("idx_approval_requests_status_approver").on(table.status, table.currentApprover),
+  index("idx_approval_requests_requested_by").on(table.requestedBy),
+  index("idx_approval_requests_submitted_at").on(table.submittedAt),
+  index("idx_approval_requests_operation_type").on(table.operationType),
+  index("idx_approval_requests_chain_status").on(table.approvalChainId, table.status),
+  index("idx_approval_requests_priority_status").on(table.priority, table.status),
+  index("idx_approval_requests_amount_currency").on(table.amountUsd, table.currency),
+  // SECURITY: Indexes for consumption tracking and validation
+  index("idx_approval_requests_consumption").on(table.isConsumed, table.consumedAt),
+  index("idx_approval_requests_operation_validation").on(table.operationType, table.requestedAmount, table.currency),
+  index("idx_approval_requests_requester_type").on(table.requestedBy, table.operationType),
+  
+  // CRITICAL SECURITY: Unique constraint to prevent double consumption
+  // This ensures that only one operation can consume an approval (atomic single-use)
+  // The partial unique index ensures only unconsumed approvals (isConsumed = false) are unique
+  uniqueIndex("unique_approval_request_unconsumed").on(table.id).where(sql`${table.isConsumed} = false`),
+]);
+
+// Audit logs table - immutable audit trail for all operations
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Operation details
+  action: auditActionEnum("action").notNull(),
+  entityType: varchar("entity_type").notNull(), // Table/resource name
+  entityId: varchar("entity_id"), // Primary key of affected entity
+  operationType: approvalOperationTypeEnum("operation_type"),
+  
+  // Change tracking
+  oldValues: jsonb("old_values"), // Before state
+  newValues: jsonb("new_values"), // After state  
+  changedFields: text("changed_fields").array(), // List of modified fields
+  
+  // Context and metadata
+  description: text("description").notNull(),
+  businessContext: text("business_context"), // Business meaning of the action
+  correlationId: varchar("correlation_id"), // Group related actions
+  sessionId: varchar("session_id"),
+  
+  // Financial impact tracking
+  financialImpact: decimal("financial_impact", { precision: 12, scale: 2 }),
+  currency: varchar("currency").default('USD'),
+  
+  // User and system info
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
+  userName: varchar("user_name"),
+  userRole: userRoleEnum("user_role"),
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  
+  // Approval context
+  approvalRequestId: varchar("approval_request_id").references(() => approvalRequests.id, { onDelete: 'set null' }),
+  approvalStatus: approvalStatusEnum("approval_status"),
+  approverComments: text("approver_comments"),
+  
+  // System metadata
+  source: varchar("source").notNull().default('system'), // system, api, ui, import
+  severity: varchar("severity").notNull().default('info'), // info, warning, error, critical
+  
+  // Immutable timestamp - APPEND-ONLY: No updatedAt column to enforce immutability
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  
+  // Data integrity - Required for tamper detection
+  checksum: varchar("checksum").notNull(), // Data integrity verification
+}, (table) => [
+  // Performance indexes for audit log queries
+  index("idx_audit_logs_entity_timestamp").on(table.entityId, table.timestamp),
+  index("idx_audit_logs_user_timestamp").on(table.userId, table.timestamp),
+  index("idx_audit_logs_timestamp").on(table.timestamp),
+  index("idx_audit_logs_entity_type_id").on(table.entityType, table.entityId),
+  index("idx_audit_logs_approval_request").on(table.approvalRequestId),
+  index("idx_audit_logs_correlation_id").on(table.correlationId),
+  index("idx_audit_logs_session_id").on(table.sessionId),
+]);
+
+// Permission grants table - temporary and context-specific permissions
+export const permissionGrants = pgTable("permission_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Permission details
+  userId: varchar("user_id").notNull().references(() => users.id),
+  permission: varchar("permission").notNull(), // Permission identifier
+  scope: permissionScopeEnum("scope").notNull(),
+  resourceType: varchar("resource_type"), // What resource type this applies to
+  resourceId: varchar("resource_id"), // Specific resource ID (optional)
+  
+  // Context restrictions
+  operationType: approvalOperationTypeEnum("operation_type"),
+  conditions: jsonb("conditions"), // Additional JSON conditions
+  
+  // Value-based restrictions
+  maxAmount: decimal("max_amount", { precision: 12, scale: 2 }),
+  currency: varchar("currency").default('USD'),
+  
+  // Time-based restrictions
+  validFrom: timestamp("valid_from").notNull().defaultNow(),
+  validUntil: timestamp("valid_until"),
+  maxUsageCount: integer("max_usage_count"), // Limit number of uses
+  currentUsageCount: integer("current_usage_count").notNull().default(0),
+  
+  // Grant metadata
+  reason: text("reason").notNull(),
+  grantedBy: varchar("granted_by").notNull().references(() => users.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  
+  // Status
+  isActive: boolean("is_active").notNull().default(true),
+  isTemporary: boolean("is_temporary").notNull().default(true),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: varchar("revoked_by").references(() => users.id),
+  revocationReason: text("revocation_reason"),
+  
+  // Audit trail
+  lastUsedAt: timestamp("last_used_at"),
+  usageLog: jsonb("usage_log"), // Array of usage records
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1140,6 +1374,66 @@ export const inventoryAdjustmentsRelations = relations(inventoryAdjustments, ({ 
   }),
 }));
 
+// ===== APPROVAL WORKFLOW AND AUDIT SYSTEM RELATIONS =====
+
+export const approvalChainsRelations = relations(approvalChains, ({ one, many }) => ({
+  createdBy: one(users, {
+    fields: [approvalChains.createdBy],
+    references: [users.id],
+  }),
+  approvalRequests: many(approvalRequests),
+}));
+
+export const approvalRequestsRelations = relations(approvalRequests, ({ one, many }) => ({
+  approvalChain: one(approvalChains, {
+    fields: [approvalRequests.approvalChainId],
+    references: [approvalChains.id],
+  }),
+  requestedBy: one(users, {
+    fields: [approvalRequests.requestedBy],
+    references: [users.id],
+  }),
+  currentApprover: one(users, {
+    fields: [approvalRequests.currentApprover],
+    references: [users.id],
+  }),
+  finalApprover: one(users, {
+    fields: [approvalRequests.finalApprover],
+    references: [users.id],
+  }),
+  auditLogs: many(auditLogs),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+  approvalRequest: one(approvalRequests, {
+    fields: [auditLogs.approvalRequestId],
+    references: [approvalRequests.id],
+  }),
+}));
+
+export const permissionGrantsRelations = relations(permissionGrants, ({ one }) => ({
+  user: one(users, {
+    fields: [permissionGrants.userId],
+    references: [users.id],
+  }),
+  grantedBy: one(users, {
+    fields: [permissionGrants.grantedBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [permissionGrants.approvedBy],
+    references: [users.id],
+  }),
+  revokedBy: one(users, {
+    fields: [permissionGrants.revokedBy],
+    references: [users.id],
+  }),
+}));
+
 // Relations will be added after all table definitions to avoid initialization errors
 
 // Insert schemas
@@ -1498,6 +1792,165 @@ export type InsertCustomerCreditLimit = z.infer<typeof insertCustomerCreditLimit
 
 export type PricingRule = typeof pricingRules.$inferSelect;
 export type InsertPricingRule = z.infer<typeof insertPricingRuleSchema>;
+
+// ===== APPROVAL WORKFLOW AND AUDIT SYSTEM SCHEMAS AND TYPES =====
+
+// Approval system insert schemas
+export const insertApprovalChainSchema = createInsertSchema(approvalChains).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertApprovalRequestSchema = createInsertSchema(approvalRequests).omit({
+  id: true,
+  requestNumber: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const insertPermissionGrantSchema = createInsertSchema(permissionGrants).omit({
+  id: true,
+  currentUsageCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Approval system types
+export type ApprovalChain = typeof approvalChains.$inferSelect;
+export type InsertApprovalChain = z.infer<typeof insertApprovalChainSchema>;
+
+export type ApprovalRequest = typeof approvalRequests.$inferSelect;
+export type InsertApprovalRequest = z.infer<typeof insertApprovalRequestSchema>;
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+export type PermissionGrant = typeof permissionGrants.$inferSelect;
+export type InsertPermissionGrant = z.infer<typeof insertPermissionGrantSchema>;
+
+// Enhanced approval workflow validation schemas
+export const approvalDecisionSchema = z.object({
+  decision: z.enum(['approve', 'reject', 'escalate']),
+  comments: z.string().optional(),
+  delegateTo: z.string().uuid().optional(),
+  escalateTo: z.string().uuid().optional(),
+});
+
+export const approvalRequestSubmissionSchema = insertApprovalRequestSchema.extend({
+  operationData: z.record(z.any()),
+  attachments: z.array(z.string()).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
+});
+
+export const approvalChainConfigurationSchema = insertApprovalChainSchema.extend({
+  requiredRoles: z.array(z.enum(['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker'])),
+  conditions: z.record(z.any()).optional(),
+});
+
+export const permissionGrantRequestSchema = insertPermissionGrantSchema.extend({
+  conditions: z.record(z.any()).optional(),
+  usageLog: z.array(z.record(z.any())).optional(),
+});
+
+export const auditLogFilterSchema = z.object({
+  userId: z.string().uuid().optional(),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+  action: z.enum(['create', 'update', 'delete', 'view', 'approve', 'reject', 'login', 'logout', 'export', 'import']).optional(),
+  operationType: z.enum(['capital_entry', 'purchase', 'sale_order', 'warehouse_operation', 'shipping_operation', 'financial_adjustment', 'user_role_change', 'system_setting_change']).optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+  severity: z.enum(['info', 'warning', 'error', 'critical']).optional(),
+  correlationId: z.string().optional(),
+});
+
+export const approvalRequestFilterSchema = z.object({
+  status: z.enum(['pending', 'approved', 'rejected', 'cancelled', 'escalated']).optional(),
+  operationType: z.enum(['capital_entry', 'purchase', 'sale_order', 'warehouse_operation', 'shipping_operation', 'financial_adjustment', 'user_role_change', 'system_setting_change']).optional(),
+  requestedBy: z.string().uuid().optional(),
+  currentApprover: z.string().uuid().optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  minAmount: z.number().optional(),
+  maxAmount: z.number().optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+});
+
+// Response types for approval system
+export interface ApprovalRequestWithDetails extends ApprovalRequest {
+  approvalChain: ApprovalChain;
+  requestedByUser: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  };
+  currentApproverUser?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null;
+  finalApproverUser?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null;
+}
+
+export interface AuditLogWithDetails extends AuditLog {
+  user?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    role: string;
+  } | null;
+  approvalRequest?: ApprovalRequest | null;
+}
+
+export interface PermissionGrantWithDetails extends PermissionGrant {
+  user: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    role: string;
+  };
+  grantedByUser: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  };
+  approvedByUser?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null;
+  revokedByUser?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null;
+}
+
+// Request/response types for approval workflow operations
+export type ApprovalDecision = z.infer<typeof approvalDecisionSchema>;
+export type ApprovalRequestSubmission = z.infer<typeof approvalRequestSubmissionSchema>;
+export type ApprovalChainConfiguration = z.infer<typeof approvalChainConfigurationSchema>;
+export type PermissionGrantRequest = z.infer<typeof permissionGrantRequestSchema>;
+export type AuditLogFilter = z.infer<typeof auditLogFilterSchema>;
+export type ApprovalRequestFilter = z.infer<typeof approvalRequestFilterSchema>;
 
 // API Response Types
 export interface AuthUserResponse {
