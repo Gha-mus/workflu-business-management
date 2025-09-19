@@ -7,6 +7,9 @@ import { exportService } from "./exportService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
 import { approvalStartupValidator } from "./approvalStartupValidator";
 import { auditService } from "./auditService";
+import { notificationService } from "./notificationService";
+import { alertMonitoringService } from "./alertMonitoringService";
+import { notificationSchedulerService } from "./notificationSchedulerService";
 import { approvalMiddleware, requireApproval } from "./approvalMiddleware";
 import { 
   purchasePeriodGuard, 
@@ -87,6 +90,19 @@ import {
   insertCashFlowAnalysisSchema,
   insertMarginAnalysisSchema,
   insertBudgetTrackingSchema,
+  // Notification system schemas
+  insertNotificationSettingSchema,
+  updateNotificationSettingSchema,
+  insertNotificationTemplateSchema,
+  updateNotificationTemplateSchema,
+  insertNotificationQueueSchema,
+  createNotificationSchema,
+  insertAlertConfigurationSchema,
+  updateAlertConfigurationSchema,
+  notificationQueueFilterSchema,
+  notificationHistoryFilterSchema,
+  notificationTemplateFilterSchema,
+  alertConfigurationFilterSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -4632,6 +4648,561 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error bulk deleting documents:", error);
       res.status(500).json({ message: "Failed to bulk delete documents" });
+    }
+  });
+
+  // ===============================================
+  // NOTIFICATION SYSTEM API ENDPOINTS
+  // ===============================================
+
+  // Notification Settings Routes
+  app.get('/api/notifications/settings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const settings = await storage.getNotificationSettings(userId);
+      
+      // Create default settings if none exist
+      if (!settings) {
+        const defaultSettings = {
+          userId,
+          enableInApp: true,
+          enableEmail: true,
+          enableSms: false,
+          enableWebhook: false,
+          alertCategories: [],
+          defaultFrequency: 'immediate' as const,
+          digestTime: '08:00',
+          weeklyDigestDay: 1,
+          monthlyDigestDay: 1,
+          thresholds: {},
+          escalationEnabled: false,
+          escalationTimeoutMinutes: 60,
+          isActive: true,
+        };
+        
+        const newSettings = await storage.createNotificationSettings(defaultSettings);
+        return res.json(newSettings);
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching notification settings:", error);
+      res.status(500).json({ message: "Failed to fetch notification settings" });
+    }
+  });
+
+  app.put('/api/notifications/settings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const settingsData = updateNotificationSettingSchema.parse(req.body);
+      const auditContext = auditService.extractRequestContext(req);
+      
+      const settings = await storage.updateNotificationSettings(userId, settingsData, auditContext);
+      res.json(settings);
+    } catch (error) {
+      console.error("Error updating notification settings:", error);
+      res.status(500).json({ message: "Failed to update notification settings" });
+    }
+  });
+
+  app.get('/api/notifications/settings/preferences', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const preferences = await storage.getUserNotificationPreferences(userId);
+      res.json(preferences);
+    } catch (error) {
+      console.error("Error fetching notification preferences:", error);
+      res.status(500).json({ message: "Failed to fetch notification preferences" });
+    }
+  });
+
+  // Notification Templates Routes
+  app.get('/api/notifications/templates', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const filter = notificationTemplateFilterSchema.optional().parse(req.query);
+      const templates = await storage.getNotificationTemplates(filter);
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching notification templates:", error);
+      res.status(500).json({ message: "Failed to fetch notification templates" });
+    }
+  });
+
+  app.post('/api/notifications/templates', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const templateData = insertNotificationTemplateSchema.parse(req.body);
+      const auditContext = auditService.extractRequestContext(req);
+      
+      const template = await storage.createNotificationTemplate(templateData, auditContext);
+      res.json(template);
+    } catch (error) {
+      console.error("Error creating notification template:", error);
+      res.status(500).json({ message: "Failed to create notification template" });
+    }
+  });
+
+  app.get('/api/notifications/templates/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const template = await storage.getNotificationTemplate(id);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Notification template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("Error fetching notification template:", error);
+      res.status(500).json({ message: "Failed to fetch notification template" });
+    }
+  });
+
+  app.put('/api/notifications/templates/:id', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const templateData = updateNotificationTemplateSchema.parse(req.body);
+      const auditContext = auditService.extractRequestContext(req);
+      
+      const template = await storage.updateNotificationTemplate(id, templateData, auditContext);
+      res.json(template);
+    } catch (error) {
+      console.error("Error updating notification template:", error);
+      res.status(500).json({ message: "Failed to update notification template" });
+    }
+  });
+
+  app.delete('/api/notifications/templates/:id', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const auditContext = auditService.extractRequestContext(req);
+      
+      await storage.deleteNotificationTemplate(id, auditContext);
+      res.json({ message: "Notification template deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting notification template:", error);
+      res.status(500).json({ message: "Failed to delete notification template" });
+    }
+  });
+
+  app.get('/api/notifications/templates/types', isAuthenticated, async (req, res) => {
+    try {
+      // Get available alert types and categories from the schema enums
+      const alertTypes = ['threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert'];
+      const alertCategories = ['capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation'];
+      const channels = ['in_app', 'email', 'sms', 'webhook'];
+      const priorities = ['low', 'medium', 'high', 'critical'];
+      
+      res.json({
+        alertTypes,
+        alertCategories,
+        channels,
+        priorities,
+      });
+    } catch (error) {
+      console.error("Error fetching template types:", error);
+      res.status(500).json({ message: "Failed to fetch template types" });
+    }
+  });
+
+  // Notification Queue Routes
+  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const filter = { ...req.query, userId } as any;
+      const notifications = await storage.getUserNotifications(userId, filter);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const notificationData = createNotificationSchema.parse({
+        ...req.body,
+        userId: req.user.claims.sub,
+      });
+      
+      const result = await notificationService.sendNotification(notificationData);
+      res.json({
+        message: "Notification sent successfully",
+        success: result.success,
+        channel: result.channel,
+        deliveryId: result.deliveryId,
+      });
+    } catch (error) {
+      console.error("Error sending notification:", error);
+      res.status(500).json({ message: "Failed to send notification" });
+    }
+  });
+
+  app.get('/api/notifications/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const notification = await storage.getNotification(id);
+      
+      if (!notification || notification.userId !== userId) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      
+      res.json(notification);
+    } catch (error) {
+      console.error("Error fetching notification:", error);
+      res.status(500).json({ message: "Failed to fetch notification" });
+    }
+  });
+
+  app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const notification = await storage.markNotificationAsRead(id, userId);
+      res.json(notification);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.put('/api/notifications/:id/dismiss', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const notification = await storage.dismissNotification(id, userId);
+      res.json(notification);
+    } catch (error) {
+      console.error("Error dismissing notification:", error);
+      res.status(500).json({ message: "Failed to dismiss notification" });
+    }
+  });
+
+  app.post('/api/notifications/bulk-read', isAuthenticated, async (req: any, res) => {
+    try {
+      const { notificationIds } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!Array.isArray(notificationIds)) {
+        return res.status(400).json({ message: "Invalid request data" });
+      }
+      
+      const result = await storage.bulkMarkNotificationsAsRead(notificationIds, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error bulk marking notifications as read:", error);
+      res.status(500).json({ message: "Failed to bulk mark notifications as read" });
+    }
+  });
+
+  app.post('/api/notifications/bulk-dismiss', isAuthenticated, async (req: any, res) => {
+    try {
+      const { notificationIds } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!Array.isArray(notificationIds)) {
+        return res.status(400).json({ message: "Invalid request data" });
+      }
+      
+      const result = await storage.bulkDismissNotifications(notificationIds, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error bulk dismissing notifications:", error);
+      res.status(500).json({ message: "Failed to bulk dismiss notifications" });
+    }
+  });
+
+  // Alert Configuration Routes
+  app.get('/api/notifications/alerts', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const filter = alertConfigurationFilterSchema.optional().parse(req.query);
+      const configs = await storage.getAlertConfigurations(filter);
+      res.json(configs);
+    } catch (error) {
+      console.error("Error fetching alert configurations:", error);
+      res.status(500).json({ message: "Failed to fetch alert configurations" });
+    }
+  });
+
+  app.post('/api/notifications/alerts', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const configData = insertAlertConfigurationSchema.parse(req.body);
+      const auditContext = auditService.extractRequestContext(req);
+      
+      const config = await storage.createAlertConfiguration(configData, auditContext);
+      res.json(config);
+    } catch (error) {
+      console.error("Error creating alert configuration:", error);
+      res.status(500).json({ message: "Failed to create alert configuration" });
+    }
+  });
+
+  app.get('/api/notifications/alerts/:id', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const config = await storage.getAlertConfiguration(id);
+      
+      if (!config) {
+        return res.status(404).json({ message: "Alert configuration not found" });
+      }
+      
+      res.json(config);
+    } catch (error) {
+      console.error("Error fetching alert configuration:", error);
+      res.status(500).json({ message: "Failed to fetch alert configuration" });
+    }
+  });
+
+  app.put('/api/notifications/alerts/:id', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const configData = updateAlertConfigurationSchema.parse(req.body);
+      const auditContext = auditService.extractRequestContext(req);
+      
+      const config = await storage.updateAlertConfiguration(id, configData, auditContext);
+      res.json(config);
+    } catch (error) {
+      console.error("Error updating alert configuration:", error);
+      res.status(500).json({ message: "Failed to update alert configuration" });
+    }
+  });
+
+  app.delete('/api/notifications/alerts/:id', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const auditContext = auditService.extractRequestContext(req);
+      
+      await storage.deleteAlertConfiguration(id, auditContext);
+      res.json({ message: "Alert configuration deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting alert configuration:", error);
+      res.status(500).json({ message: "Failed to delete alert configuration" });
+    }
+  });
+
+  app.post('/api/notifications/alerts/:id/toggle', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+      const auditContext = auditService.extractRequestContext(req);
+      
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ message: "isActive must be a boolean" });
+      }
+      
+      const config = await storage.toggleAlertConfiguration(id, isActive, auditContext);
+      res.json(config);
+    } catch (error) {
+      console.error("Error toggling alert configuration:", error);
+      res.status(500).json({ message: "Failed to toggle alert configuration" });
+    }
+  });
+
+  // Notification History Routes
+  app.get('/api/notifications/history', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const filter = notificationHistoryFilterSchema.optional().parse(req.query);
+      const history = await storage.getUserNotificationHistory(userId, filter);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching notification history:", error);
+      res.status(500).json({ message: "Failed to fetch notification history" });
+    }
+  });
+
+  app.get('/api/notifications/analytics', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { userId, dateFrom, dateTo } = req.query;
+      const analytics = await storage.getNotificationAnalytics(
+        userId as string,
+        dateFrom as string,
+        dateTo as string
+      );
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching notification analytics:", error);
+      res.status(500).json({ message: "Failed to fetch notification analytics" });
+    }
+  });
+
+  // Monitoring Routes
+  app.get('/api/notifications/monitoring/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const dashboard = await storage.getAlertMonitoringDashboard(userId);
+      res.json(dashboard);
+    } catch (error) {
+      console.error("Error fetching monitoring dashboard:", error);
+      res.status(500).json({ message: "Failed to fetch monitoring dashboard" });
+    }
+  });
+
+  app.post('/api/notifications/monitoring/check', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const result = await alertMonitoringService.runMonitoringCheck();
+      res.json({
+        message: "Monitoring check completed",
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error running monitoring check:", error);
+      res.status(500).json({ message: "Failed to run monitoring check" });
+    }
+  });
+
+  app.get('/api/notifications/monitoring/stats', requireRole(['admin']), async (req, res) => {
+    try {
+      const stats = notificationSchedulerService.getSchedulerStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching scheduler stats:", error);
+      res.status(500).json({ message: "Failed to fetch scheduler stats" });
+    }
+  });
+
+  // Queue Management Routes (Admin only)
+  app.get('/api/notifications/queue/pending', requireRole(['admin']), async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const pending = await storage.getPendingNotifications(
+        limit ? parseInt(limit as string) : 50
+      );
+      res.json(pending);
+    } catch (error) {
+      console.error("Error fetching pending notifications:", error);
+      res.status(500).json({ message: "Failed to fetch pending notifications" });
+    }
+  });
+
+  app.get('/api/notifications/queue/failed', requireRole(['admin']), async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const failed = await storage.getFailedNotifications(
+        limit ? parseInt(limit as string) : 20
+      );
+      res.json(failed);
+    } catch (error) {
+      console.error("Error fetching failed notifications:", error);
+      res.status(500).json({ message: "Failed to fetch failed notifications" });
+    }
+  });
+
+  app.post('/api/notifications/queue/process', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { batchSize } = req.body;
+      const result = await notificationService.processNotificationQueue(
+        batchSize ? parseInt(batchSize) : 50
+      );
+      res.json({
+        message: "Queue processing completed",
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error processing notification queue:", error);
+      res.status(500).json({ message: "Failed to process notification queue" });
+    }
+  });
+
+  app.get('/api/notifications/delivery-status/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      // Check if user has access to this notification
+      const notification = await storage.getNotification(id);
+      if (!notification || notification.userId !== userId) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      
+      const deliveryStatus = await storage.getNotificationDeliveryStatus(id);
+      res.json(deliveryStatus);
+    } catch (error) {
+      console.error("Error fetching delivery status:", error);
+      res.status(500).json({ message: "Failed to fetch delivery status" });
+    }
+  });
+
+  // Bulk Operations
+  app.post('/api/notifications/bulk', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { notifications } = req.body;
+      
+      if (!Array.isArray(notifications)) {
+        return res.status(400).json({ message: "Invalid request data" });
+      }
+      
+      const result = await notificationService.sendBulkNotifications(notifications);
+      res.json({
+        message: "Bulk notifications processed",
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error sending bulk notifications:", error);
+      res.status(500).json({ message: "Failed to send bulk notifications" });
+    }
+  });
+
+  // Digest Notifications
+  app.post('/api/notifications/digest/:frequency', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { frequency } = req.params;
+      
+      if (!['daily_digest', 'weekly_summary', 'monthly_report'].includes(frequency)) {
+        return res.status(400).json({ message: "Invalid digest frequency" });
+      }
+      
+      const result = await notificationService.sendDigestNotifications(frequency as any);
+      res.json({
+        message: `${frequency} notifications sent`,
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error sending digest notifications:", error);
+      res.status(500).json({ message: "Failed to send digest notifications" });
+    }
+  });
+
+  // Cleanup Operations
+  app.post('/api/notifications/cleanup', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { retentionDays } = req.body;
+      const days = retentionDays ? parseInt(retentionDays) : 90;
+      
+      const result = await notificationService.cleanupOldNotifications(days);
+      res.json({
+        message: "Notification cleanup completed",
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error cleaning up notifications:", error);
+      res.status(500).json({ message: "Failed to cleanup notifications" });
+    }
+  });
+
+  // Scheduler Management Routes
+  app.post('/api/notifications/scheduler/task/:taskName/toggle', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { taskName } = req.params;
+      const { enabled } = req.body;
+      
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ message: "enabled must be a boolean" });
+      }
+      
+      const success = await notificationSchedulerService.toggleTask(taskName, enabled);
+      
+      if (success) {
+        res.json({ message: `Task ${taskName} ${enabled ? 'enabled' : 'disabled'} successfully` });
+      } else {
+        res.status(404).json({ message: "Task not found" });
+      }
+    } catch (error) {
+      console.error("Error toggling scheduler task:", error);
+      res.status(500).json({ message: "Failed to toggle scheduler task" });
     }
   });
 

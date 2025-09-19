@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { NotificationBell } from "@/components/NotificationBell";
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -61,23 +62,26 @@ export function Sidebar() {
         
         {/* User Profile */}
         <div className="mt-4 p-3 bg-muted rounded-lg">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-              <span className="text-primary-foreground text-xs font-medium" data-testid="user-initials">
-                {userInitials}
-              </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                <span className="text-primary-foreground text-xs font-medium" data-testid="user-initials">
+                  {userInitials}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm font-medium" data-testid="user-name">
+                  {user?.firstName && user?.lastName 
+                    ? `${user.firstName} ${user.lastName}`
+                    : user?.email || 'User'
+                  }
+                </p>
+                <p className="text-xs text-muted-foreground capitalize" data-testid="user-role">
+                  {user?.role || 'Worker'}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium" data-testid="user-name">
-                {user?.firstName && user?.lastName 
-                  ? `${user.firstName} ${user.lastName}`
-                  : user?.email || 'User'
-                }
-              </p>
-              <p className="text-xs text-muted-foreground capitalize" data-testid="user-role">
-                {user?.role || 'Worker'}
-              </p>
-            </div>
+            <NotificationBell className="ml-2" data-testid="sidebar-notification-bell" />
           </div>
         </div>
       </div>

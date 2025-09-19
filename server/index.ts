@@ -3,6 +3,9 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { databaseSecurityService } from "./databaseSecurityService";
 import { approvalStartupValidator } from "./approvalStartupValidator";
+import { notificationService } from "./notificationService";
+import { alertMonitoringService } from "./alertMonitoringService";
+import { notificationSchedulerService } from "./notificationSchedulerService";
 
 const app = express();
 app.use(express.json());
@@ -51,6 +54,19 @@ app.use((req, res, next) => {
     log("🔒 Validating approval chain configuration...");
     await approvalStartupValidator.validateApprovalChainConfiguration();
     log("✅ Approval chain configuration validated successfully");
+
+    // NOTIFICATION SYSTEM: Initialize comprehensive notification and alerting system
+    log("📧 Initializing notification system...");
+    await notificationService.initialize();
+    log("✅ Notification service initialized successfully");
+    
+    log("🚨 Initializing alert monitoring service...");
+    await alertMonitoringService.initialize();
+    log("✅ Alert monitoring service initialized successfully");
+    
+    log("⏰ Initializing notification scheduler...");
+    await notificationSchedulerService.initialize();
+    log("✅ Notification scheduler initialized successfully");
 
     const server = await registerRoutes(app);
 
