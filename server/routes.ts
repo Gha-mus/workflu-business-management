@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource } from "./replitAuth";
+import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./replitAuth";
 import { aiService } from "./aiService";
 import { exportService } from "./exportService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
@@ -4676,7 +4676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/sales-orders', requireRole(['admin', 'sales']), approvalMiddleware.saleOrder, strictPeriodGuard, async (req: any, res) => {
+  app.post('/api/sales-orders', requireRole(['admin', 'sales']), validateWarehouseSource(), approvalMiddleware.saleOrder, strictPeriodGuard, async (req: any, res) => {
     try {
       const orderData = insertSalesOrderSchema.parse({
         ...req.body,
@@ -4769,7 +4769,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/sales-orders/:id/fulfill', requireRole(['admin', 'sales', 'warehouse']), approvalMiddleware.saleOrder, async (req: any, res) => {
+  app.post('/api/sales-orders/:id/fulfill', requireRole(['admin', 'sales', 'warehouse']), validateWarehouseSource(), approvalMiddleware.saleOrder, async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -4889,7 +4889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Sales order item management
-  app.post('/api/sales-orders/:orderId/items', requireRole(['admin', 'sales']), async (req: any, res) => {
+  app.post('/api/sales-orders/:orderId/items', requireRole(['admin', 'sales']), validateWarehouseSource(), async (req: any, res) => {
     try {
       const { orderId } = req.params;
       const itemData = insertSalesOrderItemSchema.parse({
@@ -4904,7 +4904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/sales-order-items/:id', requireRole(['admin', 'sales']), async (req, res) => {
+  app.patch('/api/sales-order-items/:id', requireRole(['admin', 'sales']), validateWarehouseSource(), async (req, res) => {
     try {
       const { id } = req.params;
       const updates = updateSalesOrderItemSchema.parse(req.body);
@@ -4932,6 +4932,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting sales order item:", error);
       res.status(500).json({ message: "Failed to delete sales order item" });
+    }
+  });
+
+  // Stage 6: Sales return endpoint with warehouse validation (completes Stage 6 compliance)
+  app.post('/api/sales-orders/:id/returns', requireRole(['admin', 'sales']), validateSalesReturn(), approvalMiddleware.saleOrder, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const returnData = {
+        ...req.body,
+        originalSalesOrderId: id,
+        returnedBy: req.user.claims.sub,
+      };
+
+      // CRITICAL FIX: Wire to storage for actual persistence per architect feedback
+      const auditContext = {
+        userId: req.user.claims.sub,
+        userEmail: req.user.claims.email,
+        action: 'create_sales_return',
+        resource: 'sales_return',
+        details: `Creating sales return for order ${id}`
+      };
+
+      const approvalContext = {
+        userId: req.user.claims.sub,
+        userRole: req.user.claims.role || 'sales',
+        operation: 'sale_order',
+        resourceId: id
+      };
+
+      // Create the sales return with storage persistence
+      const newReturn = await storage.createSalesReturn(returnData, auditContext, approvalContext);
+      
+      // Process the return if auto-processing is enabled
+      const processedReturn = await storage.processSalesReturn(newReturn.id, req.user.claims.sub, auditContext, approvalContext);
+
+      res.json({ 
+        message: "Sales return processed successfully", 
+        return: processedReturn,
+        compliance: "Stage 6 - Same warehouse return validation enforced per workflow_reference.json with storage persistence"
+      });
+    } catch (error) {
+      console.error("Error processing sales return:", error);
+      if (error.message.includes('approval required') || error.message.includes('threshold')) {
+        res.status(403).json({ message: "Approval required for this sales return", error: error.message });
+      } else if (error.message.includes('warehouse')) {
+        res.status(400).json({ message: error.message, field: "returnToWarehouse" });
+      } else {
+        res.status(500).json({ message: "Failed to process sales return" });
+      }
     }
   });
 

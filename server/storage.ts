@@ -1415,6 +1415,19 @@ export interface IStorage {
     marginPercent: number;
   }>;
 
+  // Sales return operations - Stage 6 compliance (storage-backed return processing)
+  getSalesReturns(filter?: {
+    originalSalesOrderId?: string;
+    status?: string;
+    returnedBy?: string;
+    dateRange?: { start: Date; end: Date };
+  }): Promise<SalesReturn[]>;
+  getSalesReturn(id: string): Promise<SalesReturn | undefined>;
+  createSalesReturn(salesReturn: InsertSalesReturn): Promise<SalesReturn>;
+  updateSalesReturn(id: string, salesReturn: Partial<InsertSalesReturn>): Promise<SalesReturn>;
+  processSalesReturn(id: string, userId: string): Promise<SalesReturn>;
+  approveSalesReturn(id: string, userId: string): Promise<SalesReturn>;
+
   // Customer communication operations
   getCustomerCommunications(customerId: string, limit?: number): Promise<CustomerCommunication[]>;
   getCustomerCommunication(id: string): Promise<CustomerCommunication | undefined>;
@@ -6931,6 +6944,251 @@ export class DatabaseStorage implements IStorage {
       discountApplied,
       marginPercent,
     };
+  }
+
+  // Sales return operations - Stage 6 compliance (storage-backed return processing)
+  async getSalesReturns(filter?: {
+    originalSalesOrderId?: string;
+    status?: string;
+    returnedBy?: string;
+    dateRange?: { start: Date; end: Date };
+  }): Promise<SalesReturn[]> {
+    let query = db.select().from(salesReturns);
+    
+    if (filter?.originalSalesOrderId) {
+      query = query.where(eq(salesReturns.originalSalesOrderId, filter.originalSalesOrderId));
+    }
+    if (filter?.status) {
+      query = query.where(eq(salesReturns.status, filter.status));
+    }
+    if (filter?.returnedBy) {
+      query = query.where(eq(salesReturns.returnedBy, filter.returnedBy));
+    }
+    if (filter?.dateRange) {
+      query = query.where(
+        and(
+          gte(salesReturns.createdAt, filter.dateRange.start),
+          lte(salesReturns.createdAt, filter.dateRange.end)
+        )
+      );
+    }
+    
+    return await query.orderBy(desc(salesReturns.createdAt));
+  }
+
+  async getSalesReturn(id: string): Promise<SalesReturn | undefined> {
+    const [salesReturn] = await db.select().from(salesReturns).where(eq(salesReturns.id, id));
+    return salesReturn;
+  }
+
+  async createSalesReturn(salesReturn: InsertSalesReturn, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesReturn> {
+    // CRITICAL: Enforce approval requirement for sales returns above thresholds
+    const returnAmount = parseFloat(salesReturn.refundAmount || '0');
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'sale_order',
+        operationData: salesReturn,
+        amount: returnAmount,
+        currency: 'USD',
+        businessContext: `Sales return for order ${salesReturn.originalSalesOrderId}`
+      });
+    }
+
+    // Generate return number
+    const returnNumber = await this.generateNextSalesReturnNumber();
+    
+    // Use transaction for return creation with warehouse validation
+    const result = await db.transaction(async (tx) => {
+      // Validate same warehouse return rule per workflow_reference.json
+      const originalOrder = await this.getSalesOrderWithDetails(salesReturn.originalSalesOrderId);
+      if (!originalOrder) {
+        throw new Error('Original sales order not found');
+      }
+
+      // Validate warehouse consistency
+      if (salesReturn.originalSalesOrderItemId) {
+        const originalItem = originalOrder.items.find(item => item.id === salesReturn.originalSalesOrderItemId);
+        if (!originalItem || !originalItem.warehouseStock) {
+          throw new Error('Original sales order item not found or missing warehouse stock');
+        }
+        
+        // Enforce same warehouse return rule
+        if (salesReturn.returnToWarehouse !== originalItem.warehouseStock.warehouse) {
+          throw new Error(`Returns must go back to the same warehouse: ${originalItem.warehouseStock.warehouse}`);
+        }
+      } else {
+        // For order-level returns, check first item warehouse
+        const firstItem = originalOrder.items[0];
+        if (firstItem?.warehouseStock && salesReturn.returnToWarehouse !== firstItem.warehouseStock.warehouse) {
+          throw new Error(`Returns must go back to the same warehouse: ${firstItem.warehouseStock.warehouse}`);
+        }
+      }
+
+      // Create the sales return record
+      const [newReturn] = await tx.insert(salesReturns).values({
+        ...salesReturn,
+        returnNumber,
+      }).returning();
+
+      return newReturn;
+    });
+    
+    // CRITICAL SECURITY: Audit logging for sales returns
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'sale_order',
+        result.id,
+        'create',
+        'sales_return',
+        null,
+        result,
+        -returnAmount, // Negative impact for returns
+        'USD'
+      );
+    }
+    
+    return result;
+  }
+
+  async updateSalesReturn(id: string, salesReturn: Partial<InsertSalesReturn>): Promise<SalesReturn> {
+    const [updated] = await db
+      .update(salesReturns)
+      .set({ ...salesReturn, updatedAt: new Date() })
+      .where(eq(salesReturns.id, id))
+      .returning();
+    
+    if (!updated) {
+      throw new Error('Sales return not found');
+    }
+    
+    return updated;
+  }
+
+  async processSalesReturn(id: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesReturn> {
+    // CRITICAL: Sales return processing requires approval for inventory adjustments
+    const existingReturn = await this.getSalesReturn(id);
+    if (!existingReturn) {
+      throw new Error('Sales return not found');
+    }
+
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'sale_order',
+        operationData: existingReturn,
+        amount: parseFloat(existingReturn.refundAmount || '0'),
+        currency: 'USD',
+        businessContext: `Processing sales return ${existingReturn.returnNumber}`
+      });
+    }
+
+    // Use transaction for return processing with inventory adjustments
+    const result = await db.transaction(async (tx) => {
+      // Update return status to processed
+      const [processedReturn] = await tx
+        .update(salesReturns)
+        .set({
+          status: 'processed',
+          processedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(salesReturns.id, id))
+        .returning();
+
+      // TODO: Add inventory adjustments - return stock to warehouse
+      // This would involve updating warehouseStock quantities based on return condition
+      
+      return processedReturn;
+    });
+    
+    // CRITICAL SECURITY: Audit logging for return processing
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'sale_order',
+        result.id,
+        'update',
+        'sales_return_processing',
+        existingReturn,
+        result,
+        0, // No financial impact during processing step
+        'USD'
+      );
+    }
+    
+    return result;
+  }
+
+  async approveSalesReturn(id: string, userId: string, auditContext?: AuditContext): Promise<SalesReturn> {
+    const [approved] = await db
+      .update(salesReturns)
+      .set({
+        isApproved: true,
+        approvedBy: userId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(salesReturns.id, id))
+      .returning();
+    
+    if (!approved) {
+      throw new Error('Sales return not found');
+    }
+    
+    // CRITICAL SECURITY: Audit logging for return approval
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'sale_order',
+        approved.id,
+        'update',
+        'sales_return_approval',
+        null,
+        approved,
+        0, // No financial impact during approval step
+        'USD'
+      );
+    }
+    
+    return approved;
+  }
+
+  private async generateNextSalesReturnNumber(): Promise<string> {
+    // Use advisory lock to serialize return number generation
+    const lockId = 4567890123;
+    
+    return await db.transaction(async (tx) => {
+      // Acquire advisory transaction lock (automatically released at transaction end)
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockId})`);
+      
+      // Get the highest existing return number in transaction with SELECT FOR UPDATE
+      const latestReturn = await tx
+        .select({ returnNumber: salesReturns.returnNumber })
+        .from(salesReturns)
+        .orderBy(sql`${salesReturns.returnNumber} DESC`)
+        .limit(1)
+        .for('update');
+
+      return this.calculateNextSalesReturnNumber(latestReturn[0]?.returnNumber);
+    });
+  }
+
+  private calculateNextSalesReturnNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'RET-000001';
+    }
+
+    // Extract number from RET-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastNumber.match(/RET-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'RET-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `RET-${nextNumber.toString().padStart(6, '0')}`;
   }
 
   // Customer communication operations

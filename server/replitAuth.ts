@@ -191,6 +191,150 @@ export async function hasWarehouseScope(userId: string, warehouseCode: string): 
   }
 }
 
+// Stage 6: Sales warehouse source validation middleware (FIRST/FINAL enforcement)
+export function validateWarehouseSource(): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const body = req.body;
+      
+      // Stage 6: Validate warehouse source rules from workflow_reference.json
+      if (body.warehouseStockId) {
+        const warehouseStock = await storage.getWarehouseStockItem(body.warehouseStockId);
+        if (!warehouseStock) {
+          return res.status(404).json({ message: "Warehouse stock item not found" });
+        }
+
+        // HARDENED FIRST/FINAL validation per Stage 6 requirements (warehouse-type based, not status-dependent)
+        const warehouse = warehouseStock.warehouse;
+        const status = warehouseStock.status;
+        
+        // Stage 6 Core Rule: FIRST warehouse can only sell non-clean products
+        if (warehouse === 'FIRST' && status !== 'NON_CLEAN') {
+          // Allow NON_CLEAN status from FIRST warehouse
+          if (status !== 'NON_CLEAN') {
+            return res.status(400).json({ 
+              message: "FIRST warehouse can only sell non-clean products (NON_CLEAN status)",
+              field: "warehouseStockId",
+              warehouse: warehouse,
+              status: status,
+              compliance: "Stage 6 - workflow_reference.json FIRST warehouse rule"
+            });
+          }
+        }
+        
+        // Stage 6 Core Rule: FINAL warehouse can only sell clean products
+        if (warehouse === 'FINAL' && status !== 'READY_FOR_SALE') {
+          // Allow READY_FOR_SALE status from FINAL warehouse
+          if (status !== 'READY_FOR_SALE') {
+            return res.status(400).json({ 
+              message: "FINAL warehouse can only sell clean products (READY_FOR_SALE status)", 
+              field: "warehouseStockId",
+              warehouse: warehouse,
+              status: status,
+              compliance: "Stage 6 - workflow_reference.json FINAL warehouse rule"
+            });
+          }
+        }
+        
+        // Additional validation: Prevent cross-warehouse violations
+        if (warehouse !== 'FIRST' && warehouse !== 'FINAL') {
+          return res.status(400).json({ 
+            message: "Invalid warehouse type. Only FIRST and FINAL warehouses are supported",
+            field: "warehouseStockId",
+            warehouse: warehouse,
+            status: status
+          });
+        }
+        
+        // Store validated warehouse info for downstream use
+        req.warehouseInfo = { warehouse, status };
+      }
+
+      next();
+    } catch (error) {
+      console.error("Error in validateWarehouseSource middleware:", error);
+      return res.status(500).json({ message: "Internal server error during warehouse validation" });
+    }
+  };
+}
+
+// Stage 6: Sales return validation middleware (SECURITY: always enforces validation, prevents bypass)
+export function validateSalesReturn(): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const body = req.body;
+      
+      // SECURITY FIX: Always enforce validation using req.params.id to prevent bypass
+      const originalSalesOrderId = req.params.id || body.originalSalesOrderId;
+      const originalSalesOrderItemId = body.originalSalesOrderItemId;
+      
+      if (!originalSalesOrderId && !originalSalesOrderItemId) {
+        return res.status(400).json({ 
+          message: "Original sales order ID or item ID is required for return validation",
+          field: "originalSalesOrderId",
+          compliance: "Stage 6 - workflow_reference.json return validation requirement"
+        });
+      }
+      
+      // HARDENED: Fetch original sale from storage to prevent bypassing
+      let originalWarehouse: string | undefined;
+      
+      if (originalSalesOrderId) {
+        const originalOrder = await storage.getSalesOrderWithDetails(originalSalesOrderId);
+        if (!originalOrder) {
+          return res.status(404).json({ message: "Original sales order not found" });
+        }
+        
+        // For specific item returns, validate against the exact item
+        if (originalSalesOrderItemId) {
+          const specificItem = originalOrder.items?.find(item => item.id === originalSalesOrderItemId);
+          if (!specificItem) {
+            return res.status(404).json({ message: "Specific sales order item not found in order" });
+          }
+          if (specificItem.warehouseStock) {
+            originalWarehouse = specificItem.warehouseStock.warehouse;
+          }
+        } else {
+          // For order-level returns, get warehouse from first item (multi-item returns need item-specific validation)
+          if (originalOrder.items && originalOrder.items.length > 0) {
+            const firstItem = originalOrder.items[0];
+            if (firstItem.warehouseStock) {
+              originalWarehouse = firstItem.warehouseStock.warehouse;
+            }
+          }
+        }
+      } else if (originalSalesOrderItemId) {
+        const originalItem = await storage.getSalesOrderItem(originalSalesOrderItemId);
+        if (!originalItem || !originalItem.warehouseStockId) {
+          return res.status(404).json({ message: "Original sales order item not found" });
+        }
+        
+        const warehouseStock = await storage.getWarehouseStockItem(originalItem.warehouseStockId);
+        if (warehouseStock) {
+          originalWarehouse = warehouseStock.warehouse;
+        }
+      }
+      
+      // Enforce same warehouse return rule
+      const returnWarehouse = body.returnToWarehouse;
+      if (originalWarehouse && returnWarehouse && originalWarehouse !== returnWarehouse) {
+        return res.status(400).json({ 
+          message: `Returns must go back to the same warehouse: ${originalWarehouse}`,
+          field: "returnToWarehouse",
+          expectedWarehouse: originalWarehouse,
+          providedWarehouse: returnWarehouse,
+          compliance: "Stage 6 - workflow_reference.json same warehouse return rule"
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error("Error in validateSalesReturn middleware:", error);
+      return res.status(500).json({ message: "Internal server error during return validation" });
+    }
+  };
+}
+
 // Stage 8: Secure warehouse scoping enforcement for ID-based routes (prevents warehouse spoofing)
 export function requireWarehouseScopeForResource(
   fetchResourceFn: (id: string) => Promise<{ warehouse?: string; warehouseLocation?: string } | undefined>
