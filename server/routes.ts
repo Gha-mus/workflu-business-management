@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole } from "./replitAuth";
 import { z } from "zod";
+import Decimal from "decimal.js";
 import { 
   insertSupplierSchema,
   insertOrderSchema,
@@ -190,18 +191,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.user.claims.sub,
       });
 
-      // Calculate total and remaining
-      const total = parseFloat(purchaseData.weight) * parseFloat(purchaseData.pricePerKg);
-      const remaining = total - parseFloat(purchaseData.amountPaid || '0');
+      // Additional validation: ensure exchange rate is provided for non-USD currencies
+      if (purchaseData.currency !== 'USD' && (!purchaseData.exchangeRate || purchaseData.exchangeRate === '0')) {
+        return res.status(400).json({ 
+          message: "Exchange rate is required for non-USD currencies",
+          field: "exchangeRate"
+        });
+      }
+
+      // Calculate total and remaining using decimal-safe math
+      const weight = new Decimal(purchaseData.weight);
+      const pricePerKg = new Decimal(purchaseData.pricePerKg);
+      const amountPaid = new Decimal(purchaseData.amountPaid || '0');
+      
+      const total = weight.mul(pricePerKg);
+      const remaining = total.sub(amountPaid);
 
       const purchase = await storage.createPurchase({
         ...purchaseData,
-        total: total.toString(),
-        remaining: remaining.toString(),
+        total: total.toFixed(2),
+        remaining: remaining.toFixed(2),
       });
 
       // Create capital entry if funded from capital
-      if (purchaseData.fundingSource === 'capital' && parseFloat(purchaseData.amountPaid || '0') > 0) {
+      if (purchaseData.fundingSource === 'capital' && amountPaid.gt(0)) {
         await storage.createCapitalEntry({
           entryId: `PUR-${purchase.id}`,
           amount: purchaseData.amountPaid || '0',
@@ -226,12 +239,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         qtyKgNonClean: '0',
         unitCostCleanUsd: purchaseData.currency === 'USD' 
           ? purchaseData.pricePerKg 
-          : (parseFloat(purchaseData.pricePerKg) / parseFloat(purchaseData.exchangeRate || '1')).toString(),
+          : pricePerKg.div(new Decimal(purchaseData.exchangeRate as string)).toFixed(4),
       });
 
       res.json(purchase);
     } catch (error) {
       console.error("Error creating purchase:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
       res.status(500).json({ message: "Failed to create purchase" });
     }
   });

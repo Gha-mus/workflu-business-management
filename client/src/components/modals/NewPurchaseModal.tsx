@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Decimal from "decimal.js";
 import type { SuppliersResponse, OrdersResponse, SettingsResponse } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +45,15 @@ const purchaseSchema = z.object({
   quality: z.string().optional(),
   country: z.string().optional(),
   notes: z.string().optional(),
+}).refine((data) => {
+  // Require exchange rate for non-USD currencies
+  if (data.currency !== 'USD') {
+    // This will be validated on the backend with actual exchange rate
+    return true; // Allow frontend to pass validation, backend will validate exchange rate
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
 });
 
 type PurchaseForm = z.infer<typeof purchaseSchema>;
@@ -87,21 +97,32 @@ export function NewPurchaseModal({ open, onClose }: NewPurchaseModalProps) {
   const currency = form.watch("currency");
 
   useEffect(() => {
-    const weightNum = parseFloat(weight) || 0;
-    const priceNum = parseFloat(pricePerKg) || 0;
-    let calculatedTotal = weightNum * priceNum;
-    
-    // Convert to USD if currency is ETB
-    if (currency === "ETB" && settings?.exchangeRate) {
-      calculatedTotal = calculatedTotal / settings.exchangeRate;
+    try {
+      if (!weight || !pricePerKg) {
+        setTotal(0);
+        return;
+      }
+
+      const weightDecimal = new Decimal(weight);
+      const priceDecimal = new Decimal(pricePerKg);
+      let calculatedTotal = weightDecimal.mul(priceDecimal);
+      
+      // Convert to USD if currency is ETB
+      if (currency === "ETB" && settings?.exchangeRate) {
+        const exchangeRate = new Decimal(settings.exchangeRate);
+        calculatedTotal = calculatedTotal.div(exchangeRate);
+      }
+      
+      setTotal(calculatedTotal.toNumber());
+    } catch (error) {
+      // Handle invalid number inputs gracefully
+      setTotal(0);
     }
-    
-    setTotal(calculatedTotal);
   }, [weight, pricePerKg, currency, settings?.exchangeRate]);
 
   const createPurchaseMutation = useMutation({
     mutationFn: async (data: PurchaseForm) => {
-      const exchangeRate = currency === "ETB" ? settings?.exchangeRate : 1;
+      const exchangeRate = currency === "ETB" ? settings?.exchangeRate : undefined;
       
       return await apiRequest('POST', '/api/purchases', {
         ...data,
