@@ -472,6 +472,10 @@ export const approvalMiddleware = {
   // Financial adjustments
   financialAdjustment: requireAlwaysApproval('financial_adjustment'),
   
+  // Stage 5 Operating Expenses
+  operatingExpense: requireApproval('operating_expense'),
+  supplyPurchase: requireApproval('supply_purchase'),
+  
   // Utility middleware
   injectContext: injectApprovalContext,
   validateExecution: validateApprovalExecution

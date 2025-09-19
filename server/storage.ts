@@ -36,6 +36,12 @@ import {
   salesPerformanceMetrics,
   customerCreditLimits,
   pricingRules,
+  // Stage 5 Operating Expenses tables
+  supplies,
+  operatingExpenseCategories,
+  operatingExpenses,
+  supplyConsumption,
+  supplyPurchases,
   documents,
   documentVersions,
   documentMetadata,
@@ -122,6 +128,17 @@ import {
   type InsertCustomerCreditLimit,
   type PricingRule,
   type InsertPricingRule,
+  // Stage 5 Operating Expenses types
+  type Supply,
+  type InsertSupply,
+  type OperatingExpenseCategory,
+  type InsertOperatingExpenseCategory,
+  type OperatingExpense,
+  type InsertOperatingExpense,
+  type SupplyConsumption,
+  type InsertSupplyConsumption,
+  type SupplyPurchase,
+  type InsertSupplyPurchase,
   type ShipmentWithDetailsResponse,
   type ShippingAnalyticsResponse,
   type CreateShipmentFromStock,
@@ -2394,6 +2411,557 @@ export class DatabaseStorage implements IStorage {
       .where(eq(purchases.id, id))
       .returning();
     return result;
+  }
+
+  // ===== OPERATING EXPENSES SYSTEM OPERATIONS (STAGE 5) =====
+
+  // Supply operations
+  async getSupplies(): Promise<Supply[]> {
+    return await db.select().from(supplies).where(eq(supplies.isActive, true)).orderBy(desc(supplies.createdAt));
+  }
+
+  async getSupply(id: string): Promise<Supply | undefined> {
+    const [supply] = await db.select().from(supplies).where(eq(supplies.id, id));
+    return supply;
+  }
+
+  async createSupply(supply: InsertSupply, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supply> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'supply_create',
+        operationData: supply,
+        businessContext: `Create supply: ${supply.name} (${supply.supplyType})`
+      });
+    }
+
+    // Generate next supply number
+    const supplyNumber = await this.generateNextSupplyNumber();
+    
+    // Calculate total value
+    const totalValue = new Decimal(supply.quantityOnHand || '0').mul(new Decimal(supply.unitCostUsd));
+
+    const [result] = await db.insert(supplies).values({
+      ...supply,
+      supplyNumber,
+      totalValueUsd: totalValue.toFixed(2),
+    }).returning();
+    
+    // CRITICAL SECURITY: Audit logging for supply operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'supplies',
+        result.id,
+        'create',
+        'supply_create',
+        null,
+        result
+      );
+    }
+    
+    return result;
+  }
+
+  async updateSupply(id: string, supply: Partial<InsertSupply>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supply> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(supplies, id);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'supply_update',
+        operationData: supply,
+        businessContext: `Update supply: ${beforeState?.name || id}`
+      });
+    }
+
+    // Recalculate total value if quantity or cost changed
+    let updateData = { ...supply, updatedAt: new Date() };
+    if (supply.quantityOnHand !== undefined || supply.unitCostUsd !== undefined) {
+      const currentSupply = beforeState || await this.getSupply(id);
+      if (currentSupply) {
+        const quantity = new Decimal(supply.quantityOnHand ?? currentSupply.quantityOnHand);
+        const unitCost = new Decimal(supply.unitCostUsd ?? currentSupply.unitCostUsd);
+        updateData.totalValueUsd = quantity.mul(unitCost).toFixed(2);
+      }
+    }
+
+    const [result] = await db
+      .update(supplies)
+      .set(updateData)
+      .where(eq(supplies.id, id))
+      .returning();
+    
+    // CRITICAL SECURITY: Audit logging for supply updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'supplies',
+        result.id,
+        'update',
+        'supply_update',
+        beforeState,
+        result
+      );
+    }
+    
+    return result;
+  }
+
+  private async generateNextSupplyNumber(): Promise<string> {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Get the highest existing supply number using lexicographic ordering
+        const latestSupply = await db
+          .select({ supplyNumber: supplies.supplyNumber })
+          .from(supplies)
+          .orderBy(sql`${supplies.supplyNumber} DESC`)
+          .limit(1);
+
+        const nextNumber = this.calculateNextSupplyNumber(latestSupply[0]?.supplyNumber);
+        return nextNumber;
+      } catch (error) {
+        if (attempt === maxRetries - 1) throw error;
+        // Small delay before retry
+        await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)));
+      }
+    }
+    return 'SUP-000001'; // Fallback
+  }
+
+  private calculateNextSupplyNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'SUP-000001';
+    }
+
+    // Extract number from SUP-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastNumber.match(/SUP-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'SUP-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `SUP-${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  // Operating expense categories operations
+  async getOperatingExpenseCategories(): Promise<OperatingExpenseCategory[]> {
+    return await db.select().from(operatingExpenseCategories).where(eq(operatingExpenseCategories.isActive, true)).orderBy(desc(operatingExpenseCategories.createdAt));
+  }
+
+  async getOperatingExpenseCategory(id: string): Promise<OperatingExpenseCategory | undefined> {
+    const [category] = await db.select().from(operatingExpenseCategories).where(eq(operatingExpenseCategories.id, id));
+    return category;
+  }
+
+  async createOperatingExpenseCategory(category: InsertOperatingExpenseCategory, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<OperatingExpenseCategory> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'expense_category_create',
+        operationData: category,
+        businessContext: `Create expense category: ${category.categoryName}`
+      });
+    }
+
+    const [result] = await db.insert(operatingExpenseCategories).values(category).returning();
+    
+    // CRITICAL SECURITY: Audit logging for expense category operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'operating_expense_categories',
+        result.id,
+        'create',
+        'expense_category_create',
+        null,
+        result
+      );
+    }
+    
+    return result;
+  }
+
+  // Operating expenses operations
+  async getOperatingExpenses(): Promise<OperatingExpense[]> {
+    return await db.select().from(operatingExpenses).orderBy(desc(operatingExpenses.createdAt));
+  }
+
+  async getOperatingExpense(id: string): Promise<OperatingExpense | undefined> {
+    const [expense] = await db.select().from(operatingExpenses).where(eq(operatingExpenses.id, id));
+    return expense;
+  }
+
+  async createOperatingExpense(expense: InsertOperatingExpense, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<OperatingExpense> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'operating_expense',
+        operationData: expense,
+        amount: parseFloat(expense.amount),
+        currency: expense.currency,
+        businessContext: `Operating expense: ${expense.description}`
+      });
+    }
+
+    // Use database transaction for operating expense with capital integration
+    const result = await db.transaction(async (tx) => {
+      return await this.createOperatingExpenseInTransaction(tx, expense, auditContext?.userId || 'system');
+    });
+    
+    // CRITICAL SECURITY: Enhanced audit logging for operating expenses
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'operating_expenses',
+        result.id,
+        'create',
+        'operating_expense',
+        null,
+        result,
+        -parseFloat(expense.amount), // Negative impact for expenses (outflow)
+        expense.currency
+      );
+    }
+    
+    return result;
+  }
+
+  private async createOperatingExpenseInTransaction(tx: any, expense: InsertOperatingExpense, userId: string): Promise<OperatingExpense> {
+    // Generate next expense number
+    const expenseNumber = await this.generateNextOperatingExpenseNumberInTransaction(tx);
+    
+    // Convert amount to USD for normalization
+    let amountUsd = new Decimal(expense.amount);
+    if (expense.currency === 'ETB' && expense.exchangeRate) {
+      amountUsd = amountUsd.div(new Decimal(expense.exchangeRate));
+    }
+    
+    // Calculate remaining amount
+    const amountPaid = new Decimal(expense.amountPaid || '0');
+    const remaining = new Decimal(expense.amount).sub(amountPaid);
+
+    // Create the operating expense
+    const [result] = await tx.insert(operatingExpenses).values({
+      ...expense,
+      expenseNumber,
+      amountUsd: amountUsd.toFixed(2),
+      remaining: remaining.toFixed(2),
+    }).returning();
+
+    // If funded from capital and amount paid > 0, create capital entry
+    if (expense.fundingSource === 'capital' && parseFloat(expense.amountPaid || '0') > 0) {
+      const paidAmount = new Decimal(expense.amountPaid || '0');
+      
+      // Convert amount to USD for capital tracking normalization
+      let paidInUsd = paidAmount;
+      if (expense.currency === 'ETB' && expense.exchangeRate) {
+        paidInUsd = paidAmount.div(new Decimal(expense.exchangeRate));
+      }
+      
+      // Create capital entry with atomic balance checking
+      await this.createCapitalEntryInTransaction(tx, {
+        entryId: `EXP-${result.id}`,
+        amount: paidInUsd.toFixed(2),
+        type: 'CapitalOut',
+        reference: result.id,
+        description: `Operating expense - ${expense.description} ${expense.currency === 'ETB' ? `(${expense.amountPaid} ETB @ ${expense.exchangeRate})` : ''}`,
+        paymentCurrency: expense.currency,
+        exchangeRate: expense.exchangeRate || undefined,
+        createdBy: userId,
+      });
+    }
+
+    return result;
+  }
+
+  private async generateNextOperatingExpenseNumberInTransaction(tx: any): Promise<string> {
+    // Use advisory lock to serialize expense number generation
+    const lockId = 2345678901;
+    
+    // Acquire advisory transaction lock (automatically released at transaction end)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockId})`);
+    
+    // Get the highest existing expense number in transaction with SELECT FOR UPDATE
+    const latestExpense = await tx
+      .select({ expenseNumber: operatingExpenses.expenseNumber })
+      .from(operatingExpenses)
+      .orderBy(sql`${operatingExpenses.expenseNumber} DESC`)
+      .limit(1)
+      .for('update');
+
+    return this.calculateNextOperatingExpenseNumber(latestExpense[0]?.expenseNumber);
+  }
+
+  private calculateNextOperatingExpenseNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'EXP-000001';
+    }
+
+    // Extract number from EXP-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastNumber.match(/EXP-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'EXP-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `EXP-${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  // Supply consumption operations - for automatic packing cost deduction
+  async createSupplyConsumption(consumption: InsertSupplyConsumption, auditContext?: AuditContext): Promise<SupplyConsumption> {
+    // Use database transaction for supply consumption with inventory updates
+    const result = await db.transaction(async (tx) => {
+      return await this.createSupplyConsumptionInTransaction(tx, consumption);
+    });
+    
+    // CRITICAL SECURITY: Audit logging for supply consumption
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'supply_consumption',
+        result.id,
+        'create',
+        'supply_consumption',
+        null,
+        result,
+        -parseFloat(consumption.totalCostUsd), // Negative impact for consumption (cost)
+        'USD'
+      );
+    }
+    
+    return result;
+  }
+
+  private async createSupplyConsumptionInTransaction(tx: any, consumption: InsertSupplyConsumption): Promise<SupplyConsumption> {
+    // Generate next consumption number
+    const consumptionNumber = await this.generateNextSupplyConsumptionNumberInTransaction(tx);
+    
+    // Calculate total cost
+    const totalCost = new Decimal(consumption.quantityConsumed).mul(new Decimal(consumption.unitCostUsd));
+
+    // Create the supply consumption record
+    const [result] = await tx.insert(supplyConsumption).values({
+      ...consumption,
+      consumptionNumber,
+      totalCostUsd: totalCost.toFixed(2),
+    }).returning();
+
+    // Update supply inventory - reduce quantity on hand
+    await tx
+      .update(supplies)
+      .set({
+        quantityOnHand: sql`${supplies.quantityOnHand} - ${consumption.quantityConsumed}`,
+        totalValueUsd: sql`${supplies.totalValueUsd} - ${totalCost.toFixed(2)}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(supplies.id, consumption.supplyId));
+
+    return result;
+  }
+
+  private async generateNextSupplyConsumptionNumberInTransaction(tx: any): Promise<string> {
+    // Use advisory lock to serialize consumption number generation
+    const lockId = 3456789012;
+    
+    // Acquire advisory transaction lock (automatically released at transaction end)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockId})`);
+    
+    // Get the highest existing consumption number in transaction with SELECT FOR UPDATE
+    const latestConsumption = await tx
+      .select({ consumptionNumber: supplyConsumption.consumptionNumber })
+      .from(supplyConsumption)
+      .orderBy(sql`${supplyConsumption.consumptionNumber} DESC`)
+      .limit(1)
+      .for('update');
+
+    return this.calculateNextSupplyConsumptionNumber(latestConsumption[0]?.consumptionNumber);
+  }
+
+  private calculateNextSupplyConsumptionNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'CON-000001';
+    }
+
+    // Extract number from CON-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastNumber.match(/CON-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'CON-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `CON-${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  // Supply purchases operations
+  async createSupplyPurchase(purchase: InsertSupplyPurchase, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SupplyPurchase> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'supply_purchase',
+        operationData: purchase,
+        amount: parseFloat(purchase.totalAmount),
+        currency: purchase.currency,
+        businessContext: `Supply purchase from supplier`
+      });
+    }
+
+    // Use database transaction for supply purchase with inventory and capital integration
+    const result = await db.transaction(async (tx) => {
+      return await this.createSupplyPurchaseInTransaction(tx, purchase, auditContext?.userId || 'system');
+    });
+    
+    // CRITICAL SECURITY: Audit logging for supply purchases
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'supply_purchases',
+        result.id,
+        'create',
+        'supply_purchase',
+        null,
+        result,
+        -parseFloat(purchase.totalAmount), // Negative impact for purchases (outflow)
+        purchase.currency
+      );
+    }
+    
+    return result;
+  }
+
+  private async createSupplyPurchaseInTransaction(tx: any, purchase: InsertSupplyPurchase, userId: string): Promise<SupplyPurchase> {
+    // Generate next purchase number
+    const purchaseNumber = await this.generateNextSupplyPurchaseNumberInTransaction(tx);
+    
+    // Convert amount to USD for normalization
+    let amountUsd = new Decimal(purchase.totalAmount);
+    if (purchase.currency === 'ETB' && purchase.exchangeRate) {
+      amountUsd = amountUsd.div(new Decimal(purchase.exchangeRate));
+    }
+    
+    // Calculate remaining amount
+    const amountPaid = new Decimal(purchase.amountPaid || '0');
+    const remaining = new Decimal(purchase.totalAmount).sub(amountPaid);
+
+    // Create the supply purchase
+    const [result] = await tx.insert(supplyPurchases).values({
+      ...purchase,
+      purchaseNumber,
+      amountUsd: amountUsd.toFixed(2),
+      remaining: remaining.toFixed(2),
+    }).returning();
+
+    // Update supply inventory - increase quantity on hand
+    await tx
+      .update(supplies)
+      .set({
+        quantityOnHand: sql`${supplies.quantityOnHand} + ${purchase.quantity}`,
+        totalValueUsd: sql`${supplies.totalValueUsd} + ${amountUsd.toFixed(2)}`,
+        unitCostUsd: purchase.unitPrice, // Update with latest purchase price
+        lastPurchaseDate: new Date(),
+        lastPurchasePrice: purchase.unitPrice,
+        updatedAt: new Date(),
+      })
+      .where(eq(supplies.id, purchase.supplyId));
+
+    // If funded from capital and amount paid > 0, create capital entry
+    if (purchase.fundingSource === 'capital' && parseFloat(purchase.amountPaid || '0') > 0) {
+      const paidAmount = new Decimal(purchase.amountPaid || '0');
+      
+      // Convert amount to USD for capital tracking normalization
+      let paidInUsd = paidAmount;
+      if (purchase.currency === 'ETB' && purchase.exchangeRate) {
+        paidInUsd = paidAmount.div(new Decimal(purchase.exchangeRate));
+      }
+      
+      // Create capital entry with atomic balance checking
+      await this.createCapitalEntryInTransaction(tx, {
+        entryId: `SPU-${result.id}`,
+        amount: paidInUsd.toFixed(2),
+        type: 'CapitalOut',
+        reference: result.id,
+        description: `Supply purchase ${purchase.currency === 'ETB' ? `(${purchase.amountPaid} ETB @ ${purchase.exchangeRate})` : ''}`,
+        paymentCurrency: purchase.currency,
+        exchangeRate: purchase.exchangeRate || undefined,
+        createdBy: userId,
+      });
+    }
+
+    return result;
+  }
+
+  private async generateNextSupplyPurchaseNumberInTransaction(tx: any): Promise<string> {
+    // Use advisory lock to serialize supply purchase number generation
+    const lockId = 4567890123;
+    
+    // Acquire advisory transaction lock (automatically released at transaction end)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockId})`);
+    
+    // Get the highest existing supply purchase number in transaction with SELECT FOR UPDATE
+    const latestPurchase = await tx
+      .select({ purchaseNumber: supplyPurchases.purchaseNumber })
+      .from(supplyPurchases)
+      .orderBy(sql`${supplyPurchases.purchaseNumber} DESC`)
+      .limit(1)
+      .for('update');
+
+    return this.calculateNextSupplyPurchaseNumber(latestPurchase[0]?.purchaseNumber);
+  }
+
+  private calculateNextSupplyPurchaseNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'SPU-000001';
+    }
+
+    // Extract number from SPU-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastNumber.match(/SPU-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'SPU-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `SPU-${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  // Automatic packing cost deduction - to be called during warehouse operations
+  async recordPackingSupplyConsumption(orderId: string, cartonsProcessed: number, userId: string): Promise<void> {
+    // Get active packing supplies (cartons, labels, wraps)
+    const packingSupplies = await db.select().from(supplies)
+      .where(and(
+        eq(supplies.isActive, true),
+        sql`${supplies.supplyType} IN ('cartons_8kg', 'cartons_20kg', 'labels', 'wraps')`
+      ));
+
+    // Record consumption for each supply type based on cartons processed
+    for (const supply of packingSupplies) {
+      const usagePerCarton = parseFloat(supply.usagePerCarton || '0');
+      if (usagePerCarton > 0) {
+        const totalUsage = usagePerCarton * cartonsProcessed;
+        
+        // Create consumption record
+        await this.createSupplyConsumption({
+          supplyId: supply.id,
+          quantityConsumed: totalUsage.toString(),
+          unitCostUsd: supply.unitCostUsd,
+          orderId,
+          packingOperation: 'packing',
+          cartonsProcessed,
+          consumptionType: 'automatic',
+          consumedBy: userId,
+        });
+      }
+    }
   }
 
   // Warehouse operations

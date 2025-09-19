@@ -1418,6 +1418,302 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== OPERATING EXPENSES SYSTEM ROUTES (STAGE 5) =====
+
+  // Supply routes
+  app.get('/api/supplies', requireRole(['admin', 'purchasing', 'warehouse']), async (req, res) => {
+    try {
+      const supplies = await storage.getSupplies();
+      res.json(supplies);
+    } catch (error) {
+      console.error("Error fetching supplies:", error);
+      res.status(500).json({ message: "Failed to fetch supplies" });
+    }
+  });
+
+  app.get('/api/supplies/:id', requireRole(['admin', 'purchasing', 'warehouse']), async (req, res) => {
+    try {
+      const supply = await storage.getSupply(req.params.id);
+      if (!supply) {
+        return res.status(404).json({ message: "Supply not found" });
+      }
+      res.json(supply);
+    } catch (error) {
+      console.error("Error fetching supply:", error);
+      res.status(500).json({ message: "Failed to fetch supply" });
+    }
+  });
+
+  app.post('/api/supplies', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+    try {
+      const supplyData = insertSupplySchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+
+      const supply = await storage.createSupply(supplyData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_supplies',
+        businessContext: `Create supply: ${supplyData.name}`
+      });
+
+      res.json(supply);
+    } catch (error) {
+      console.error("Error creating supply:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create supply" });
+    }
+  });
+
+  app.put('/api/supplies/:id', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+    try {
+      const supplyData = req.body;
+      
+      const supply = await storage.updateSupply(req.params.id, supplyData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_supplies',
+        businessContext: `Update supply: ${req.params.id}`
+      });
+
+      res.json(supply);
+    } catch (error) {
+      console.error("Error updating supply:", error);
+      res.status(500).json({ message: "Failed to update supply" });
+    }
+  });
+
+  // Operating expense categories routes
+  app.get('/api/operating-expense-categories', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const categories = await storage.getOperatingExpenseCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error("Error fetching operating expense categories:", error);
+      res.status(500).json({ message: "Failed to fetch operating expense categories" });
+    }
+  });
+
+  app.post('/api/operating-expense-categories', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const categoryData = insertOperatingExpenseCategorySchema.parse(req.body);
+
+      const category = await storage.createOperatingExpenseCategory(categoryData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_operating_expense_categories',
+        businessContext: `Create expense category: ${categoryData.categoryName}`
+      });
+
+      res.json(category);
+    } catch (error) {
+      console.error("Error creating operating expense category:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create operating expense category" });
+    }
+  });
+
+  // Operating expenses routes
+  app.get('/api/operating-expenses', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const expenses = await storage.getOperatingExpenses();
+      res.json(expenses);
+    } catch (error) {
+      console.error("Error fetching operating expenses:", error);
+      res.status(500).json({ message: "Failed to fetch operating expenses" });
+    }
+  });
+
+  app.get('/api/operating-expenses/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const expense = await storage.getOperatingExpense(req.params.id);
+      if (!expense) {
+        return res.status(404).json({ message: "Operating expense not found" });
+      }
+      res.json(expense);
+    } catch (error) {
+      console.error("Error fetching operating expense:", error);
+      res.status(500).json({ message: "Failed to fetch operating expense" });
+    }
+  });
+
+  app.post('/api/operating-expenses', requireRole(['admin', 'finance']), approvalMiddleware.operatingExpense, async (req: any, res) => {
+    try {
+      const expenseData = insertOperatingExpenseSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+
+      // Additional validation: ensure exchange rate is provided for non-USD currencies
+      if (expenseData.currency !== 'USD' && (!expenseData.exchangeRate || expenseData.exchangeRate === '0')) {
+        return res.status(400).json({ 
+          message: "Exchange rate is required for non-USD currencies",
+          field: "exchangeRate"
+        });
+      }
+
+      const expense = await storage.createOperatingExpense(expenseData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_operating_expenses',
+        businessContext: `Create operating expense: ${expenseData.description}`
+      });
+
+      res.json(expense);
+    } catch (error) {
+      console.error("Error creating operating expense:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+
+      // Handle specific business logic errors from the transaction
+      if (error instanceof Error && error.message.includes('Would result in negative balance')) {
+        return res.status(400).json({
+          message: error.message,
+          field: "fundingSource",
+          suggestion: "Use external funding or add more capital"
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create operating expense" });
+    }
+  });
+
+  // Supply consumption routes
+  app.post('/api/supply-consumption', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const consumptionData = insertSupplyConsumptionSchema.parse({
+        ...req.body,
+        consumedBy: req.user.claims.sub,
+      });
+
+      const consumption = await storage.createSupplyConsumption(consumptionData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_supply_consumption',
+        businessContext: `Record supply consumption for order: ${consumptionData.orderId}`
+      });
+
+      res.json(consumption);
+    } catch (error) {
+      console.error("Error creating supply consumption:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to record supply consumption" });
+    }
+  });
+
+  // Supply purchases routes
+  app.post('/api/supply-purchases', requireRole(['admin', 'purchasing']), approvalMiddleware.supplyPurchase, async (req: any, res) => {
+    try {
+      const purchaseData = insertSupplyPurchaseSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+
+      // Additional validation: ensure exchange rate is provided for non-USD currencies
+      if (purchaseData.currency !== 'USD' && (!purchaseData.exchangeRate || purchaseData.exchangeRate === '0')) {
+        return res.status(400).json({ 
+          message: "Exchange rate is required for non-USD currencies",
+          field: "exchangeRate"
+        });
+      }
+
+      // Calculate total amount
+      const quantity = new Decimal(purchaseData.quantity);
+      const unitPrice = new Decimal(purchaseData.unitPrice);
+      const totalAmount = quantity.mul(unitPrice);
+
+      const purchase = await storage.createSupplyPurchase({
+        ...purchaseData,
+        totalAmount: totalAmount.toFixed(2),
+      }, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_supply_purchases',
+        businessContext: `Create supply purchase from supplier`
+      });
+
+      res.json(purchase);
+    } catch (error) {
+      console.error("Error creating supply purchase:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+
+      // Handle specific business logic errors from the transaction
+      if (error instanceof Error && error.message.includes('Would result in negative balance')) {
+        return res.status(400).json({
+          message: error.message,
+          field: "fundingSource",
+          suggestion: "Use external funding or add more capital"
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create supply purchase" });
+    }
+  });
+
+  // Automatic packing cost deduction route - called during warehouse operations
+  app.post('/api/warehouse/record-packing-consumption', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { orderId, cartonsProcessed } = req.body;
+      
+      if (!orderId || !cartonsProcessed) {
+        return res.status(400).json({ 
+          message: "Order ID and cartons processed are required",
+          fields: ["orderId", "cartonsProcessed"]
+        });
+      }
+
+      await storage.recordPackingSupplyConsumption(orderId, cartonsProcessed, req.user.claims.sub);
+
+      res.json({ 
+        message: "Packing supply consumption recorded successfully",
+        orderId,
+        cartonsProcessed
+      });
+    } catch (error) {
+      console.error("Error recording packing supply consumption:", error);
+      res.status(500).json({ message: "Failed to record packing supply consumption" });
+    }
+  });
+
   // Warehouse routes
   app.get('/api/warehouse/stock', requireRole(['admin', 'warehouse']), async (req, res) => {
     try {
