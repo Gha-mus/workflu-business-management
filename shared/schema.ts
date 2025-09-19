@@ -65,11 +65,26 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  role: userRoleEnum("role").notNull().default('worker'),
+  role: userRoleEnum("role").notNull().default('worker'), // Legacy single role (kept for compatibility)
+  roles: jsonb("roles").$type<string[]>().default(sql`'[]'`), // Stage 8: Multiple role combination support
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Stage 8: User warehouse scopes table for warehouse-level permissions
+export const userWarehouseScopes = pgTable("user_warehouse_scopes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  warehouseCode: varchar("warehouse_code").notNull(), // FIRST, FINAL, etc.
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userWarehouseIdx: index("idx_user_warehouse_scopes_user_warehouse").on(table.userId, table.warehouseCode),
+  userIdx: index("idx_user_warehouse_scopes_user_id").on(table.userId),
+  warehouseIdx: index("idx_user_warehouse_scopes_warehouse").on(table.warehouseCode),
+}));
 
 // Settings table
 export const settings = pgTable("settings", {
