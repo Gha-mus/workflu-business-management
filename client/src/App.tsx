@@ -14,6 +14,8 @@ import Shipping from "@/pages/Shipping";
 import Orders from "@/pages/Orders";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
+import Sales from "@/pages/Sales";
+import Users from "@/pages/Users";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -29,8 +31,10 @@ function Router() {
           <Route path="/purchases" component={Purchases} />
           <Route path="/warehouse" component={Warehouse} />
           <Route path="/shipping" component={Shipping} />
+          <Route path="/sales" component={Sales} />
           <Route path="/orders" component={Orders} />
           <Route path="/reports" component={Reports} />
+          <Route path="/users" component={Users} />
           <Route path="/settings" component={Settings} />
         </>
       )}

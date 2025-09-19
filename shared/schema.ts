@@ -29,6 +29,9 @@ export const sessions = pgTable(
 // User roles enum
 export const userRoleEnum = pgEnum('user_role', ['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker']);
 
+// Quality grades enum for coffee grading
+export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']);
+
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -244,9 +247,6 @@ export const deliveryTracking = pgTable("delivery_tracking", {
 
 // Advanced Warehouse Operations Tables
 
-// Quality grades enum for coffee grading
-export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']);
-
 // Quality standards table
 export const qualityStandards = pgTable("quality_standards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -403,11 +403,466 @@ export const inventoryAdjustments = pgTable("inventory_adjustments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Sales Pipeline Tables
+
+// Customer categories enum
+export const customerCategoryEnum = pgEnum('customer_category', ['retail', 'wholesale', 'export', 'domestic', 'distributor', 'processor']);
+
+// Sales order status enum
+export const salesOrderStatusEnum = pgEnum('sales_order_status', ['draft', 'confirmed', 'in_progress', 'fulfilled', 'delivered', 'cancelled', 'on_hold']);
+
+// Payment terms enum
+export const paymentTermsEnum = pgEnum('payment_terms', ['net_15', 'net_30', 'net_45', 'net_60', 'cash_on_delivery', 'advance_payment', 'credit']);
+
+// Customers table
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerNumber: varchar("customer_number").notNull().unique(),
+  name: varchar("name").notNull(),
+  tradeName: varchar("trade_name"),
+  category: customerCategoryEnum("category").notNull().default('retail'),
+  taxId: varchar("tax_id"),
+  
+  // Contact information
+  email: varchar("email"),
+  phone: varchar("phone"),
+  website: varchar("website"),
+  contactPerson: varchar("contact_person"),
+  contactTitle: varchar("contact_title"),
+  
+  // Addresses
+  billingAddress: text("billing_address"),
+  shippingAddress: text("shipping_address"),
+  city: varchar("city"),
+  state: varchar("state"),
+  country: varchar("country").notNull().default('ETB'),
+  postalCode: varchar("postal_code"),
+  
+  // Business terms
+  paymentTerms: paymentTermsEnum("payment_terms").notNull().default('net_30'),
+  creditLimit: decimal("credit_limit", { precision: 12, scale: 2 }).default('0'),
+  currentCredit: decimal("current_credit", { precision: 12, scale: 2 }).default('0'),
+  currency: varchar("currency").notNull().default('USD'),
+  
+  // Pricing and discounts
+  priceCategory: varchar("price_category").default('standard'), // standard, premium, volume, export
+  defaultDiscountPercent: decimal("default_discount_percent", { precision: 5, scale: 2 }).default('0'),
+  qualityPremiumPercent: decimal("quality_premium_percent", { precision: 5, scale: 2 }).default('0'),
+  
+  // Performance tracking
+  totalOrdersCount: integer("total_orders_count").default(0),
+  totalRevenueUsd: decimal("total_revenue_usd", { precision: 12, scale: 2 }).default('0'),
+  averageOrderValueUsd: decimal("average_order_value_usd", { precision: 12, scale: 2 }).default('0'),
+  lastOrderDate: timestamp("last_order_date"),
+  
+  // Status and metadata
+  isActive: boolean("is_active").notNull().default(true),
+  salesRepId: varchar("sales_rep_id").references(() => users.id),
+  notes: text("notes"),
+  tags: text("tags").array(),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sales orders table
+export const salesOrders = pgTable("sales_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  salesOrderNumber: varchar("sales_order_number").notNull().unique(),
+  customerId: varchar("customer_id").notNull().references(() => customers.id),
+  orderId: varchar("order_id").references(() => orders.id), // Link to internal order for fulfillment
+  
+  // Order details
+  status: salesOrderStatusEnum("status").notNull().default('draft'),
+  orderDate: timestamp("order_date").notNull().defaultNow(),
+  requestedDeliveryDate: timestamp("requested_delivery_date"),
+  confirmedDeliveryDate: timestamp("confirmed_delivery_date"),
+  
+  // Pricing and currency
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  subtotalAmount: decimal("subtotal_amount", { precision: 12, scale: 2 }).notNull().default('0'),
+  discountAmount: decimal("discount_amount", { precision: 12, scale: 2 }).default('0'),
+  taxAmount: decimal("tax_amount", { precision: 12, scale: 2 }).default('0'),
+  shippingAmount: decimal("shipping_amount", { precision: 12, scale: 2 }).default('0'),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  totalAmountUsd: decimal("total_amount_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // Payment tracking
+  paymentTerms: paymentTermsEnum("payment_terms").notNull().default('net_30'),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).default('0'),
+  balanceDue: decimal("balance_due", { precision: 12, scale: 2 }).notNull(),
+  
+  // Shipping information
+  shippingAddress: text("shipping_address"),
+  shippingMethod: varchar("shipping_method"),
+  trackingNumber: varchar("tracking_number"),
+  
+  // Sales tracking
+  salesRepId: varchar("sales_rep_id").references(() => users.id),
+  commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).default('0'),
+  commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }).default('0'),
+  
+  // Status tracking
+  confirmedAt: timestamp("confirmed_at"),
+  fulfilledAt: timestamp("fulfilled_at"),
+  deliveredAt: timestamp("delivered_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
+  
+  // Metadata
+  notes: text("notes"),
+  internalNotes: text("internal_notes"),
+  reference: varchar("reference"), // Customer's PO number
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sales order items table
+export const salesOrderItems = pgTable("sales_order_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  salesOrderId: varchar("sales_order_id").notNull().references(() => salesOrders.id),
+  warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
+  
+  // Product details
+  productDescription: text("product_description").notNull(),
+  qualityGrade: qualityGradeEnum("quality_grade"),
+  origin: varchar("origin"),
+  processingType: varchar("processing_type"),
+  
+  // Quantity and pricing
+  quantityKg: decimal("quantity_kg", { precision: 10, scale: 2 }).notNull(),
+  unitPriceUsd: decimal("unit_price_usd", { precision: 10, scale: 4 }).notNull(),
+  unitPriceLocal: decimal("unit_price_local", { precision: 10, scale: 4 }),
+  lineTotal: decimal("line_total", { precision: 12, scale: 2 }).notNull(),
+  lineTotalUsd: decimal("line_total_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // Cost tracking for margin analysis
+  unitCostUsd: decimal("unit_cost_usd", { precision: 10, scale: 4 }),
+  totalCostUsd: decimal("total_cost_usd", { precision: 12, scale: 2 }),
+  marginAmount: decimal("margin_amount", { precision: 12, scale: 2 }),
+  marginPercent: decimal("margin_percent", { precision: 5, scale: 2 }),
+  
+  // Fulfillment tracking
+  quantityReserved: decimal("quantity_reserved", { precision: 10, scale: 2 }).default('0'),
+  quantityFulfilled: decimal("quantity_fulfilled", { precision: 10, scale: 2 }).default('0'),
+  quantityDelivered: decimal("quantity_delivered", { precision: 10, scale: 2 }).default('0'),
+  
+  // Quality and packaging
+  packagingType: varchar("packaging_type"), // bags, containers, bulk
+  packagingCount: integer("packaging_count"),
+  qualitySpecs: jsonb("quality_specs"), // Detailed quality requirements
+  
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Customer communications table
+export const customerCommunications = pgTable("customer_communications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").notNull().references(() => customers.id),
+  salesOrderId: varchar("sales_order_id").references(() => salesOrders.id),
+  
+  // Communication details
+  type: varchar("type").notNull(), // email, phone, meeting, note, quote, proposal
+  subject: varchar("subject"),
+  content: text("content").notNull(),
+  direction: varchar("direction").notNull(), // inbound, outbound
+  
+  // Contact information
+  contactPerson: varchar("contact_person"),
+  contactMethod: varchar("contact_method"), // email, phone, in_person, video_call
+  
+  // Status and follow-up
+  priority: varchar("priority").default('normal'), // low, normal, high, urgent
+  status: varchar("status").default('completed'), // pending, completed, follow_up_required
+  followUpDate: timestamp("follow_up_date"),
+  followUpNotes: text("follow_up_notes"),
+  
+  // Attachments and references
+  attachments: text("attachments").array(),
+  relatedDocuments: text("related_documents").array(),
+  
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Revenue transactions table
+export const revenueTransactions = pgTable("revenue_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transactionNumber: varchar("transaction_number").notNull().unique(),
+  customerId: varchar("customer_id").notNull().references(() => customers.id),
+  salesOrderId: varchar("sales_order_id").references(() => salesOrders.id),
+  
+  // Transaction details
+  type: varchar("type").notNull(), // sale, payment, refund, adjustment, write_off
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // Payment details
+  paymentMethod: varchar("payment_method"), // cash, bank_transfer, credit_card, check, trade_credit
+  paymentReference: varchar("payment_reference"), // Check number, transfer reference, etc.
+  bankAccount: varchar("bank_account"),
+  
+  // Revenue recognition
+  recognitionDate: timestamp("recognition_date").notNull().defaultNow(),
+  accountingPeriod: varchar("accounting_period"),
+  revenueCategory: varchar("revenue_category"), // product_sales, shipping, handling, other
+  
+  // Cost of goods sold tracking
+  cogs: decimal("cogs", { precision: 12, scale: 2 }),
+  grossMargin: decimal("gross_margin", { precision: 12, scale: 2 }),
+  grossMarginPercent: decimal("gross_margin_percent", { precision: 5, scale: 2 }),
+  
+  // Status and approvals
+  status: varchar("status").notNull().default('pending'), // pending, confirmed, cancelled, reversed
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  
+  // Metadata
+  notes: text("notes"),
+  description: text("description"),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Sales performance metrics table
+export const salesPerformanceMetrics = pgTable("sales_performance_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Period and scope
+  periodType: varchar("period_type").notNull(), // daily, weekly, monthly, quarterly, yearly
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  salesRepId: varchar("sales_rep_id").references(() => users.id),
+  customerId: varchar("customer_id").references(() => customers.id),
+  customerCategory: customerCategoryEnum("customer_category"),
+  
+  // Sales metrics
+  ordersCount: integer("orders_count").default(0),
+  totalRevenueUsd: decimal("total_revenue_usd", { precision: 12, scale: 2 }).default('0'),
+  totalCostUsd: decimal("total_cost_usd", { precision: 12, scale: 2 }).default('0'),
+  grossMarginUsd: decimal("gross_margin_usd", { precision: 12, scale: 2 }).default('0'),
+  grossMarginPercent: decimal("gross_margin_percent", { precision: 5, scale: 2 }).default('0'),
+  
+  // Volume metrics
+  totalQuantityKg: decimal("total_quantity_kg", { precision: 10, scale: 2 }).default('0'),
+  averageOrderValueUsd: decimal("average_order_value_usd", { precision: 12, scale: 2 }).default('0'),
+  averagePricePerKg: decimal("average_price_per_kg", { precision: 10, scale: 4 }).default('0'),
+  
+  // Performance indicators
+  conversionRate: decimal("conversion_rate", { precision: 5, scale: 2 }).default('0'), // quotes to orders
+  customerRetentionRate: decimal("customer_retention_rate", { precision: 5, scale: 2 }).default('0'),
+  averageOrderCycle: integer("average_order_cycle").default(0), // Days from order to delivery
+  
+  // Commission tracking
+  commissionEarned: decimal("commission_earned", { precision: 12, scale: 2 }).default('0'),
+  commissionPaid: decimal("commission_paid", { precision: 12, scale: 2 }).default('0'),
+  
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Customer credit limits table
+export const customerCreditLimits = pgTable("customer_credit_limits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id").notNull().references(() => customers.id),
+  
+  // Credit limit details
+  creditLimit: decimal("credit_limit", { precision: 12, scale: 2 }).notNull(),
+  currentBalance: decimal("current_balance", { precision: 12, scale: 2 }).default('0'),
+  availableCredit: decimal("available_credit", { precision: 12, scale: 2 }).notNull(),
+  
+  // Risk assessment
+  creditRating: varchar("credit_rating"), // AAA, AA, A, BBB, BB, B, CCC, CC, C, D
+  riskCategory: varchar("risk_category"), // low, medium, high, restricted
+  paymentHistory: jsonb("payment_history"), // Historical payment performance
+  
+  // Terms and conditions
+  paymentTerms: paymentTermsEnum("payment_terms").notNull().default('net_30'),
+  interestRate: decimal("interest_rate", { precision: 5, scale: 2 }).default('0'),
+  lateFeePercent: decimal("late_fee_percent", { precision: 5, scale: 2 }).default('0'),
+  
+  // Review and approval
+  approvedBy: varchar("approved_by").notNull().references(() => users.id),
+  reviewDate: timestamp("review_date").notNull(),
+  nextReviewDate: timestamp("next_review_date"),
+  
+  // Status
+  isActive: boolean("is_active").notNull().default(true),
+  suspendedAt: timestamp("suspended_at"),
+  suspensionReason: text("suspension_reason"),
+  
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Pricing rules table
+export const pricingRules = pgTable("pricing_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Rule identification
+  ruleName: varchar("rule_name").notNull(),
+  ruleType: varchar("rule_type").notNull(), // base_price, category_discount, volume_discount, quality_premium, seasonal_adjustment
+  priority: integer("priority").default(0), // Higher numbers = higher priority
+  
+  // Conditions
+  customerCategory: customerCategoryEnum("customer_category"),
+  qualityGrade: qualityGradeEnum("quality_grade"),
+  minQuantityKg: decimal("min_quantity_kg", { precision: 10, scale: 2 }),
+  maxQuantityKg: decimal("max_quantity_kg", { precision: 10, scale: 2 }),
+  minOrderValue: decimal("min_order_value", { precision: 12, scale: 2 }),
+  maxOrderValue: decimal("max_order_value", { precision: 12, scale: 2 }),
+  
+  // Pricing adjustments
+  basePriceUsd: decimal("base_price_usd", { precision: 10, scale: 4 }),
+  adjustmentType: varchar("adjustment_type").notNull(), // fixed_amount, percentage, multiplier
+  adjustmentValue: decimal("adjustment_value", { precision: 10, scale: 4 }).notNull(),
+  
+  // Validity
+  effectiveDate: timestamp("effective_date").notNull().defaultNow(),
+  expirationDate: timestamp("expiration_date"),
+  isActive: boolean("is_active").notNull().default(true),
+  
+  // Metadata
+  description: text("description"),
+  conditions: jsonb("conditions"), // Complex rule conditions
+  
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   capitalEntries: many(capitalEntries),
   purchases: many(purchases),
   filterRecords: many(filterRecords),
+  customers: many(customers),
+  salesOrders: many(salesOrders),
+  customerCommunications: many(customerCommunications),
+  revenueTransactions: many(revenueTransactions),
+  pricingRules: many(pricingRules),
+}));
+
+// Sales Pipeline Relations
+export const customersRelations = relations(customers, ({ one, many }) => ({
+  salesRep: one(users, {
+    fields: [customers.salesRepId],
+    references: [users.id],
+  }),
+  createdBy: one(users, {
+    fields: [customers.createdBy],
+    references: [users.id],
+  }),
+  salesOrders: many(salesOrders),
+  communications: many(customerCommunications),
+  revenueTransactions: many(revenueTransactions),
+  performanceMetrics: many(salesPerformanceMetrics),
+  creditLimits: many(customerCreditLimits),
+}));
+
+export const salesOrdersRelations = relations(salesOrders, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [salesOrders.customerId],
+    references: [customers.id],
+  }),
+  order: one(orders, {
+    fields: [salesOrders.orderId],
+    references: [orders.id],
+  }),
+  salesRep: one(users, {
+    fields: [salesOrders.salesRepId],
+    references: [users.id],
+  }),
+  createdBy: one(users, {
+    fields: [salesOrders.createdBy],
+    references: [users.id],
+  }),
+  items: many(salesOrderItems),
+  communications: many(customerCommunications),
+  revenueTransactions: many(revenueTransactions),
+}));
+
+export const salesOrderItemsRelations = relations(salesOrderItems, ({ one }) => ({
+  salesOrder: one(salesOrders, {
+    fields: [salesOrderItems.salesOrderId],
+    references: [salesOrders.id],
+  }),
+  warehouseStock: one(warehouseStock, {
+    fields: [salesOrderItems.warehouseStockId],
+    references: [warehouseStock.id],
+  }),
+}));
+
+export const customerCommunicationsRelations = relations(customerCommunications, ({ one }) => ({
+  customer: one(customers, {
+    fields: [customerCommunications.customerId],
+    references: [customers.id],
+  }),
+  salesOrder: one(salesOrders, {
+    fields: [customerCommunications.salesOrderId],
+    references: [salesOrders.id],
+  }),
+  createdBy: one(users, {
+    fields: [customerCommunications.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const revenueTransactionsRelations = relations(revenueTransactions, ({ one }) => ({
+  customer: one(customers, {
+    fields: [revenueTransactions.customerId],
+    references: [customers.id],
+  }),
+  salesOrder: one(salesOrders, {
+    fields: [revenueTransactions.salesOrderId],
+    references: [salesOrders.id],
+  }),
+  createdBy: one(users, {
+    fields: [revenueTransactions.createdBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [revenueTransactions.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const salesPerformanceMetricsRelations = relations(salesPerformanceMetrics, ({ one }) => ({
+  salesRep: one(users, {
+    fields: [salesPerformanceMetrics.salesRepId],
+    references: [users.id],
+  }),
+  customer: one(customers, {
+    fields: [salesPerformanceMetrics.customerId],
+    references: [customers.id],
+  }),
+}));
+
+export const customerCreditLimitsRelations = relations(customerCreditLimits, ({ one }) => ({
+  customer: one(customers, {
+    fields: [customerCreditLimits.customerId],
+    references: [customers.id],
+  }),
+  approvedBy: one(users, {
+    fields: [customerCreditLimits.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const pricingRulesRelations = relations(pricingRules, ({ one }) => ({
+  createdBy: one(users, {
+    fields: [pricingRules.createdBy],
+    references: [users.id],
+  }),
 }));
 
 export const suppliersRelations = relations(suppliers, ({ many }) => ({
@@ -834,6 +1289,124 @@ export const insertInventoryAdjustmentSchema = createInsertSchema(inventoryAdjus
   createdAt: true,
 });
 
+// Sales Pipeline Insert Schemas
+export const insertCustomerSchema = createInsertSchema(customers).omit({
+  id: true,
+  customerNumber: true,
+  totalOrdersCount: true,
+  totalRevenueUsd: true,
+  averageOrderValueUsd: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateCustomerSchema = insertCustomerSchema.partial().omit({
+  createdBy: true,
+});
+
+const baseSalesOrderSchema = createInsertSchema(salesOrders).omit({
+  id: true,
+  salesOrderNumber: true,
+  subtotalAmount: true,
+  totalAmount: true,
+  totalAmountUsd: true,
+  balanceDue: true,
+  confirmedAt: true,
+  fulfilledAt: true,
+  deliveredAt: true,
+  cancelledAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSalesOrderSchema = baseSalesOrderSchema.refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
+export const updateSalesOrderSchema = baseSalesOrderSchema.partial().omit({
+  customerId: true,
+  salesRepId: true,
+  createdBy: true,
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies when currency is provided
+  if (data.currency && data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
+export const insertSalesOrderItemSchema = createInsertSchema(salesOrderItems).omit({
+  id: true,
+  lineTotal: true,
+  lineTotalUsd: true,
+  totalCostUsd: true,
+  marginAmount: true,
+  marginPercent: true,
+  quantityReserved: true,
+  quantityFulfilled: true,
+  quantityDelivered: true,
+  createdAt: true,
+});
+
+export const updateSalesOrderItemSchema = insertSalesOrderItemSchema.partial().omit({
+  salesOrderId: true,
+});
+
+export const insertCustomerCommunicationSchema = createInsertSchema(customerCommunications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRevenueTransactionSchema = createInsertSchema(revenueTransactions).omit({
+  id: true,
+  transactionNumber: true,
+  amountUsd: true,
+  grossMargin: true,
+  grossMarginPercent: true,
+  approvedAt: true,
+  createdAt: true,
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
+export const insertSalesPerformanceMetricSchema = createInsertSchema(salesPerformanceMetrics).omit({
+  id: true,
+  calculatedAt: true,
+  createdAt: true,
+});
+
+export const insertCustomerCreditLimitSchema = createInsertSchema(customerCreditLimits).omit({
+  id: true,
+  currentBalance: true,
+  availableCredit: true,
+  suspendedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPricingRuleSchema = createInsertSchema(pricingRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -897,6 +1470,34 @@ export type InsertStockTransfer = z.infer<typeof insertStockTransferSchema>;
 
 export type InventoryAdjustment = typeof inventoryAdjustments.$inferSelect;
 export type InsertInventoryAdjustment = z.infer<typeof insertInventoryAdjustmentSchema>;
+
+// Sales Pipeline Types
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
+
+export type SalesOrder = typeof salesOrders.$inferSelect;
+export type InsertSalesOrder = z.infer<typeof insertSalesOrderSchema>;
+export type UpdateSalesOrder = z.infer<typeof updateSalesOrderSchema>;
+
+export type SalesOrderItem = typeof salesOrderItems.$inferSelect;
+export type InsertSalesOrderItem = z.infer<typeof insertSalesOrderItemSchema>;
+export type UpdateSalesOrderItem = z.infer<typeof updateSalesOrderItemSchema>;
+
+export type CustomerCommunication = typeof customerCommunications.$inferSelect;
+export type InsertCustomerCommunication = z.infer<typeof insertCustomerCommunicationSchema>;
+
+export type RevenueTransaction = typeof revenueTransactions.$inferSelect;
+export type InsertRevenueTransaction = z.infer<typeof insertRevenueTransactionSchema>;
+
+export type SalesPerformanceMetric = typeof salesPerformanceMetrics.$inferSelect;
+export type InsertSalesPerformanceMetric = z.infer<typeof insertSalesPerformanceMetricSchema>;
+
+export type CustomerCreditLimit = typeof customerCreditLimits.$inferSelect;
+export type InsertCustomerCreditLimit = z.infer<typeof insertCustomerCreditLimitSchema>;
+
+export type PricingRule = typeof pricingRules.$inferSelect;
+export type InsertPricingRule = z.infer<typeof insertPricingRuleSchema>;
 
 // API Response Types
 export interface AuthUserResponse {
