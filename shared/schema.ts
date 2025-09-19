@@ -1547,6 +1547,44 @@ export const salesOrderItems = pgTable("sales_order_items", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Sales returns table - Stage 6 compliance (storage-backed return processing)
+export const salesReturns = pgTable("sales_returns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  returnNumber: varchar("return_number").notNull().unique(),
+  
+  // Return source tracking
+  originalSalesOrderId: varchar("original_sales_order_id").notNull().references(() => salesOrders.id),
+  originalSalesOrderItemId: varchar("original_sales_order_item_id").references(() => salesOrderItems.id),
+  
+  // Return details
+  quantityReturned: decimal("quantity_returned", { precision: 10, scale: 2 }).notNull(),
+  returnReason: varchar("return_reason").notNull(), // quality_issue, damaged, incorrect_order, customer_request
+  returnCondition: varchar("return_condition").notNull(), // clean, non_clean, damaged
+  
+  // Warehouse compliance - enforce same warehouse return rule per workflow_reference.json
+  returnToWarehouse: varchar("return_to_warehouse").notNull(),
+  warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
+  
+  // Financial impact
+  refundAmount: decimal("refund_amount", { precision: 12, scale: 2 }),
+  restockingFee: decimal("restocking_fee", { precision: 12, scale: 2 }).default('0'),
+  
+  // Status and processing
+  status: varchar("status").notNull().default('pending'), // pending, approved, processed, rejected
+  processedAt: timestamp("processed_at"),
+  
+  // Approval tracking
+  isApproved: boolean("is_approved").notNull().default(false),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  
+  // Audit trail
+  returnedBy: varchar("returned_by").notNull().references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Customer communications table
 export const customerCommunications = pgTable("customer_communications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1957,6 +1995,29 @@ export const salesOrderItemsRelations = relations(salesOrderItems, ({ one }) => 
   warehouseStock: one(warehouseStock, {
     fields: [salesOrderItems.warehouseStockId],
     references: [warehouseStock.id],
+  }),
+}));
+
+export const salesReturnsRelations = relations(salesReturns, ({ one }) => ({
+  originalSalesOrder: one(salesOrders, {
+    fields: [salesReturns.originalSalesOrderId],
+    references: [salesOrders.id],
+  }),
+  originalSalesOrderItem: one(salesOrderItems, {
+    fields: [salesReturns.originalSalesOrderItemId],
+    references: [salesOrderItems.id],
+  }),
+  warehouseStock: one(warehouseStock, {
+    fields: [salesReturns.warehouseStockId],
+    references: [warehouseStock.id],
+  }),
+  returnedBy: one(users, {
+    fields: [salesReturns.returnedBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [salesReturns.approvedBy],
+    references: [users.id],
   }),
 }));
 
@@ -2580,6 +2641,24 @@ export const updateSalesOrderItemSchema = insertSalesOrderItemSchema.partial().o
   salesOrderId: true,
 });
 
+export const insertSalesReturnSchema = createInsertSchema(salesReturns).omit({
+  id: true,
+  returnNumber: true,
+  status: true,
+  processedAt: true,
+  isApproved: true,
+  approvedBy: true,
+  approvedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateSalesReturnSchema = insertSalesReturnSchema.partial().omit({
+  originalSalesOrderId: true,
+  originalSalesOrderItemId: true,
+  returnedBy: true,
+});
+
 export const insertCustomerCommunicationSchema = createInsertSchema(customerCommunications).omit({
   id: true,
   createdAt: true,
@@ -2763,6 +2842,10 @@ export type UpdateSalesOrder = z.infer<typeof updateSalesOrderSchema>;
 export type SalesOrderItem = typeof salesOrderItems.$inferSelect;
 export type InsertSalesOrderItem = z.infer<typeof insertSalesOrderItemSchema>;
 export type UpdateSalesOrderItem = z.infer<typeof updateSalesOrderItemSchema>;
+
+export type SalesReturn = typeof salesReturns.$inferSelect;
+export type InsertSalesReturn = z.infer<typeof insertSalesReturnSchema>;
+export type UpdateSalesReturn = z.infer<typeof updateSalesReturnSchema>;
 
 export type CustomerCommunication = typeof customerCommunications.$inferSelect;
 export type InsertCustomerCommunication = z.infer<typeof insertCustomerCommunicationSchema>;
