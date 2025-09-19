@@ -65,14 +65,14 @@ export default function WorkingCapital() {
 
   const addEntryMutation = useMutation({
     mutationFn: async (data: any) => {
-      const exchangeRate = currency === "ETB" ? settings?.exchangeRate : 1;
+      const exchangeRate = currency === "ETB" ? String(settings?.exchangeRate) : undefined;
       return await apiRequest('POST', '/api/capital/entries', {
         entryId: `CAP-${Date.now()}`,
         amount: data.amount,
         type: data.type,
         description: data.description,
         paymentCurrency: data.currency,
-        exchangeRate: exchangeRate?.toString(),
+        exchangeRate: exchangeRate,
       });
     },
     onSuccess: () => {
@@ -106,11 +106,31 @@ export default function WorkingCapital() {
     },
   });
 
+  // Calculate USD preview for ETB amounts
+  const getUsdPreview = () => {
+    if (currency === "ETB" && amount && settings?.exchangeRate) {
+      const etbAmount = parseFloat(amount);
+      const usdAmount = etbAmount / settings.exchangeRate;
+      return usdAmount;
+    }
+    return null;
+  };
+
   const handleAddEntry = () => {
     if (!amount || !description) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate exchange rate for ETB entries
+    if (currency === "ETB" && (!settings?.exchangeRate || settings.exchangeRate <= 0)) {
+      toast({
+        title: "Error",
+        description: "Exchange rate is required for ETB entries. Please check your settings.",
         variant: "destructive",
       });
       return;
@@ -191,6 +211,20 @@ export default function WorkingCapital() {
                         data-testid="input-amount"
                       />
                     </div>
+                    {currency === "ETB" && amount && (
+                      <div className="mt-2">
+                        {settings?.exchangeRate ? (
+                          <p className="text-sm text-muted-foreground" data-testid="usd-preview">
+                            ≈ ${getUsdPreview()?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                            <span className="ml-1">(Rate: {settings.exchangeRate})</span>
+                          </p>
+                        ) : (
+                          <p className="text-sm text-destructive" data-testid="exchange-rate-missing">
+                            ⚠️ Exchange rate not set. Please update in Settings.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   <div>
@@ -237,7 +271,7 @@ export default function WorkingCapital() {
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-2">
-                Available working capital
+                USD balance (all currencies normalized)
               </p>
             </CardContent>
           </Card>

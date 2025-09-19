@@ -62,7 +62,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/settings', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req, res) => {
     try {
       const exchangeRate = await storage.getExchangeRate();
-      res.json({ exchangeRate });
+      const preventNegativeSetting = await storage.getSetting('PREVENT_NEGATIVE_BALANCE');
+      const preventNegativeBalance = preventNegativeSetting?.value === 'true';
+      
+      res.json({ 
+        exchangeRate,
+        preventNegativeBalance 
+      });
     } catch (error) {
       console.error("Error fetching settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });
@@ -108,10 +114,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.user.claims.sub,
       });
       
-      const entry = await storage.createCapitalEntry(entryData);
+      // Require exchangeRate for non-USD entries
+      if (entryData.paymentCurrency !== 'USD' && (!entryData.exchangeRate || entryData.exchangeRate === '0')) {
+        return res.status(400).json({ 
+          message: "Exchange rate is required for non-USD currencies",
+          field: "exchangeRate"
+        });
+      }
+      
+      // Convert amount to USD for capital tracking normalization
+      const entryAmount = new Decimal(entryData.amount);
+      let amountInUsd = entryAmount;
+      if (entryData.paymentCurrency === 'ETB' && entryData.exchangeRate) {
+        amountInUsd = entryAmount.div(new Decimal(entryData.exchangeRate));
+      }
+      
+      // Check for negative balance prevention AFTER USD conversion
+      if (entryData.type === 'CapitalOut') {
+        const currentBalance = await storage.getCapitalBalance();
+        const newBalance = new Decimal(currentBalance).sub(amountInUsd);
+        
+        // Check if negative balance prevention is enabled
+        const preventNegativeSetting = await storage.getSetting('PREVENT_NEGATIVE_BALANCE');
+        const preventNegative = preventNegativeSetting?.value === 'true';
+        
+        if (preventNegative && newBalance.lt(0)) {
+          return res.status(400).json({
+            message: `Cannot create capital withdrawal. Would result in negative balance: ${newBalance.toFixed(2)} USD`,
+            field: "amount",
+            currentBalance: currentBalance,
+            requestedAmount: amountInUsd.toFixed(2),
+            shortfall: newBalance.abs().toFixed(2)
+          });
+        }
+      }
+      
+      // Store USD amount with original paymentCurrency and exchangeRate as metadata
+      const entry = await storage.createCapitalEntry({
+        ...entryData,
+        amount: amountInUsd.toFixed(2), // Store normalized USD amount for accurate balance calculation
+      });
       res.json(entry);
     } catch (error) {
       console.error("Error creating capital entry:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
       res.status(500).json({ message: "Failed to create capital entry" });
     }
   });
@@ -215,12 +268,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create capital entry if funded from capital
       if (purchaseData.fundingSource === 'capital' && amountPaid.gt(0)) {
+        // Convert amount to USD for capital tracking normalization
+        let amountInUsd = amountPaid;
+        if (purchaseData.currency === 'ETB' && purchaseData.exchangeRate) {
+          amountInUsd = amountPaid.div(new Decimal(purchaseData.exchangeRate));
+        }
+        
+        // Check for negative balance prevention before creating capital entry
+        const currentBalance = await storage.getCapitalBalance();
+        const newBalance = new Decimal(currentBalance).sub(amountInUsd);
+        
+        // Check if negative balance prevention is enabled
+        const preventNegativeSetting = await storage.getSetting('PREVENT_NEGATIVE_BALANCE');
+        const preventNegative = preventNegativeSetting?.value === 'true';
+        
+        if (preventNegative && newBalance.lt(0)) {
+          return res.status(400).json({
+            message: `Cannot fund purchase from capital. Would result in negative balance: ${newBalance.toFixed(2)} USD`,
+            field: "fundingSource",
+            currentBalance: currentBalance,
+            requestedAmount: amountInUsd.toFixed(2),
+            shortfall: newBalance.abs().toFixed(2),
+            suggestion: "Use external funding or add more capital"
+          });
+        }
+        
         await storage.createCapitalEntry({
           entryId: `PUR-${purchase.id}`,
-          amount: purchaseData.amountPaid || '0',
+          amount: amountInUsd.toFixed(2), // Store normalized USD amount for accurate balance calculation
           type: 'CapitalOut',
           reference: purchase.id,
-          description: `Purchase payment - ${purchaseData.weight}kg`,
+          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${purchaseData.exchangeRate})` : ''}`,
           paymentCurrency: purchaseData.currency,
           exchangeRate: purchaseData.exchangeRate || undefined,
           createdBy: req.user.claims.sub,

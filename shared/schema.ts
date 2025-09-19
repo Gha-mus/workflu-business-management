@@ -297,6 +297,7 @@ export interface AuthUserResponse {
 
 export interface SettingsResponse {
   exchangeRate: number;
+  preventNegativeBalance: boolean;
 }
 
 export interface CapitalBalanceResponse {

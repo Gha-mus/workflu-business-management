@@ -48,6 +48,7 @@ export default function Settings() {
   const [supplierName, setSupplierName] = useState("");
   const [supplierTradeName, setSupplierTradeName] = useState("");
   const [supplierNotes, setSupplierNotes] = useState("");
+  const [preventNegativeBalance, setPreventNegativeBalance] = useState(true);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -71,6 +72,13 @@ export default function Settings() {
   useEffect(() => {
     if (settings?.exchangeRate) {
       setExchangeRate(settings.exchangeRate.toString());
+    }
+  }, [settings]);
+
+  // Update preventNegativeBalance when settings data changes
+  useEffect(() => {
+    if (settings !== undefined) {
+      setPreventNegativeBalance(settings.preventNegativeBalance);
     }
   }, [settings]);
 
@@ -108,6 +116,41 @@ export default function Settings() {
       toast({
         title: "Error",
         description: "Failed to update exchange rate",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateNegativeBalanceMutation = useMutation({
+    mutationFn: async (prevent: boolean) => {
+      return await apiRequest('POST', '/api/settings', {
+        key: 'PREVENT_NEGATIVE_BALANCE',
+        value: prevent.toString(),
+        description: 'Prevent capital balance from going negative'
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Negative balance setting updated successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to update negative balance setting",
         variant: "destructive",
       });
     },
@@ -348,7 +391,16 @@ export default function Settings() {
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Switch id="negative-balance" />
+                    <Switch 
+                      id="negative-balance" 
+                      checked={!preventNegativeBalance}
+                      onCheckedChange={(checked) => {
+                        const prevent = !checked;
+                        setPreventNegativeBalance(prevent);
+                        updateNegativeBalanceMutation.mutate(prevent);
+                      }}
+                      data-testid="switch-negative-balance"
+                    />
                     <Label htmlFor="negative-balance">Allow negative capital balance</Label>
                   </div>
 

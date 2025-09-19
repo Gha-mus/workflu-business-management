@@ -46,14 +46,10 @@ const purchaseSchema = z.object({
   country: z.string().optional(),
   notes: z.string().optional(),
 }).refine((data) => {
-  // Require exchange rate for non-USD currencies
-  if (data.currency !== 'USD') {
-    // This will be validated on the backend with actual exchange rate
-    return true; // Allow frontend to pass validation, backend will validate exchange rate
-  }
+  // Client-side validation will be supplemented by backend exchange rate validation
   return true;
 }, {
-  message: "Exchange rate is required for non-USD currencies",
+  message: "All fields are required",
 });
 
 type PurchaseForm = z.infer<typeof purchaseSchema>;
@@ -124,9 +120,14 @@ export function NewPurchaseModal({ open, onClose }: NewPurchaseModalProps) {
     mutationFn: async (data: PurchaseForm) => {
       const exchangeRate = currency === "ETB" ? settings?.exchangeRate : undefined;
       
+      // Client-side validation for ETB purchases
+      if (data.currency === "ETB" && (!settings?.exchangeRate || settings.exchangeRate === 0)) {
+        throw new Error("Exchange rate not available for ETB purchases. Please contact admin.");
+      }
+      
       return await apiRequest('POST', '/api/purchases', {
         ...data,
-        exchangeRate: exchangeRate?.toString(),
+        exchangeRate: exchangeRate ? String(exchangeRate) : undefined,
       });
     },
     onSuccess: () => {
@@ -286,16 +287,21 @@ export function NewPurchaseModal({ open, onClose }: NewPurchaseModalProps) {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Total Amount
+                  Total Amount {currency === "ETB" ? "(converted to USD for comparison)" : ""}
                 </label>
                 <Input 
                   type="text" 
-                  value={total > 0 ? `$${total.toFixed(2)}` : ""} 
+                  value={total > 0 ? `$${total.toFixed(2)} USD` : ""} 
                   placeholder="Calculated automatically" 
                   readOnly 
                   className="bg-muted text-muted-foreground"
                   data-testid="input-total"
                 />
+                {currency === "ETB" && total > 0 && settings?.exchangeRate && (
+                  <p className="text-xs text-muted-foreground">
+                    Original: {(total * settings.exchangeRate).toFixed(2)} ETB (@ {settings.exchangeRate} ETB/USD)
+                  </p>
+                )}
               </div>
             </div>
 
@@ -351,7 +357,7 @@ export function NewPurchaseModal({ open, onClose }: NewPurchaseModalProps) {
               name="amountPaid"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Amount Paid</FormLabel>
+                  <FormLabel>Amount Paid ({currency})</FormLabel>
                   <FormControl>
                     <Input 
                       type="number" 
@@ -361,6 +367,11 @@ export function NewPurchaseModal({ open, onClose }: NewPurchaseModalProps) {
                       data-testid="input-amount-paid"
                     />
                   </FormControl>
+                  {currency === "ETB" && field.value && settings?.exchangeRate && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ≈ ${(parseFloat(field.value) / settings.exchangeRate).toFixed(2)} USD
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
