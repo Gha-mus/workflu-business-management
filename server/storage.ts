@@ -127,55 +127,560 @@ import {
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
 import Decimal from "decimal.js";
+import { auditService } from "./auditService";
+import { approvalWorkflowService } from "./approvalWorkflowService";
+
+// ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
+// These prevent bypass of approval requirements at the storage boundary
+
+interface ApprovalGuardContext {
+  userId?: string;
+  operationType: string;
+  operationData: any;
+  amount?: number;
+  currency?: string;
+  businessContext?: string;
+  approvalRequestId?: string; // If operation is pre-approved
+  skipApproval?: boolean; // For internal operations only
+}
+
+interface AuditContext {
+  userId?: string;
+  userName?: string;
+  userRole?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  sessionId?: string;
+  correlationId?: string;
+  businessContext?: string;
+  source?: string;
+  severity?: 'info' | 'warning' | 'error' | 'critical';
+}
+
+class StorageApprovalGuard {
+  
+  // SECURITY: ALLOWLIST of operation types that ALWAYS require approval verification
+  // These operations are considered high-risk and cannot bypass approval under any circumstances
+  private static readonly CRITICAL_OPERATIONS_ALLOWLIST: Set<string> = new Set([
+    'capital_entry',
+    'purchase', 
+    'sale_order',
+    'financial_adjustment',
+    'user_role_change',
+    'system_setting_change'
+  ]);
+
+  // SECURITY: Operations that may be allowed to skip approval only under very specific conditions
+  private static readonly INTERNAL_OPERATIONS_ALLOWLIST: Set<string> = new Set([
+    'warehouse_operation', // May be skipped for automated inventory management
+    'shipping_operation'   // May be skipped for routine shipping updates
+  ]);
+
+  // SECURITY: Internal token for skipApproval verification
+  private static readonly INTERNAL_SYSTEM_TOKEN = process.env.INTERNAL_SYSTEM_TOKEN || 'internal_system_token_dev';
+
+  /**
+   * Enforce approval requirement at storage level - CRITICAL SECURITY BOUNDARY
+   * This prevents any direct storage calls from bypassing approval requirements
+   * SECURITY UPDATE: Now uses comprehensive validation with operation binding and single-use consumption
+   */
+  static async enforceApprovalRequirement(context: ApprovalGuardContext): Promise<void> {
+    
+    // SECURITY: CRITICAL OPERATIONS CANNOT BE SKIPPED
+    if (this.CRITICAL_OPERATIONS_ALLOWLIST.has(context.operationType)) {
+      if (context.skipApproval === true) {
+        const errorMsg = `🚨 CRITICAL SECURITY VIOLATION: Operation '${context.operationType}' is on critical allowlist and CANNOT skip approval under any circumstances`;
+        console.error(errorMsg);
+        
+        // Log as critical security violation
+        await this.logSecurityViolation({
+          operationType: context.operationType,
+          userId: context.userId,
+          violation: 'critical_operation_bypass_attempt',
+          amount: context.amount,
+          currency: context.currency
+        });
+        
+        throw new Error(errorMsg);
+      }
+    }
+
+    // SECURITY: Enhanced skipApproval validation for internal operations
+    if (context.skipApproval === true) {
+      await this.validateSkipApprovalRequest(context);
+      return;
+    }
+
+    // If operation has a valid approval request ID, validate it securely
+    if (context.approvalRequestId) {
+      const validationResult = await this.validateApprovalRequest(
+        context.approvalRequestId,
+        {
+          operationType: context.operationType,
+          operationData: context.operationData,
+          amount: context.amount,
+          currency: context.currency,
+          entityId: this.extractEntityIdFromData(context.operationData, context.operationType),
+          requestedBy: context.userId || 'system'
+        }
+      );
+
+      if (validationResult.isValid) {
+        // SECURITY: Consume the approval atomically to prevent reuse
+        const consumptionResult = await this.consumeApprovalRequest(
+          context.approvalRequestId,
+          {
+            operationType: context.operationType,
+            operationData: context.operationData,
+            amount: context.amount,
+            currency: context.currency,
+            entityId: this.extractEntityIdFromData(context.operationData, context.operationType),
+            requestedBy: context.userId || 'system',
+            operationId: context.operationData?.id || `storage_op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          }
+        );
+
+        if (consumptionResult.success) {
+          console.log(`SECURITY: APPROVED OPERATION with consumed approval: ${context.operationType} executing with valid approval ${context.approvalRequestId}`);
+          return;
+        } else {
+          throw new Error(`SECURITY VIOLATION: Failed to consume approval: ${consumptionResult.reason}`);
+        }
+      } else {
+        throw new Error(`SECURITY VIOLATION: ${validationResult.reason}`);
+      }
+    }
+
+    // Check if approval is required
+    const requiresApproval = await approvalWorkflowService.requiresApproval(
+      context.operationType,
+      context.amount,
+      context.currency || 'USD',
+      context.userId
+    );
+
+    if (requiresApproval) {
+      // CRITICAL: Block the operation and require approval
+      throw new Error(
+        `APPROVAL REQUIRED: Operation '${context.operationType}' requires approval. ` +
+        `Amount: ${context.currency || 'USD'} ${context.amount}. ` +
+        `Create approval request first via /api/approvals/requests endpoint.`
+      );
+    }
+
+    console.log(`APPROVAL NOT REQUIRED: ${context.operationType} proceeding without approval`);
+  }
+
+  /**
+   * SECURITY: Use the new comprehensive approval validation with operation binding and single-use consumption
+   * This replaces the old vulnerable validation that didn't check operation context
+   */
+  private static async validateApprovalRequest(
+    approvalRequestId: string, 
+    operationContext: {
+      operationType: string;
+      operationData: any;
+      amount?: number;
+      currency?: string;
+      entityId?: string;
+      requestedBy: string;
+    }
+  ): Promise<{ isValid: boolean; reason?: string }> {
+    try {
+      // Use the new secure validation from approvalWorkflowService
+      const validationResult = await approvalWorkflowService.validateApprovalRequest(
+        approvalRequestId,
+        operationContext
+      );
+
+      if (!validationResult.isValid) {
+        console.error(`SECURITY VIOLATION: ${validationResult.reason}`);
+        return { isValid: false, reason: validationResult.reason };
+      }
+
+      return { isValid: true };
+    } catch (error) {
+      console.error(`CRITICAL ERROR VALIDATING APPROVAL: ${approvalRequestId}`, error);
+      return { 
+        isValid: false, 
+        reason: `System error during approval validation: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
+  }
+
+  /**
+   * SECURITY: Consume approval atomically after validation to prevent reuse
+   */
+  private static async consumeApprovalRequest(
+    approvalRequestId: string,
+    operationContext: {
+      operationType: string;
+      operationData: any;
+      amount?: number;
+      currency?: string;
+      entityId?: string;
+      requestedBy: string;
+      operationId: string;
+    }
+  ): Promise<{ success: boolean; reason?: string }> {
+    try {
+      const consumptionResult = await approvalWorkflowService.consumeApprovalRequest(
+        approvalRequestId,
+        operationContext
+      );
+
+      if (!consumptionResult.success) {
+        console.error(`SECURITY VIOLATION: Failed to consume approval: ${consumptionResult.reason}`);
+      }
+
+      return consumptionResult;
+    } catch (error) {
+      console.error(`CRITICAL ERROR CONSUMING APPROVAL: ${approvalRequestId}`, error);
+      return { 
+        success: false, 
+        reason: `System error during approval consumption: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
+  }
+
+  /**
+   * SECURITY: Validate skipApproval requests with strict controls and auditing
+   */
+  private static async validateSkipApprovalRequest(context: ApprovalGuardContext): Promise<void> {
+    // Verify operation is on allowed list
+    if (!this.INTERNAL_OPERATIONS_ALLOWLIST.has(context.operationType)) {
+      const errorMsg = `🚨 SECURITY VIOLATION: Operation '${context.operationType}' is not allowed to skip approval`;
+      console.error(errorMsg);
+      
+      await this.logSecurityViolation({
+        operationType: context.operationType,
+        userId: context.userId,
+        violation: 'unauthorized_skip_approval_attempt',
+        amount: context.amount,
+        currency: context.currency
+      });
+      
+      throw new Error(errorMsg);
+    }
+
+    // Verify internal system token (in production, this should be a secure JWT or similar)
+    const providedToken = context.userId === 'system' ? this.INTERNAL_SYSTEM_TOKEN : null;
+    if (!providedToken || providedToken !== this.INTERNAL_SYSTEM_TOKEN) {
+      const errorMsg = `🚨 SECURITY VIOLATION: Invalid or missing internal system token for skipApproval request`;
+      console.error(errorMsg);
+      
+      await this.logSecurityViolation({
+        operationType: context.operationType,
+        userId: context.userId,
+        violation: 'invalid_internal_token_skip_approval',
+        amount: context.amount,
+        currency: context.currency
+      });
+      
+      throw new Error(errorMsg);
+    }
+
+    // Audit log the skipApproval usage with full justification
+    console.log(`✅ SECURITY: Validated skipApproval for internal operation ${context.operationType} with proper token`);
+    
+    await this.auditOperation(
+      {
+        userId: 'system',
+        userName: 'SystemInternal',
+        userRole: 'system',
+        source: 'storage_approval_guard',
+        severity: 'warning',
+        businessContext: `Internal operation ${context.operationType} skipped approval with valid system token`
+      },
+      'approval_bypass',
+      `skip_approval_${Date.now()}`,
+      'create',
+      context.operationType,
+      null,
+      {
+        skipApproval: true,
+        operationType: context.operationType,
+        operationData: context.operationData,
+        amount: context.amount,
+        currency: context.currency,
+        justification: 'Internal system operation with valid token',
+        timestamp: new Date().toISOString()
+      },
+      context.amount,
+      context.currency
+    );
+  }
+
+  /**
+   * SECURITY: Log security violations for monitoring and alerting
+   */
+  private static async logSecurityViolation(violation: {
+    operationType: string;
+    userId?: string;
+    violation: string;
+    amount?: number;
+    currency?: string;
+  }): Promise<void> {
+    try {
+      // Log to console for immediate monitoring
+      console.error(`🚨 SECURITY VIOLATION LOGGED:`, {
+        timestamp: new Date().toISOString(),
+        operationType: violation.operationType,
+        userId: violation.userId,
+        violation: violation.violation,
+        amount: violation.amount,
+        currency: violation.currency
+      });
+
+      // Log to audit service for permanent record
+      await auditService.logOperation({
+        userId: violation.userId || 'unknown',
+        userName: 'SecurityViolationLogger',
+        userRole: 'system',
+        source: 'storage_security_guard',
+        severity: 'critical',
+        businessContext: `Security violation: ${violation.violation}`
+      }, {
+        entityType: 'security_violation',
+        entityId: `violation_${violation.violation}_${Date.now()}`,
+        action: 'create',
+        description: `CRITICAL SECURITY VIOLATION: ${violation.violation}`,
+        businessContext: `Security violation in operation ${violation.operationType} by user ${violation.userId}`,
+        operationType: violation.operationType as any,
+        newValues: {
+          violationType: violation.violation,
+          operationType: violation.operationType,
+          userId: violation.userId,
+          amount: violation.amount,
+          currency: violation.currency,
+          timestamp: new Date().toISOString()
+        },
+        financialImpact: violation.amount,
+        currency: violation.currency || 'USD',
+        severity: 'critical'
+      });
+
+    } catch (error) {
+      console.error('🚨 CRITICAL: Failed to log security violation - this could indicate system compromise:', {
+        originalViolation: violation,
+        loggingError: error instanceof Error ? error.message : error
+      });
+    }
+  }
+
+  /**
+   * SECURITY: Extract entity ID from operation data for validation binding
+   */
+  private static extractEntityIdFromData(operationData: any, operationType: string): string | undefined {
+    switch (operationType) {
+      case 'capital_entry':
+        return operationData?.reference; // Reference to order/purchase ID
+        
+      case 'purchase':
+        return operationData?.supplierId;
+        
+      case 'sale_order':
+        return operationData?.customerId;
+        
+      case 'user_role_change':
+        return operationData?.userId || operationData?.id;
+        
+      case 'system_setting_change':
+        return operationData?.key; // Setting key as entity identifier
+        
+      case 'warehouse_operation':
+        return operationData?.id; // Warehouse stock ID
+        
+      case 'shipping_operation':
+        return operationData?.customerId || operationData?.shipmentId;
+        
+      default:
+        return operationData?.id || operationData?.entityId;
+    }
+  }
+
+  /**
+   * Log operation for audit trail with before/after state capture
+   */
+  static async auditOperation(
+    auditContext: AuditContext,
+    entityType: string,
+    entityId: string | undefined,
+    action: 'create' | 'update' | 'delete',
+    operationType: string,
+    oldData: any = null,
+    newData: any = null,
+    financialImpact?: number,
+    currency?: string
+  ): Promise<void> {
+    try {
+      await auditService.logOperation(auditContext, {
+        entityType,
+        entityId,
+        action,
+        description: `${action.charAt(0).toUpperCase() + action.slice(1)}d ${entityType}`,
+        businessContext: auditContext.businessContext || `Storage operation: ${operationType}`,
+        operationType: operationType as any,
+        oldValues: oldData,
+        newValues: newData,
+        changedFields: oldData && newData ? Object.keys(newData).filter(key => newData[key] !== oldData[key]) : null,
+        financialImpact,
+        currency: currency || 'USD'
+      });
+    } catch (error) {
+      console.error(`AUDIT LOGGING FAILED for ${action} on ${entityType}:`, error);
+      // Don't throw - audit failures shouldn't break business operations
+      // But log this as a critical security event
+      console.error(`CRITICAL: Audit trail broken for ${entityType} ${action} operation by user ${auditContext.userId}`);
+    }
+  }
+
+  /**
+   * Get entity before state for audit logging
+   */
+  static async getCaptureBeforeState<T>(
+    table: any,
+    entityId: string,
+    selectFn?: () => Promise<T | undefined>
+  ): Promise<T | null> {
+    try {
+      if (selectFn) {
+        return await selectFn() || null;
+      }
+      
+      const [entity] = await db.select().from(table).where(eq(table.id, entityId));
+      return entity || null;
+    } catch (error) {
+      console.error(`Error capturing before state for ${entityId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if sales order changes are significant enough to require approval
+   */
+  static isSignificantSalesOrderChange(beforeState: any, changes: any): boolean {
+    // Check for status changes that require approval
+    const significantStatusChanges = ['confirmed', 'fulfilled', 'delivered', 'cancelled'];
+    if (changes.status && significantStatusChanges.includes(changes.status)) {
+      return true;
+    }
+
+    // Check for amount changes above threshold (>10% change or >$1000)
+    if (changes.totalAmount || changes.totalAmountUsd) {
+      const oldAmount = parseFloat(beforeState.totalAmount || '0');
+      const newAmount = parseFloat(changes.totalAmount || changes.totalAmountUsd || '0');
+      const amountDifference = Math.abs(newAmount - oldAmount);
+      const percentageChange = oldAmount > 0 ? (amountDifference / oldAmount) * 100 : 100;
+      
+      if (amountDifference > 1000 || percentageChange > 10) {
+        return true;
+      }
+    }
+
+    // Check for customer changes
+    if (changes.customerId && changes.customerId !== beforeState.customerId) {
+      return true;
+    }
+
+    // Check for currency changes
+    if (changes.currency && changes.currency !== beforeState.currency) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if revenue transaction changes are significant enough to require approval
+   */
+  static isSignificantRevenueTransactionChange(beforeState: any, changes: any): boolean {
+    // Check for status changes that require approval
+    const significantStatusChanges = ['approved', 'reconciled', 'refunded'];
+    if (changes.status && significantStatusChanges.includes(changes.status)) {
+      return true;
+    }
+
+    // Check for amount changes above threshold (>5% change or >$500)
+    if (changes.amount) {
+      const oldAmount = parseFloat(beforeState.amount || '0');
+      const newAmount = parseFloat(changes.amount || '0');
+      const amountDifference = Math.abs(newAmount - oldAmount);
+      const percentageChange = oldAmount > 0 ? (amountDifference / oldAmount) * 100 : 100;
+      
+      if (amountDifference > 500 || percentageChange > 5) {
+        return true;
+      }
+    }
+
+    // Check for transaction type changes
+    if (changes.type && changes.type !== beforeState.type) {
+      return true;
+    }
+
+    // Check for currency changes
+    if (changes.currency && changes.currency !== beforeState.currency) {
+      return true;
+    }
+
+    return false;
+  }
+}
 
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
+  upsertUser(user: UpsertUser, auditContext?: AuditContext): Promise<User>;
   getAllUsers(): Promise<User[]>;
   countAdminUsers(): Promise<number>;
-  updateUserRole(id: string, role: User['role']): Promise<User>;
+  updateUserRole(id: string, role: User['role'], auditContext?: AuditContext): Promise<User>;
   
   // Settings operations
   getSetting(key: string): Promise<Setting | undefined>;
-  setSetting(setting: InsertSetting): Promise<Setting>;
+  setSetting(setting: InsertSetting, auditContext?: AuditContext): Promise<Setting>;
   getExchangeRate(): Promise<number>;
+
+  // Approval chain operations
+  getApprovalChains(): Promise<ApprovalChain[]>;
+  createApprovalChain(chain: InsertApprovalChain, auditContext?: AuditContext): Promise<ApprovalChain>;
+  updateApprovalChain(id: string, updates: Partial<InsertApprovalChain>, auditContext?: AuditContext): Promise<ApprovalChain>;
   
   // Supplier operations
   getSuppliers(): Promise<Supplier[]>;
   getSupplier(id: string): Promise<Supplier | undefined>;
-  createSupplier(supplier: InsertSupplier): Promise<Supplier>;
-  updateSupplier(id: string, supplier: Partial<InsertSupplier>): Promise<Supplier>;
+  createSupplier(supplier: InsertSupplier, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supplier>;
+  updateSupplier(id: string, supplier: Partial<InsertSupplier>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supplier>;
   
   // Order operations
   getOrders(): Promise<Order[]>;
   getOrder(id: string): Promise<Order | undefined>;
-  createOrder(order: InsertOrder): Promise<Order>;
-  updateOrder(id: string, order: Partial<InsertOrder>): Promise<Order>;
+  createOrder(order: InsertOrder, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Order>;
+  updateOrder(id: string, order: Partial<InsertOrder>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Order>;
   
   // Capital operations
   getCapitalEntries(): Promise<CapitalEntry[]>;
   getCapitalBalance(): Promise<number>;
-  createCapitalEntry(entry: InsertCapitalEntry): Promise<CapitalEntry>;
+  createCapitalEntry(entry: InsertCapitalEntry, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<CapitalEntry>;
   
   // Purchase operations
   getPurchases(): Promise<Purchase[]>;
   getPurchase(id: string): Promise<Purchase | undefined>;
-  createPurchase(purchase: InsertPurchase): Promise<Purchase>;
-  createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string): Promise<Purchase>;
-  createCapitalEntryWithConcurrencyProtection(entry: InsertCapitalEntry): Promise<CapitalEntry>;
-  createPurchaseWithSideEffectsRetryable(purchaseData: InsertPurchase, userId: string): Promise<Purchase>;
-  updatePurchase(id: string, purchase: Partial<InsertPurchase>): Promise<Purchase>;
+  createPurchase(purchase: InsertPurchase, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
+  createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
+  createCapitalEntryWithConcurrencyProtection(entry: InsertCapitalEntry, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<CapitalEntry>;
+  createPurchaseWithSideEffectsRetryable(purchaseData: InsertPurchase, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
+  createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
+  updatePurchase(id: string, purchase: Partial<InsertPurchase>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
   
   // Warehouse operations
   getWarehouseStock(): Promise<WarehouseStock[]>;
   getWarehouseStockByStatus(status: string): Promise<WarehouseStock[]>;
   getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]>;
-  createWarehouseStock(stock: InsertWarehouseStock): Promise<WarehouseStock>;
-  updateWarehouseStock(id: string, stock: Partial<InsertWarehouseStock>): Promise<WarehouseStock>;
-  updateWarehouseStockStatus(id: string, status: string, userId: string): Promise<WarehouseStock>;
-  executeFilterOperation(purchaseId: string, outputCleanKg: string, outputNonCleanKg: string, userId: string): Promise<{ filterRecord: FilterRecord; updatedStock: WarehouseStock[] }>;
-  moveStockToFinalWarehouse(stockId: string, userId: string): Promise<WarehouseStock>;
+  createWarehouseStock(stock: InsertWarehouseStock, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
+  updateWarehouseStock(id: string, stock: Partial<InsertWarehouseStock>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
+  updateWarehouseStockStatus(id: string, status: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
+  executeFilterOperation(purchaseId: string, outputCleanKg: string, outputNonCleanKg: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<{ filterRecord: FilterRecord; updatedStock: WarehouseStock[] }>;
+  moveStockToFinalWarehouse(stockId: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
   
   // Filter operations
   getFilterRecords(): Promise<FilterRecord[]>;
@@ -975,12 +1480,46 @@ export class DatabaseStorage implements IStorage {
     return Number(result[0]?.count || 0);
   }
 
-  async updateUserRole(id: string, role: User['role']): Promise<User> {
+  async updateUserRole(id: string, role: User['role'], auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<User> {
+    // Get old user data for audit trail
+    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!oldUser) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    // CRITICAL SECURITY FIX: Enforce approval requirement for role changes
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'user_role_change',
+        operationData: { userId: id, oldRole: oldUser.role, newRole: role, userEmail: oldUser.email },
+        businessContext: `User role change: ${oldUser.email} from ${oldUser.role} to ${role}`
+      });
+    }
+    
     const [user] = await db
       .update(users)
       .set({ role, updatedAt: new Date() })
       .where(eq(users.id, id))
       .returning();
+    
+    // CRITICAL SECURITY: Audit logging for user role changes
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'users',
+        id,
+        'update',
+        'user_role_change',
+        { role: oldUser.role },
+        { role },
+        undefined,
+        undefined,
+        `Changed user role from ${oldUser.role} to ${role} for ${oldUser.email}`
+      );
+    }
+    
     return user;
   }
 
@@ -990,7 +1529,37 @@ export class DatabaseStorage implements IStorage {
     return setting;
   }
 
-  async setSetting(setting: InsertSetting): Promise<Setting> {
+  async setSetting(setting: InsertSetting, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Setting> {
+    // Get old setting for audit trail
+    const [oldSetting] = await db.select().from(settings).where(eq(settings.key, setting.key));
+    
+    // CRITICAL SECURITY FIX: Enforce approval requirement for critical system settings
+    const criticalSettings = [
+      'PREVENT_NEGATIVE_BALANCE',
+      'USD_ETB_RATE',
+      'MAX_PURCHASE_AMOUNT',
+      'AUTO_APPROVAL_THRESHOLD',
+      'REQUIRE_APPROVAL_ABOVE',
+      'ADMIN_EMAIL_ALERTS',
+      'SECURITY_MODE',
+      'AUDIT_RETENTION_DAYS'
+    ];
+    
+    const isCriticalSetting = criticalSettings.includes(setting.key);
+    
+    if (approvalContext && isCriticalSetting) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'system_setting_change',
+        operationData: { 
+          key: setting.key, 
+          oldValue: oldSetting?.value, 
+          newValue: setting.value 
+        },
+        businessContext: `Critical system setting change: ${setting.key} from '${oldSetting?.value}' to '${setting.value}'`
+      });
+    }
+    
     const [result] = await db
       .insert(settings)
       .values(setting)
@@ -1002,6 +1571,23 @@ export class DatabaseStorage implements IStorage {
         },
       })
       .returning();
+    
+    // CRITICAL SECURITY: Audit logging for system setting changes
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'settings',
+        result.id,
+        oldSetting ? 'update' : 'create',
+        'system_setting_change',
+        oldSetting ? { value: oldSetting.value } : undefined,
+        { value: setting.value },
+        undefined,
+        undefined,
+        `${oldSetting ? 'Updated' : 'Created'} system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+      );
+    }
+    
     return result;
   }
 
@@ -1020,17 +1606,68 @@ export class DatabaseStorage implements IStorage {
     return supplier;
   }
 
-  async createSupplier(supplier: InsertSupplier): Promise<Supplier> {
+  async createSupplier(supplier: InsertSupplier, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supplier> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'supplier_create',
+        operationData: supplier,
+        businessContext: `Create supplier: ${supplier.name}`
+      });
+    }
+
     const [result] = await db.insert(suppliers).values(supplier).returning();
+    
+    // CRITICAL SECURITY: Audit logging for supplier operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'suppliers',
+        result.id,
+        'create',
+        'supplier_create',
+        null,
+        result
+      );
+    }
+    
     return result;
   }
 
-  async updateSupplier(id: string, supplier: Partial<InsertSupplier>): Promise<Supplier> {
+  async updateSupplier(id: string, supplier: Partial<InsertSupplier>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supplier> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(suppliers, id);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'supplier_update',
+        operationData: supplier,
+        businessContext: `Update supplier: ${beforeState?.name || id}`
+      });
+    }
+
     const [result] = await db
       .update(suppliers)
       .set({ ...supplier, updatedAt: new Date() })
       .where(eq(suppliers.id, id))
       .returning();
+    
+    // CRITICAL SECURITY: Audit logging for supplier updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'suppliers',
+        result.id,
+        'update',
+        'supplier_update',
+        beforeState,
+        result
+      );
+    }
+    
     return result;
   }
 
@@ -1044,17 +1681,68 @@ export class DatabaseStorage implements IStorage {
     return order;
   }
 
-  async createOrder(order: InsertOrder): Promise<Order> {
+  async createOrder(order: InsertOrder, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Order> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'order_create',
+        operationData: order,
+        businessContext: `Create order: ${order.orderNumber}`
+      });
+    }
+
     const [result] = await db.insert(orders).values(order).returning();
+    
+    // CRITICAL SECURITY: Audit logging for order operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'orders',
+        result.id,
+        'create',
+        'order_create',
+        null,
+        result
+      );
+    }
+    
     return result;
   }
 
-  async updateOrder(id: string, order: Partial<InsertOrder>): Promise<Order> {
+  async updateOrder(id: string, order: Partial<InsertOrder>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Order> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(orders, id);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'order_update',
+        operationData: order,
+        businessContext: `Update order: ${beforeState?.orderNumber || id}`
+      });
+    }
+
     const [result] = await db
       .update(orders)
       .set({ ...order, updatedAt: new Date() })
       .where(eq(orders.id, id))
       .returning();
+    
+    // CRITICAL SECURITY: Audit logging for order updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'orders',
+        result.id,
+        'update',
+        'order_update',
+        beforeState,
+        result
+      );
+    }
+    
     return result;
   }
 
@@ -1081,16 +1769,73 @@ export class DatabaseStorage implements IStorage {
     return capitalIn - capitalOut;
   }
 
-  async createCapitalEntry(entry: InsertCapitalEntry): Promise<CapitalEntry> {
+  async createCapitalEntry(entry: InsertCapitalEntry, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<CapitalEntry> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'capital_entry',
+        operationData: entry,
+        amount: parseFloat(entry.amount),
+        currency: entry.paymentCurrency || 'USD',
+        businessContext: `Capital ${entry.type}: ${entry.description}`
+      });
+    }
+
     const [result] = await db.insert(capitalEntries).values(entry).returning();
+    
+    // CRITICAL SECURITY: Audit logging for financial operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'capital_entries',
+        result.id,
+        'create',
+        'capital_entry',
+        null,
+        result,
+        parseFloat(entry.amount) * (entry.type === 'CapitalOut' ? -1 : 1),
+        entry.paymentCurrency || 'USD'
+      );
+    }
+    
     return result;
   }
 
-  async createCapitalEntryWithConcurrencyProtection(entry: InsertCapitalEntry): Promise<CapitalEntry> {
+  async createCapitalEntryWithConcurrencyProtection(entry: InsertCapitalEntry, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<CapitalEntry> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'capital_entry',
+        operationData: entry,
+        amount: parseFloat(entry.amount),
+        currency: entry.paymentCurrency || 'USD',
+        businessContext: `Capital ${entry.type}: ${entry.description}`
+      });
+    }
+
     // Use database transaction with locking for capital entries
-    return await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       return await this.createCapitalEntryInTransaction(tx, entry);
     });
+    
+    // CRITICAL SECURITY: Enhanced audit logging for critical capital operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'capital_entries',
+        result.id,
+        'create',
+        'capital_entry',
+        null,
+        result,
+        parseFloat(entry.amount) * (entry.type === 'CapitalOut' ? -1 : 1),
+        entry.paymentCurrency || 'USD'
+      );
+    }
+    
+    return result;
   }
 
   private async createCapitalEntryInTransaction(tx: any, entry: InsertCapitalEntry): Promise<CapitalEntry> {
@@ -1131,7 +1876,19 @@ export class DatabaseStorage implements IStorage {
     return purchase;
   }
 
-  async createPurchase(purchase: InsertPurchase): Promise<Purchase> {
+  async createPurchase(purchase: InsertPurchase, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'purchase',
+        operationData: purchase,
+        amount: parseFloat(purchase.total),
+        currency: purchase.currency || 'USD',
+        businessContext: `Purchase: ${purchase.weight}kg at ${purchase.pricePerKg} per kg`
+      });
+    }
+
     // Generate next purchase number with retry logic to handle race conditions
     const purchaseNumber = await this.generateNextPurchaseNumber();
     
@@ -1139,12 +1896,28 @@ export class DatabaseStorage implements IStorage {
       ...purchase,
       purchaseNumber,
     }).returning();
+    
+    // CRITICAL SECURITY: Audit logging for purchase operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchases',
+        result.id,
+        'create',
+        'purchase',
+        null,
+        result,
+        -parseFloat(purchase.total), // Negative impact for purchases (outflow)
+        purchase.currency || 'USD'
+      );
+    }
+    
     return result;
   }
 
-  async createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string): Promise<Purchase> {
+  async createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string, auditContext?: any): Promise<Purchase> {
     // Use database transaction to ensure atomicity
-    return await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // Generate next purchase number with retry logic
       const purchaseNumber = await this.generateNextPurchaseNumberInTransaction(tx);
       
@@ -1197,6 +1970,20 @@ export class DatabaseStorage implements IStorage {
 
       return purchase;
     });
+
+    // Log the complex purchase transaction with supplier information
+    if (auditContext) {
+      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, purchaseData.supplierId));
+      await auditService.logPurchase(
+        auditContext,
+        'create',
+        result,
+        undefined,
+        supplier?.name
+      );
+    }
+    
+    return result;
   }
 
   async createPurchaseWithSideEffectsRetryable(purchaseData: InsertPurchase, userId: string): Promise<Purchase> {
@@ -1337,21 +2124,85 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(warehouseStock).where(eq(warehouseStock.warehouse, warehouse));
   }
 
-  async createWarehouseStock(stock: InsertWarehouseStock): Promise<WarehouseStock> {
+  async createWarehouseStock(stock: InsertWarehouseStock, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'warehouse_stock_create',
+        operationData: stock,
+        businessContext: `Create warehouse stock: ${stock.qtyKgTotal}kg in ${stock.warehouse}`
+      });
+    }
+
     const [result] = await db.insert(warehouseStock).values(stock).returning();
+    
+    // CRITICAL SECURITY: Audit logging for warehouse operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'warehouse_stock',
+        result.id,
+        'create',
+        'warehouse_stock_create',
+        null,
+        result
+      );
+    }
+    
     return result;
   }
 
-  async updateWarehouseStock(id: string, stock: Partial<InsertWarehouseStock>): Promise<WarehouseStock> {
+  async updateWarehouseStock(id: string, stock: Partial<InsertWarehouseStock>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(warehouseStock, id);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'warehouse_stock_update',
+        operationData: stock,
+        businessContext: `Update warehouse stock: ${beforeState?.qtyKgTotal || 'unknown'}kg in ${beforeState?.warehouse || 'unknown'}`
+      });
+    }
+
     const [result] = await db
       .update(warehouseStock)
       .set(stock)
       .where(eq(warehouseStock.id, id))
       .returning();
+    
+    // CRITICAL SECURITY: Audit logging for warehouse updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'warehouse_stock',
+        result.id,
+        'update',
+        'warehouse_stock_update',
+        beforeState,
+        result
+      );
+    }
+    
     return result;
   }
 
-  async updateWarehouseStockStatus(id: string, status: string, userId: string): Promise<WarehouseStock> {
+  async updateWarehouseStockStatus(id: string, status: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(warehouseStock, id);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'warehouse_stock_status_update',
+        operationData: { status, userId },
+        businessContext: `Update warehouse stock status from ${beforeState?.status || 'unknown'} to ${status}`
+      });
+    }
+
     return await db.transaction(async (tx) => {
       const [result] = await tx
         .update(warehouseStock)
@@ -1361,11 +2212,34 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(warehouseStock.id, id))
         .returning();
+      
+      // CRITICAL SECURITY: Audit logging for status changes
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'warehouse_stock',
+          result.id,
+          'update',
+          'warehouse_stock_status_update',
+          beforeState,
+          result
+        );
+      }
+      
       return result;
     });
   }
 
-  async executeFilterOperation(purchaseId: string, outputCleanKg: string, outputNonCleanKg: string, userId: string): Promise<{ filterRecord: FilterRecord; updatedStock: WarehouseStock[] }> {
+  async executeFilterOperation(purchaseId: string, outputCleanKg: string, outputNonCleanKg: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<{ filterRecord: FilterRecord; updatedStock: WarehouseStock[] }> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level for filter operations
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'warehouse_filter_operation',
+        operationData: { purchaseId, outputCleanKg, outputNonCleanKg, userId },
+        businessContext: `Execute filter operation: ${outputCleanKg}kg clean, ${outputNonCleanKg}kg non-clean from purchase ${purchaseId}`
+      });
+    }
     return await db.transaction(async (tx) => {
       // Use advisory lock to serialize filter operations and prevent concurrent stock modifications
       // Lock ID: hash of "filter_operation_" + purchaseId for per-purchase filtering protection
@@ -1451,12 +2325,39 @@ export class DatabaseStorage implements IStorage {
       }
 
       const updatedStock = nonCleanStock ? [cleanStock, nonCleanStock] : [cleanStock];
+      
+      // CRITICAL SECURITY: Audit logging for filter operations
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'filter_operations',
+          filterRecord.id,
+          'create',
+          'warehouse_filter_operation',
+          { inputKg, stockEntry },
+          { filterRecord, updatedStock },
+          -parseFloat(outputCleanKg) // Cost impact of filtering operation
+        );
+      }
+      
       return { filterRecord, updatedStock };
     });
   }
 
-  async moveStockToFinalWarehouse(stockId: string, userId: string): Promise<WarehouseStock> {
-    return await db.transaction(async (tx) => {
+  async moveStockToFinalWarehouse(stockId: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(warehouseStock, stockId);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'warehouse_stock_transfer',
+        operationData: { stockId, userId },
+        businessContext: `Move ${beforeState?.qtyKgTotal || 'unknown'}kg stock from FIRST to FINAL warehouse`
+      });
+    }
+    const result = await db.transaction(async (tx) => {
       // Get the stock entry
       const [stockEntry] = await tx
         .select()
@@ -1492,6 +2393,21 @@ export class DatabaseStorage implements IStorage {
 
       return finalStock;
     });
+    
+    // CRITICAL SECURITY: Audit logging for warehouse transfer operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'warehouse_stock',
+        result.id,
+        'create',
+        'warehouse_stock_transfer',
+        beforeState,
+        result
+      );
+    }
+    
+    return result;
   }
 
   // Filter operations
@@ -2762,17 +3678,68 @@ export class DatabaseStorage implements IStorage {
     return carrier;
   }
 
-  async createCarrier(carrier: InsertCarrier): Promise<Carrier> {
+  async createCarrier(carrier: InsertCarrier, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Carrier> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'carrier_create',
+        operationData: carrier,
+        businessContext: `Create carrier: ${carrier.name}`
+      });
+    }
+
     const [result] = await db.insert(carriers).values(carrier).returning();
+    
+    // CRITICAL SECURITY: Audit logging for carrier operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'carriers',
+        result.id,
+        'create',
+        'carrier_create',
+        null,
+        result
+      );
+    }
+    
     return result;
   }
 
-  async updateCarrier(id: string, carrier: Partial<InsertCarrier>): Promise<Carrier> {
+  async updateCarrier(id: string, carrier: Partial<InsertCarrier>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Carrier> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(carriers, id);
+    
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'carrier_update',
+        operationData: carrier,
+        businessContext: `Update carrier: ${beforeState?.name || id}`
+      });
+    }
+
     const [result] = await db
       .update(carriers)
       .set({ ...carrier, updatedAt: new Date() })
       .where(eq(carriers.id, id))
       .returning();
+    
+    // CRITICAL SECURITY: Audit logging for carrier updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'carriers',
+        result.id,
+        'update',
+        'carrier_update',
+        beforeState,
+        result
+      );
+    }
+    
     return result;
   }
 
@@ -2868,18 +3835,51 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async createShipment(shipment: InsertShipment): Promise<Shipment> {
+  async createShipment(shipment: InsertShipment, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Shipment> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'shipment_create',
+        operationData: shipment,
+        businessContext: `Create shipment: ${shipment.method} to ${shipment.destinationAddress}`
+      });
+    }
+
     const shipmentNumber = await this.generateNextShipmentNumber();
     
     const [result] = await db.insert(shipments).values({
       ...shipment,
       shipmentNumber,
     }).returning();
+    
+    // CRITICAL SECURITY: Audit logging for shipment operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'shipments',
+        result.id,
+        'create',
+        'shipment_create',
+        null,
+        result
+      );
+    }
+    
     return result;
   }
 
-  async createShipmentFromWarehouseStock(shipmentData: CreateShipmentFromStock, userId: string): Promise<Shipment> {
-    return await db.transaction(async (tx) => {
+  async createShipmentFromWarehouseStock(shipmentData: CreateShipmentFromStock, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Shipment> {
+    // CRITICAL SECURITY: Enforce approval requirement at storage level
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'shipment_from_stock_create',
+        operationData: shipmentData,
+        businessContext: `Create shipment from warehouse stock: ${shipmentData.warehouseStockItems.length} items via ${shipmentData.method}`
+      });
+    }
+    const result = await db.transaction(async (tx) => {
       // Generate shipment number
       const shipmentNumber = await this.generateNextShipmentNumberInTransaction(tx);
       
@@ -2919,6 +3919,21 @@ export class DatabaseStorage implements IStorage {
 
       return shipment;
     });
+    
+    // CRITICAL SECURITY: Audit logging for shipment from stock operations
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'shipments',
+        result.id,
+        'create',
+        'shipment_from_stock_create',
+        null,
+        result
+      );
+    }
+    
+    return result;
   }
 
   private async generateNextShipmentNumber(): Promise<string> {
@@ -4620,7 +5635,21 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async createSalesOrder(salesOrder: InsertSalesOrder): Promise<SalesOrder> {
+  async createSalesOrder(salesOrder: InsertSalesOrder, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
+    // CRITICAL: Enforce approval requirement for sales orders above thresholds
+    const orderAmount = parseFloat(salesOrder.totalAmount || '0');
+    const approvalGuardContext: ApprovalGuardContext = {
+      ...approvalContext,
+      userId: auditContext?.userId || approvalContext?.userId,
+      operationType: 'sale_order',
+      operationData: salesOrder,
+      amount: orderAmount,
+      currency: salesOrder.currency || 'USD',
+      businessContext: `Sales order creation for customer ${salesOrder.customerId} - ${salesOrder.currency || 'USD'} ${orderAmount}`
+    };
+
+    await StorageApprovalGuard.enforceApprovalRequirement(approvalGuardContext);
+
     const salesOrderNumber = `SO-${Date.now()}`;
     const [newSalesOrder] = await db
       .insert(salesOrders)
@@ -4630,10 +5659,58 @@ export class DatabaseStorage implements IStorage {
         status: 'draft',
       })
       .returning();
+
+    // Audit log the sales order creation
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'sales_orders',
+        newSalesOrder.id,
+        'create',
+        'create_sales_order',
+        null,
+        newSalesOrder,
+        orderAmount,
+        salesOrder.currency
+      );
+    }
+
     return newSalesOrder;
   }
 
-  async updateSalesOrder(id: string, salesOrder: Partial<InsertSalesOrder>): Promise<SalesOrder> {
+  async updateSalesOrder(id: string, salesOrder: Partial<InsertSalesOrder>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
+    // Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState<SalesOrder>(
+      salesOrders, 
+      id,
+      async () => {
+        const [existing] = await db.select().from(salesOrders).where(eq(salesOrders.id, id));
+        return existing;
+      }
+    );
+
+    if (!beforeState) {
+      throw new Error('Sales order not found');
+    }
+
+    // CRITICAL: Enforce approval requirement for significant sales order changes
+    const orderAmount = parseFloat(salesOrder.totalAmount || beforeState.totalAmount || '0');
+    const isSignificantChange = this.isSignificantSalesOrderChange(beforeState, salesOrder);
+    
+    if (isSignificantChange) {
+      const approvalGuardContext: ApprovalGuardContext = {
+        ...approvalContext,
+        userId: auditContext?.userId || approvalContext?.userId,
+        operationType: 'sale_order',
+        operationData: { ...beforeState, ...salesOrder },
+        amount: orderAmount,
+        currency: salesOrder.currency || beforeState.currency || 'USD',
+        businessContext: `Sales order update for ${beforeState.salesOrderNumber} - significant change requiring approval`
+      };
+
+      await StorageApprovalGuard.enforceApprovalRequirement(approvalGuardContext);
+    }
+
     const [updatedSalesOrder] = await db
       .update(salesOrders)
       .set({
@@ -4647,17 +5724,70 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Sales order not found');
     }
 
+    // Audit log the sales order update
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'sales_orders',
+        updatedSalesOrder.id,
+        'update',
+        'update_sales_order',
+        beforeState,
+        updatedSalesOrder,
+        orderAmount,
+        updatedSalesOrder.currency
+      );
+    }
+
     return updatedSalesOrder;
   }
 
-  async confirmSalesOrder(id: string, userId: string): Promise<SalesOrder> {
+  async confirmSalesOrder(id: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
+    // CRITICAL: Sales order confirmation requires approval for high-value orders
+    const existingOrder = await this.getSalesOrder(id);
+    if (!existingOrder) {
+      throw new Error('Sales order not found');
+    }
+
+    const orderAmount = parseFloat(existingOrder.totalAmountUsd || existingOrder.totalAmount || '0');
+    const confirmationContext: ApprovalGuardContext = {
+      ...approvalContext,
+      userId: userId,
+      operationType: 'sale_order',
+      operationData: { ...existingOrder, status: 'confirmed' },
+      amount: orderAmount,
+      currency: existingOrder.currency || 'USD',
+      businessContext: `Sales order confirmation - ${existingOrder.salesOrderNumber} for ${orderAmount} ${existingOrder.currency || 'USD'}`
+    };
+
+    await StorageApprovalGuard.enforceApprovalRequirement(confirmationContext);
+
     return await this.updateSalesOrder(id, { 
       status: 'confirmed',
       confirmedAt: new Date(),
-    });
+    }, auditContext, approvalContext);
   }
 
-  async fulfillSalesOrder(id: string, userId: string): Promise<SalesOrder> {
+  async fulfillSalesOrder(id: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
+    // CRITICAL: Sales order fulfillment requires approval - involves inventory reservation
+    const existingOrder = await this.getSalesOrder(id);
+    if (!existingOrder) {
+      throw new Error('Sales order not found');
+    }
+
+    const orderAmount = parseFloat(existingOrder.totalAmountUsd || existingOrder.totalAmount || '0');
+    const fulfillmentContext: ApprovalGuardContext = {
+      ...approvalContext,
+      userId: userId,
+      operationType: 'sale_order',
+      operationData: { ...existingOrder, status: 'fulfilled' },
+      amount: orderAmount,
+      currency: existingOrder.currency || 'USD',
+      businessContext: `Sales order fulfillment with inventory reservation - ${existingOrder.salesOrderNumber}`
+    };
+
+    await StorageApprovalGuard.enforceApprovalRequirement(fulfillmentContext);
+
     return await db.transaction(async (tx) => {
       // Get sales order items
       const items = await tx.select().from(salesOrderItems).where(eq(salesOrderItems.salesOrderId, id));
@@ -4679,6 +5809,21 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(salesOrders.id, id))
         .returning();
+
+      // Audit log the fulfillment
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'sales_orders',
+          updatedOrder.id,
+          'update',
+          'fulfill_sales_order',
+          existingOrder,
+          updatedOrder,
+          orderAmount,
+          existingOrder.currency
+        );
+      }
       
       return updatedOrder;
     });
@@ -4691,12 +5836,31 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async cancelSalesOrder(id: string, reason: string, userId: string): Promise<SalesOrder> {
+  async cancelSalesOrder(id: string, reason: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
+    // CRITICAL: Sales order cancellation may require approval for high-value orders
+    const existingOrder = await this.getSalesOrder(id);
+    if (!existingOrder) {
+      throw new Error('Sales order not found');
+    }
+
+    const orderAmount = parseFloat(existingOrder.totalAmountUsd || existingOrder.totalAmount || '0');
+    const cancellationContext: ApprovalGuardContext = {
+      ...approvalContext,
+      userId: userId,
+      operationType: 'sale_order',
+      operationData: { ...existingOrder, status: 'cancelled', notes: reason },
+      amount: orderAmount,
+      currency: existingOrder.currency || 'USD',
+      businessContext: `Sales order cancellation - ${existingOrder.salesOrderNumber}: ${reason}`
+    };
+
+    await StorageApprovalGuard.enforceApprovalRequirement(cancellationContext);
+
     return await this.updateSalesOrder(id, { 
       status: 'cancelled',
       cancelledAt: new Date(),
       notes: reason,
-    });
+    }, auditContext, approvalContext);
   }
 
   async calculateSalesOrderTotals(salesOrderId: string): Promise<SalesOrder> {
@@ -4955,7 +6119,39 @@ export class DatabaseStorage implements IStorage {
     return newTransaction;
   }
 
-  async updateRevenueTransaction(id: string, transaction: Partial<InsertRevenueTransaction>): Promise<RevenueTransaction> {
+  async updateRevenueTransaction(id: string, transaction: Partial<InsertRevenueTransaction>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<RevenueTransaction> {
+    // Capture before state for audit logging
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState<RevenueTransaction>(
+      revenueTransactions,
+      id,
+      async () => {
+        const [existing] = await db.select().from(revenueTransactions).where(eq(revenueTransactions.id, id));
+        return existing;
+      }
+    );
+
+    if (!beforeState) {
+      throw new Error('Revenue transaction not found');
+    }
+
+    // CRITICAL: Revenue transaction updates require approval for significant changes
+    const transactionAmount = parseFloat(transaction.amount || beforeState.amount || '0');
+    const isSignificantChange = StorageApprovalGuard.isSignificantRevenueTransactionChange(beforeState, transaction);
+    
+    if (isSignificantChange) {
+      const revenueUpdateContext: ApprovalGuardContext = {
+        ...approvalContext,
+        userId: auditContext?.userId || approvalContext?.userId,
+        operationType: 'sale_order',
+        operationData: { ...beforeState, ...transaction },
+        amount: transactionAmount,
+        currency: transaction.currency || beforeState.currency || 'USD',
+        businessContext: `Revenue transaction update - ${beforeState.transactionNumber} significant change requiring approval`
+      };
+
+      await StorageApprovalGuard.enforceApprovalRequirement(revenueUpdateContext);
+    }
+
     const [updatedTransaction] = await db
       .update(revenueTransactions)
       .set(transaction)
@@ -4966,15 +6162,49 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Revenue transaction not found');
     }
 
+    // Audit log the revenue transaction update
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'revenue_transactions',
+        updatedTransaction.id,
+        'update',
+        'update_revenue_transaction',
+        beforeState,
+        updatedTransaction,
+        transactionAmount,
+        updatedTransaction.currency
+      );
+    }
+
     return updatedTransaction;
   }
 
-  async approveRevenueTransaction(id: string, userId: string): Promise<RevenueTransaction> {
+  async approveRevenueTransaction(id: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<RevenueTransaction> {
+    // CRITICAL: Revenue transaction approval is a high-privilege operation
+    const existingTransaction = await this.getRevenueTransaction(id);
+    if (!existingTransaction) {
+      throw new Error('Revenue transaction not found');
+    }
+
+    const transactionAmount = parseFloat(existingTransaction.amount || '0');
+    const approvalContext_: ApprovalGuardContext = {
+      ...approvalContext,
+      userId: userId,
+      operationType: 'sale_order',
+      operationData: { ...existingTransaction, status: 'approved' },
+      amount: transactionAmount,
+      currency: existingTransaction.currency || 'USD',
+      businessContext: `Revenue transaction approval - ${existingTransaction.transactionNumber} for ${transactionAmount} ${existingTransaction.currency || 'USD'}`
+    };
+
+    await StorageApprovalGuard.enforceApprovalRequirement(approvalContext_);
+
     return await this.updateRevenueTransaction(id, {
       status: 'approved',
       approvedAt: new Date(),
       approvedBy: userId,
-    });
+    }, auditContext, approvalContext);
   }
 
   async reverseRevenueTransaction(id: string, reason: string, userId: string): Promise<RevenueTransaction> {
