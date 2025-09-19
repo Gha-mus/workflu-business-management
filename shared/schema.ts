@@ -230,6 +230,15 @@ export const insertPurchaseSchema = createInsertSchema(purchases).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
 });
 
 export const insertCapitalEntrySchema = createInsertSchema(capitalEntries).omit({
