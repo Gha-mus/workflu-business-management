@@ -260,65 +260,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const total = weight.mul(pricePerKg);
       const remaining = total.sub(amountPaid);
 
-      const purchase = await storage.createPurchase({
+      // Use atomic transaction to create purchase with all side effects
+      const purchase = await storage.createPurchaseWithSideEffects({
         ...purchaseData,
         total: total.toFixed(2),
         remaining: remaining.toFixed(2),
-      });
-
-      // Create capital entry if funded from capital
-      if (purchaseData.fundingSource === 'capital' && amountPaid.gt(0)) {
-        // Convert amount to USD for capital tracking normalization
-        let amountInUsd = amountPaid;
-        if (purchaseData.currency === 'ETB' && purchaseData.exchangeRate) {
-          amountInUsd = amountPaid.div(new Decimal(purchaseData.exchangeRate));
-        }
-        
-        // Check for negative balance prevention before creating capital entry
-        const currentBalance = await storage.getCapitalBalance();
-        const newBalance = new Decimal(currentBalance).sub(amountInUsd);
-        
-        // Check if negative balance prevention is enabled
-        const preventNegativeSetting = await storage.getSetting('PREVENT_NEGATIVE_BALANCE');
-        const preventNegative = preventNegativeSetting?.value === 'true';
-        
-        if (preventNegative && newBalance.lt(0)) {
-          return res.status(400).json({
-            message: `Cannot fund purchase from capital. Would result in negative balance: ${newBalance.toFixed(2)} USD`,
-            field: "fundingSource",
-            currentBalance: currentBalance,
-            requestedAmount: amountInUsd.toFixed(2),
-            shortfall: newBalance.abs().toFixed(2),
-            suggestion: "Use external funding or add more capital"
-          });
-        }
-        
-        await storage.createCapitalEntry({
-          entryId: `PUR-${purchase.id}`,
-          amount: amountInUsd.toFixed(2), // Store normalized USD amount for accurate balance calculation
-          type: 'CapitalOut',
-          reference: purchase.id,
-          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${purchaseData.exchangeRate})` : ''}`,
-          paymentCurrency: purchaseData.currency,
-          exchangeRate: purchaseData.exchangeRate || undefined,
-          createdBy: req.user.claims.sub,
-        });
-      }
-
-      // Create warehouse stock entry
-      await storage.createWarehouseStock({
-        purchaseId: purchase.id,
-        orderId: purchase.orderId,
-        supplierId: purchase.supplierId,
-        warehouse: 'FIRST',
-        status: 'AWAITING_DECISION',
-        qtyKgTotal: purchaseData.weight,
-        qtyKgClean: purchaseData.weight,
-        qtyKgNonClean: '0',
-        unitCostCleanUsd: purchaseData.currency === 'USD' 
-          ? purchaseData.pricePerKg 
-          : pricePerKg.div(new Decimal(purchaseData.exchangeRate as string)).toFixed(4),
-      });
+      }, req.user.claims.sub);
 
       res.json(purchase);
     } catch (error) {
@@ -328,6 +275,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ 
           message: "Validation error",
           errors: error.errors
+        });
+      }
+
+      // Handle specific business logic errors from the transaction
+      if (error instanceof Error && error.message.includes('Would result in negative balance')) {
+        return res.status(400).json({
+          message: error.message,
+          field: "fundingSource",
+          suggestion: "Use external funding or add more capital"
         });
       }
       

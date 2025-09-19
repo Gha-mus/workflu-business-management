@@ -89,6 +89,7 @@ export const capitalEntries = pgTable("capital_entries", {
 // Purchases table
 export const purchases = pgTable("purchases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseNumber: varchar("purchase_number").notNull().unique(),
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
   orderId: varchar("order_id").notNull().references(() => orders.id),
   weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
@@ -228,6 +229,7 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
 
 export const insertPurchaseSchema = createInsertSchema(purchases).omit({
   id: true,
+  purchaseNumber: true,
   createdAt: true,
   updatedAt: true,
 }).refine((data) => {
