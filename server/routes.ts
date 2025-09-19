@@ -62,6 +62,18 @@ import {
   insertRevenueTransactionSchema,
   insertCustomerCreditLimitSchema,
   insertPricingRuleSchema,
+  // Financial reporting schemas
+  financialPeriodFilterSchema,
+  financialAnalysisRequestSchema,
+  marginAnalysisRequestSchema,
+  cashFlowAnalysisRequestSchema,
+  budgetTrackingRequestSchema,
+  insertFinancialPeriodSchema,
+  insertFinancialMetricSchema,
+  insertProfitLossStatementSchema,
+  insertCashFlowAnalysisSchema,
+  insertMarginAnalysisSchema,
+  insertBudgetTrackingSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -581,6 +593,349 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching trading activity:", error);
       res.status(500).json({ message: "Failed to fetch trading activity" });
+    }
+  });
+
+  // ===== COMPREHENSIVE FINANCIAL REPORTING ENDPOINTS =====
+
+  // Financial Periods Management
+  app.get('/api/financial/periods', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const filters = financialPeriodFilterSchema.parse(req.query);
+      const periods = await storage.getFinancialPeriods(filters.status);
+      res.json(periods);
+    } catch (error) {
+      console.error("Error fetching financial periods:", error);
+      res.status(500).json({ message: "Failed to fetch financial periods" });
+    }
+  });
+
+  app.get('/api/financial/periods/current', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const currentPeriod = await storage.getCurrentFinancialPeriod();
+      res.json(currentPeriod);
+    } catch (error) {
+      console.error("Error fetching current financial period:", error);
+      res.status(500).json({ message: "Failed to fetch current financial period" });
+    }
+  });
+
+  app.post('/api/financial/periods', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const periodData = insertFinancialPeriodSchema.parse(req.body);
+      const period = await storage.createFinancialPeriod(periodData);
+      res.json(period);
+    } catch (error) {
+      console.error("Error creating financial period:", error);
+      res.status(500).json({ message: "Failed to create financial period" });
+    }
+  });
+
+  app.post('/api/financial/periods/:id/close', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const { exchangeRates } = req.body;
+      const closedPeriod = await storage.closeFinancialPeriod(id, userId, exchangeRates);
+      res.json(closedPeriod);
+    } catch (error) {
+      console.error("Error closing financial period:", error);
+      res.status(500).json({ message: "Failed to close financial period" });
+    }
+  });
+
+  // Advanced Financial Metrics & KPIs
+  app.get('/api/financial/kpis', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const kpiData = await storage.getKpiDashboardData(periodId as string);
+      res.json(kpiData);
+    } catch (error) {
+      console.error("Error fetching KPI dashboard data:", error);
+      res.status(500).json({ message: "Failed to fetch KPI dashboard data" });
+    }
+  });
+
+  app.get('/api/financial/metrics', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const filters = dateRangeFilterSchema.parse(req.query);
+      const metrics = await storage.getFinancialMetrics(periodId as string, filters);
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error fetching financial metrics:", error);
+      res.status(500).json({ message: "Failed to fetch financial metrics" });
+    }
+  });
+
+  app.post('/api/financial/metrics/calculate', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { periodId } = req.body;
+      const userId = req.user.claims.sub;
+      const metrics = await storage.calculateAndStoreFinancialMetrics(periodId, userId);
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error calculating financial metrics:", error);
+      res.status(500).json({ message: "Failed to calculate financial metrics" });
+    }
+  });
+
+  // Comprehensive Profit & Loss Analysis
+  app.get('/api/financial/profit-loss', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId, statementType } = req.query;
+      const statements = await storage.getProfitLossStatements(periodId as string, statementType as string);
+      res.json(statements);
+    } catch (error) {
+      console.error("Error fetching P&L statements:", error);
+      res.status(500).json({ message: "Failed to fetch P&L statements" });
+    }
+  });
+
+  app.post('/api/financial/profit-loss/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { periodId, statementType } = req.body;
+      const userId = req.user.claims.sub;
+      const statement = await storage.generateProfitLossStatement(periodId, statementType, userId);
+      res.json(statement);
+    } catch (error) {
+      console.error("Error generating P&L statement:", error);
+      res.status(500).json({ message: "Failed to generate P&L statement" });
+    }
+  });
+
+  app.get('/api/financial/profit-loss/analysis', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId, comparisonPeriodId } = req.query;
+      const analysis = await storage.getDetailedPLAnalysis(periodId as string, comparisonPeriodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching detailed P&L analysis:", error);
+      res.status(500).json({ message: "Failed to fetch detailed P&L analysis" });
+    }
+  });
+
+  // Advanced Cash Flow Analysis
+  app.get('/api/financial/cashflow/advanced', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const request = cashFlowAnalysisRequestSchema.parse(req.query);
+      const analyses = await storage.getCashFlowAnalyses(request.periodId, request.analysisType);
+      res.json(analyses);
+    } catch (error) {
+      console.error("Error fetching advanced cash flow analyses:", error);
+      res.status(500).json({ message: "Failed to fetch advanced cash flow analyses" });
+    }
+  });
+
+  app.post('/api/financial/cashflow/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { periodId, analysisType, forecastDays } = req.body;
+      const userId = req.user.claims.sub;
+      const analysis = await storage.generateCashFlowAnalysis(periodId, analysisType, userId, forecastDays);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error generating cash flow analysis:", error);
+      res.status(500).json({ message: "Failed to generate cash flow analysis" });
+    }
+  });
+
+  app.get('/api/financial/cashflow/forecast', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { days = 30 } = req.query;
+      const forecast = await storage.getCashFlowForecast(Number(days));
+      res.json(forecast);
+    } catch (error) {
+      console.error("Error fetching cash flow forecast:", error);
+      res.status(500).json({ message: "Failed to fetch cash flow forecast" });
+    }
+  });
+
+  app.get('/api/financial/working-capital', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const analysis = await storage.getWorkingCapitalAnalysis();
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching working capital analysis:", error);
+      res.status(500).json({ message: "Failed to fetch working capital analysis" });
+    }
+  });
+
+  // Comprehensive Margin Analysis
+  app.get('/api/financial/margins', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const request = marginAnalysisRequestSchema.parse(req.query);
+      const analyses = await storage.getMarginAnalyses(request.periodId, request.analysisType, request.filters);
+      res.json(analyses);
+    } catch (error) {
+      console.error("Error fetching margin analyses:", error);
+      res.status(500).json({ message: "Failed to fetch margin analyses" });
+    }
+  });
+
+  app.post('/api/financial/margins/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { periodId, analysisType, filters } = req.body;
+      const userId = req.user.claims.sub;
+      const analyses = await storage.generateMarginAnalysis(periodId, analysisType, filters, userId);
+      res.json(analyses);
+    } catch (error) {
+      console.error("Error generating margin analysis:", error);
+      res.status(500).json({ message: "Failed to generate margin analysis" });
+    }
+  });
+
+  app.get('/api/financial/margins/customers', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const analysis = await storage.getCustomerProfitabilityAnalysis(periodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching customer profitability analysis:", error);
+      res.status(500).json({ message: "Failed to fetch customer profitability analysis" });
+    }
+  });
+
+  app.get('/api/financial/margins/products', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const analysis = await storage.getProductMarginAnalysis(periodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching product margin analysis:", error);
+      res.status(500).json({ message: "Failed to fetch product margin analysis" });
+    }
+  });
+
+  app.get('/api/financial/margins/transactions', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId, minMargin } = req.query;
+      const analysis = await storage.getTransactionMarginAnalysis(
+        periodId as string, 
+        minMargin ? Number(minMargin) : undefined
+      );
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching transaction margin analysis:", error);
+      res.status(500).json({ message: "Failed to fetch transaction margin analysis" });
+    }
+  });
+
+  // Budget Tracking & Variance Analysis
+  app.get('/api/financial/budget', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const request = budgetTrackingRequestSchema.parse(req.query);
+      const budgets = await storage.getBudgetTrackings(request.periodId, request.category);
+      res.json(budgets);
+    } catch (error) {
+      console.error("Error fetching budget tracking:", error);
+      res.status(500).json({ message: "Failed to fetch budget tracking" });
+    }
+  });
+
+  app.post('/api/financial/budget', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const budgetData = insertBudgetTrackingSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub
+      });
+      const budget = await storage.createBudgetTracking(budgetData);
+      res.json(budget);
+    } catch (error) {
+      console.error("Error creating budget tracking:", error);
+      res.status(500).json({ message: "Failed to create budget tracking" });
+    }
+  });
+
+  app.get('/api/financial/budget/variance', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const analysis = await storage.getBudgetVsActualAnalysis(periodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching budget variance analysis:", error);
+      res.status(500).json({ message: "Failed to fetch budget variance analysis" });
+    }
+  });
+
+  // Advanced Financial Calculations
+  app.get('/api/financial/breakeven', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const analysis = await storage.calculateBreakEvenAnalysis(periodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error calculating break-even analysis:", error);
+      res.status(500).json({ message: "Failed to calculate break-even analysis" });
+    }
+  });
+
+  app.get('/api/financial/roi', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const analysis = await storage.calculateROIAnalysis(periodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error calculating ROI analysis:", error);
+      res.status(500).json({ message: "Failed to calculate ROI analysis" });
+    }
+  });
+
+  app.get('/api/financial/ratios', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const ratios = await storage.calculateFinancialRatios(periodId as string);
+      res.json(ratios);
+    } catch (error) {
+      console.error("Error calculating financial ratios:", error);
+      res.status(500).json({ message: "Failed to calculate financial ratios" });
+    }
+  });
+
+  // Financial Forecasting & Predictive Analytics
+  app.get('/api/financial/forecast', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId, forecastPeriods = 4 } = req.query;
+      const forecast = await storage.generateFinancialForecast(periodId as string, Number(forecastPeriods));
+      res.json(forecast);
+    } catch (error) {
+      console.error("Error generating financial forecast:", error);
+      res.status(500).json({ message: "Failed to generate financial forecast" });
+    }
+  });
+
+  // Currency Analysis
+  app.get('/api/financial/currency-exposure', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const analysis = await storage.getCurrencyExposureAnalysis(periodId as string);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching currency exposure analysis:", error);
+      res.status(500).json({ message: "Failed to fetch currency exposure analysis" });
+    }
+  });
+
+  // Financial Data Validation
+  app.post('/api/financial/validate', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.body;
+      const validation = await storage.validateFinancialData(periodId);
+      res.json(validation);
+    } catch (error) {
+      console.error("Error validating financial data:", error);
+      res.status(500).json({ message: "Failed to validate financial data" });
+    }
+  });
+
+  // Executive Financial Summary
+  app.get('/api/financial/executive-summary', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { periodId } = req.query;
+      const summary = await storage.generateExecutiveFinancialSummary(periodId as string);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error generating executive financial summary:", error);
+      res.status(500).json({ message: "Failed to generate executive financial summary" });
     }
   });
 

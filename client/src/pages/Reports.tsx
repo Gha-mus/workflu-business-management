@@ -307,75 +307,62 @@ export default function Reports() {
 
   // Enhanced reporting queries
   const { data: financialSummary, isLoading: financialLoading } = useQuery({
-    queryKey: ['/api/reports/financial/summary', dateRange.startDate, dateRange.endDate],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (dateRange.startDate) params.set('startDate', dateRange.startDate);
-      if (dateRange.endDate) params.set('endDate', dateRange.endDate);
-      const url = `/api/reports/financial/summary${params.toString() ? '?' + params.toString() : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch financial summary');
-      return response.json();
-    }
+    queryKey: ['/api/reports/financial/summary', dateRange.startDate, dateRange.endDate].filter(Boolean),
   });
 
   const { data: cashFlow, isLoading: cashFlowLoading } = useQuery({
-    queryKey: ['/api/reports/financial/cashflow', selectedPeriod],
-    queryFn: async () => {
-      const response = await fetch(`/api/reports/financial/cashflow?period=${selectedPeriod}`);
-      if (!response.ok) throw new Error('Failed to fetch cash flow');
-      return response.json();
-    }
+    queryKey: ['/api/reports/financial/cashflow', 'period=' + selectedPeriod],
   });
 
   const { data: inventoryAnalytics, isLoading: inventoryLoading } = useQuery({
     queryKey: ['/api/reports/inventory/analytics'],
-    queryFn: async () => {
-      const response = await fetch('/api/reports/inventory/analytics');
-      if (!response.ok) throw new Error('Failed to fetch inventory analytics');
-      return response.json();
-    }
   });
 
   const { data: supplierPerformance, isLoading: supplierLoading } = useQuery({
     queryKey: ['/api/reports/suppliers/performance'],
-    queryFn: async () => {
-      const response = await fetch('/api/reports/suppliers/performance');
-      if (!response.ok) throw new Error('Failed to fetch supplier performance');
-      return response.json();
-    }
+  });
+
+  // Comprehensive Financial Reporting Queries
+  const { data: financialKpis, isLoading: kpisLoading } = useQuery({
+    queryKey: ['/api/financial/kpis'],
+  });
+
+  const { data: profitLossStatements, isLoading: plLoading } = useQuery({
+    queryKey: ['/api/financial/profit-loss'],
+  });
+
+  const { data: cashFlowForecast, isLoading: cashFlowForecastLoading } = useQuery({
+    queryKey: ['/api/financial/cashflow/forecast', 'days=90'],
+  });
+
+  const { data: marginAnalysis, isLoading: marginLoading } = useQuery({
+    queryKey: ['/api/financial/margins'],
+  });
+
+  const { data: roiAnalysis, isLoading: roiLoading } = useQuery({
+    queryKey: ['/api/financial/roi'],
+  });
+
+  const { data: breakEvenAnalysis, isLoading: breakEvenLoading } = useQuery({
+    queryKey: ['/api/financial/breakeven'],
+  });
+
+  const { data: currencyExposure, isLoading: currencyLoading } = useQuery({
+    queryKey: ['/api/financial/currency-exposure'],
   });
 
   const { data: tradingActivity, isLoading: tradingLoading } = useQuery({
     queryKey: ['/api/reports/trading/activity'],
-    queryFn: async () => {
-      const response = await fetch('/api/reports/trading/activity');
-      if (!response.ok) throw new Error('Failed to fetch trading activity');
-      return response.json();
-    }
   });
 
   // Validation queries
   const { data: latestValidation, isLoading: validationLoading, refetch: refetchValidation } = useQuery({
     queryKey: ['/api/ai/validation/latest'],
-    queryFn: async () => {
-      const response = await fetch('/api/ai/validation/latest');
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error('Failed to fetch validation results');
-      }
-      return response.json();
-    },
     enabled: isAuthenticated
   });
 
   const { data: validationHistory } = useQuery({
-    queryKey: ['/api/ai/validation/history'],
-    queryFn: async () => {
-      const response = await fetch('/api/ai/validation/history?limit=5');
-      if (!response.ok) throw new Error('Failed to fetch validation history');
-      return response.json();
-    },
+    queryKey: ['/api/ai/validation/history', 'limit=5'],
     enabled: isAuthenticated
   });
 
@@ -1019,10 +1006,10 @@ export default function Reports() {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
-                                data={Object.entries(inventoryAnalytics.statusSummary).map(([status, data]: [string, any]) => ({
+                                data={inventoryAnalytics?.statusSummary ? Object.entries(inventoryAnalytics.statusSummary).map(([status, data]: [string, any]) => ({
                                   name: status.replace(/_/g, ' '),
                                   value: data.totalKg
-                                }))}
+                                })) : []}
                                 cx="50%"
                                 cy="50%"
                                 labelLine={false}
@@ -1031,9 +1018,9 @@ export default function Reports() {
                                 fill="#8884d8"
                                 dataKey="value"
                               >
-                                {Object.keys(inventoryAnalytics.statusSummary).map((_, index) => (
+                                {inventoryAnalytics?.statusSummary ? Object.keys(inventoryAnalytics.statusSummary).map((_, index) => (
                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
+                                )) : null}
                               </Pie>
                               <Tooltip />
                             </PieChart>
@@ -1068,12 +1055,12 @@ export default function Reports() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {Object.entries(inventoryAnalytics.aging).map(([range, count]) => (
+                          {inventoryAnalytics?.aging ? Object.entries(inventoryAnalytics.aging).map(([range, count]) => (
                             <div key={range} className="flex justify-between items-center">
                               <span className="text-sm text-muted-foreground">{range} days</span>
                               <span className="font-medium">{count} items</span>
                             </div>
-                          ))}
+                          )) : <p className="text-sm text-muted-foreground">No aging data available</p>}
                         </div>
                       </CardContent>
                     </Card>
@@ -1099,12 +1086,12 @@ export default function Reports() {
                           <p className="text-sm text-muted-foreground">Fulfillment Rate</p>
                         </div>
                         <div className="mt-4 space-y-2">
-                          {Object.entries(tradingActivity.orderFulfillment.stats).map(([status, count]) => (
+                          {tradingActivity?.orderFulfillment?.stats ? Object.entries(tradingActivity.orderFulfillment.stats).map(([status, count]) => (
                             <div key={status} className="flex justify-between items-center">
                               <span className="text-sm capitalize text-muted-foreground">{status.replace('_', ' ')}</span>
                               <span className="font-medium">{count}</span>
                             </div>
-                          ))}
+                          )) : <p className="text-sm text-muted-foreground">No order data available</p>}
                         </div>
                       </CardContent>
                     </Card>
@@ -1114,7 +1101,7 @@ export default function Reports() {
                         <h3 className="text-lg font-semibold">Currency Distribution</h3>
                       </CardHeader>
                       <CardContent>
-                        {Object.entries(tradingActivity.currencyDistribution).map(([currency, data]: [string, any]) => (
+                        {tradingActivity?.currencyDistribution ? Object.entries(tradingActivity.currencyDistribution).map(([currency, data]: [string, any]) => (
                           <div key={currency} className="mb-4">
                             <div className="flex justify-between items-center">
                               <span className="font-medium">{currency}</span>
@@ -1124,7 +1111,7 @@ export default function Reports() {
                               {data.weight.toLocaleString()} kg • ${data.amount.toLocaleString()}
                             </div>
                           </div>
-                        ))}
+                        )) : <p className="text-sm text-muted-foreground">No currency data available</p>}
                       </CardContent>
                     </Card>
 
@@ -1423,7 +1410,7 @@ export default function Reports() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
-                          {Object.entries(latestValidation.gapReport.stages).map(([stageName, stageData]: [string, any]) => (
+                          {latestValidation?.gapReport?.stages ? Object.entries(latestValidation.gapReport.stages).map(([stageName, stageData]: [string, any]) => (
                             <div key={stageName} className="border rounded-lg p-4">
                               <div className="flex justify-between items-center mb-3">
                                 <h4 className="font-medium capitalize">{stageName.replace('_', ' ')}</h4>
@@ -1491,7 +1478,7 @@ export default function Reports() {
                                 </div>
                               )}
                             </div>
-                          ))}
+                          )) : <p className="text-sm text-muted-foreground">No stage analysis available</p>}
                         </div>
                       </CardContent>
                     </Card>
