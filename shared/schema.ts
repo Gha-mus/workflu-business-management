@@ -417,6 +417,276 @@ export const inventoryAdjustments = pgTable("inventory_adjustments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ===== DOCUMENT MANAGEMENT SYSTEM TABLES =====
+
+// Document category enum
+export const documentCategoryEnum = pgEnum('document_category', [
+  'invoice', 'contract', 'compliance_record', 'certificate', 'receipt', 
+  'purchase_order', 'shipping_document', 'quality_report', 'financial_statement', 
+  'audit_document', 'insurance_policy', 'license', 'permit', 'regulation_document'
+]);
+
+// Document status enum
+export const documentStatusEnum = pgEnum('document_status', [
+  'draft', 'under_review', 'approved', 'final', 'expired', 'archived', 'rejected', 'cancelled'
+]);
+
+// Compliance status enum
+export const complianceStatusEnum = pgEnum('compliance_status', [
+  'compliant', 'non_compliant', 'pending_review', 'expiring_soon', 'expired', 'renewal_required'
+]);
+
+// Document access level enum
+export const documentAccessLevelEnum = pgEnum('document_access_level', [
+  'public', 'internal', 'confidential', 'restricted', 'classified'
+]);
+
+// Documents table - Main document registry
+export const documents = pgTable("documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentNumber: varchar("document_number").notNull().unique(),
+  title: varchar("title").notNull(),
+  description: text("description"),
+  category: documentCategoryEnum("category").notNull(),
+  subCategory: varchar("sub_category"), // More specific categorization
+  status: documentStatusEnum("status").notNull().default('draft'),
+  accessLevel: documentAccessLevelEnum("access_level").notNull().default('internal'),
+  
+  // File information
+  fileName: varchar("file_name").notNull(),
+  originalFileName: varchar("original_file_name").notNull(),
+  filePath: varchar("file_path").notNull(),
+  contentType: varchar("content_type").notNull(),
+  fileSize: integer("file_size").notNull(), // Size in bytes
+  checksum: varchar("checksum").notNull(), // For file integrity verification
+  
+  // Document metadata
+  documentDate: timestamp("document_date"), // Document creation/issue date
+  expiryDate: timestamp("expiry_date"), // When document expires
+  effectiveDate: timestamp("effective_date"), // When document becomes effective
+  reminderDate: timestamp("reminder_date"), // When to send reminder for renewal
+  
+  // Business relationships
+  relatedEntityType: varchar("related_entity_type"), // supplier, customer, purchase, sale, shipment, etc.
+  relatedEntityId: varchar("related_entity_id"), // ID of the related entity
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  customerId: varchar("customer_id").references(() => customers.id),
+  purchaseId: varchar("purchase_id").references(() => purchases.id),
+  orderId: varchar("order_id").references(() => orders.id),
+  shipmentId: varchar("shipment_id").references(() => shipments.id),
+  
+  // Version control
+  currentVersion: integer("current_version").notNull().default(1),
+  isLatestVersion: boolean("is_latest_version").notNull().default(true),
+  parentDocumentId: varchar("parent_document_id").references(() => documents.id), // For document hierarchies
+  
+  // Search and organization
+  tags: text("tags").array(), // Tags for searching and organization
+  keywords: text("keywords"), // Additional searchable keywords
+  
+  // Compliance tracking
+  requiresCompliance: boolean("requires_compliance").notNull().default(false),
+  complianceType: varchar("compliance_type"), // regulatory, internal, certification, etc.
+  
+  // Security and access
+  encryptionStatus: varchar("encryption_status").default('none'), // none, encrypted, secured
+  passwordProtected: boolean("password_protected").notNull().default(false),
+  digitalSignature: varchar("digital_signature"), // Digital signature information
+  
+  // Audit fields
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  modifiedBy: varchar("modified_by").references(() => users.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  archivedBy: varchar("archived_by").references(() => users.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  modifiedAt: timestamp("modified_at").defaultNow(),
+  approvedAt: timestamp("approved_at"),
+  archivedAt: timestamp("archived_at"),
+});
+
+// Document versions table - Version control system
+export const documentVersions = pgTable("document_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => documents.id),
+  version: integer("version").notNull(),
+  versionLabel: varchar("version_label"), // v1.0, v2.1, etc.
+  
+  // File information for this version
+  fileName: varchar("file_name").notNull(),
+  filePath: varchar("file_path").notNull(),
+  contentType: varchar("content_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  checksum: varchar("checksum").notNull(),
+  
+  // Version metadata
+  changeDescription: text("change_description"), // What changed in this version
+  changeReason: text("change_reason"), // Why the change was made
+  changeType: varchar("change_type"), // major, minor, patch, correction, approval
+  approvalRequired: boolean("approval_required").notNull().default(false),
+  isApproved: boolean("is_approved").notNull().default(false),
+  
+  // Version relationships
+  previousVersionId: varchar("previous_version_id").references(() => documentVersions.id),
+  mergedFromVersionIds: text("merged_from_version_ids").array(), // If version was created by merging
+  
+  // Version lifecycle
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  supersededBy: varchar("superseded_by").references(() => documentVersions.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  approvedAt: timestamp("approved_at"),
+  supersededAt: timestamp("superseded_at"),
+}, (table) => [
+  index("idx_document_versions_document_id").on(table.documentId),
+  index("idx_document_versions_version").on(table.documentId, table.version),
+]);
+
+// Document metadata table - Flexible key-value metadata storage
+export const documentMetadata = pgTable("document_metadata", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => documents.id),
+  metadataKey: varchar("metadata_key").notNull(),
+  metadataValue: text("metadata_value"),
+  metadataType: varchar("metadata_type").notNull().default('text'), // text, number, date, boolean, json
+  isRequired: boolean("is_required").notNull().default(false),
+  isSearchable: boolean("is_searchable").notNull().default(true),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_document_metadata_document_id").on(table.documentId),
+  index("idx_document_metadata_key").on(table.metadataKey),
+  index("idx_document_metadata_searchable").on(table.isSearchable),
+]);
+
+// Document compliance table - Compliance tracking and monitoring
+export const documentCompliance = pgTable("document_compliance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => documents.id),
+  
+  // Compliance requirement details
+  requirementType: varchar("requirement_type").notNull(), // regulatory, certification, internal_policy, legal
+  requirementName: varchar("requirement_name").notNull(),
+  requirementDescription: text("requirement_description"),
+  regulatoryBody: varchar("regulatory_body"), // Which organization sets this requirement
+  
+  // Compliance status and dates
+  status: complianceStatusEnum("status").notNull().default('pending_review'),
+  complianceDate: timestamp("compliance_date"), // When compliance was achieved
+  expiryDate: timestamp("expiry_date"), // When compliance expires
+  renewalDate: timestamp("renewal_date"), // When renewal is required
+  gracePeriosDate: timestamp("grace_period_date"), // Grace period end date
+  
+  // Compliance details
+  complianceLevel: varchar("compliance_level"), // full, partial, conditional
+  certificateNumber: varchar("certificate_number"),
+  issuingAuthority: varchar("issuing_authority"),
+  validationMethod: varchar("validation_method"), // self_attestation, third_party, audit
+  
+  // Renewal and alerts
+  autoRenewal: boolean("auto_renewal").notNull().default(false),
+  reminderDaysBefore: integer("reminder_days_before").default(30),
+  lastReminderSent: timestamp("last_reminder_sent"),
+  nextReminderDate: timestamp("next_reminder_date"),
+  
+  // Non-compliance tracking
+  nonComplianceReason: text("non_compliance_reason"),
+  correctionRequired: boolean("correction_required").notNull().default(false),
+  correctionDeadline: timestamp("correction_deadline"),
+  correctionActions: text("correction_actions").array(),
+  
+  // Audit trail
+  verifiedBy: varchar("verified_by").references(() => users.id),
+  verifiedAt: timestamp("verified_at"),
+  lastReviewedBy: varchar("last_reviewed_by").references(() => users.id),
+  lastReviewedAt: timestamp("last_reviewed_at"),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_document_compliance_document_id").on(table.documentId),
+  index("idx_document_compliance_status").on(table.status),
+  index("idx_document_compliance_expiry").on(table.expiryDate),
+  index("idx_document_compliance_renewal").on(table.renewalDate),
+]);
+
+// Document access logs table - Audit trail for document access and modifications
+export const documentAccessLogs = pgTable("document_access_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => documents.id),
+  versionId: varchar("version_id").references(() => documentVersions.id),
+  
+  // Access details
+  accessType: varchar("access_type").notNull(), // view, download, edit, delete, share, print
+  accessMethod: varchar("access_method"), // web, api, mobile, export
+  userAgent: text("user_agent"),
+  ipAddress: varchar("ip_address"),
+  sessionId: varchar("session_id"),
+  
+  // User information
+  userId: varchar("user_id").references(() => users.id),
+  userName: varchar("user_name"), // Stored for audit purposes even if user is deleted
+  userRole: varchar("user_role"),
+  
+  // Access context
+  reason: text("reason"), // Why document was accessed
+  businessContext: varchar("business_context"), // approval_process, compliance_check, etc.
+  
+  // Security information
+  wasSuccessful: boolean("was_successful").notNull().default(true),
+  failureReason: text("failure_reason"),
+  securityAlert: boolean("security_alert").notNull().default(false),
+  
+  // Timing
+  accessedAt: timestamp("accessed_at").notNull().defaultNow(),
+  sessionDuration: integer("session_duration"), // How long document was accessed (seconds)
+}, (table) => [
+  index("idx_document_access_logs_document_id").on(table.documentId),
+  index("idx_document_access_logs_user_id").on(table.userId),
+  index("idx_document_access_logs_accessed_at").on(table.accessedAt),
+  index("idx_document_access_logs_access_type").on(table.accessType),
+]);
+
+// Document workflow states table - Track documents through approval workflows
+export const documentWorkflowStates = pgTable("document_workflow_states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => documents.id),
+  versionId: varchar("version_id").references(() => documentVersions.id),
+  
+  // Workflow information
+  workflowType: varchar("workflow_type").notNull(), // approval, review, compliance_check
+  workflowStage: varchar("workflow_stage").notNull(), // submitted, under_review, approved, rejected
+  workflowDefinitionId: varchar("workflow_definition_id"), // Reference to workflow definition
+  
+  // Assignment and timing
+  assignedTo: varchar("assigned_to").references(() => users.id),
+  assignedRole: varchar("assigned_role"), // Which role should handle this
+  dueDate: timestamp("due_date"),
+  completedDate: timestamp("completed_date"),
+  
+  // Workflow state
+  isActive: boolean("is_active").notNull().default(true),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  outcome: varchar("outcome"), // approved, rejected, returned_for_revision
+  comments: text("comments"),
+  
+  // Workflow tracking
+  previousStateId: varchar("previous_state_id").references(() => documentWorkflowStates.id),
+  nextStateId: varchar("next_state_id").references(() => documentWorkflowStates.id),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_document_workflow_states_document_id").on(table.documentId),
+  index("idx_document_workflow_states_assigned_to").on(table.assignedTo),
+  index("idx_document_workflow_states_active").on(table.isActive),
+]);
+
 // Sales Pipeline Tables
 
 // Customer categories enum
@@ -3424,3 +3694,218 @@ export type FinancialAnalysisRequest = z.infer<typeof financialAnalysisRequestSc
 export type MarginAnalysisRequest = z.infer<typeof marginAnalysisRequestSchema>;
 export type CashFlowAnalysisRequest = z.infer<typeof cashFlowAnalysisRequestSchema>;
 export type BudgetTrackingRequest = z.infer<typeof budgetTrackingRequestSchema>;
+
+// ===== DOCUMENT MANAGEMENT TYPES AND SCHEMAS =====
+
+// Document management table types
+export type Document = typeof documents.$inferSelect;
+export type InsertDocument = typeof documents.$inferInsert;
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+export type InsertDocumentVersion = typeof documentVersions.$inferInsert;
+export type DocumentMetadata = typeof documentMetadata.$inferSelect;
+export type InsertDocumentMetadata = typeof documentMetadata.$inferInsert;
+export type DocumentCompliance = typeof documentCompliance.$inferSelect;
+export type InsertDocumentCompliance = typeof documentCompliance.$inferInsert;
+export type DocumentAccessLog = typeof documentAccessLogs.$inferSelect;
+export type InsertDocumentAccessLog = typeof documentAccessLogs.$inferInsert;
+export type DocumentWorkflowState = typeof documentWorkflowStates.$inferSelect;
+export type InsertDocumentWorkflowState = typeof documentWorkflowStates.$inferInsert;
+
+// Document management insert schemas
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  documentNumber: true,
+  currentVersion: true,
+  isLatestVersion: true,
+  createdAt: true,
+  modifiedAt: true,
+  approvedAt: true,
+  archivedAt: true,
+});
+
+export const insertDocumentVersionSchema = createInsertSchema(documentVersions).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+  supersededAt: true,
+});
+
+export const insertDocumentMetadataSchema = createInsertSchema(documentMetadata).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDocumentComplianceSchema = createInsertSchema(documentCompliance).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDocumentAccessLogSchema = createInsertSchema(documentAccessLogs).omit({
+  id: true,
+  accessedAt: true,
+});
+
+export const insertDocumentWorkflowStateSchema = createInsertSchema(documentWorkflowStates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Document management request schemas
+export const documentUploadSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  category: z.enum(['invoice', 'contract', 'compliance_record', 'certificate', 'receipt', 'purchase_order', 'shipping_document', 'quality_report', 'financial_statement', 'audit_document', 'insurance_policy', 'license', 'permit', 'regulation_document']),
+  subCategory: z.string().optional(),
+  documentDate: z.string().optional(),
+  expiryDate: z.string().optional(),
+  effectiveDate: z.string().optional(),
+  relatedEntityType: z.string().optional(),
+  relatedEntityId: z.string().optional(),
+  supplierId: z.string().optional(),
+  customerId: z.string().optional(),
+  purchaseId: z.string().optional(),
+  orderId: z.string().optional(),
+  shipmentId: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  keywords: z.string().optional(),
+  requiresCompliance: z.boolean().default(false),
+  complianceType: z.string().optional(),
+  accessLevel: z.enum(['public', 'internal', 'confidential', 'restricted', 'classified']).default('internal'),
+});
+
+export const documentSearchSchema = z.object({
+  query: z.string().optional(),
+  category: z.enum(['invoice', 'contract', 'compliance_record', 'certificate', 'receipt', 'purchase_order', 'shipping_document', 'quality_report', 'financial_statement', 'audit_document', 'insurance_policy', 'license', 'permit', 'regulation_document']).optional(),
+  status: z.enum(['draft', 'under_review', 'approved', 'final', 'expired', 'archived', 'rejected', 'cancelled']).optional(),
+  accessLevel: z.enum(['public', 'internal', 'confidential', 'restricted', 'classified']).optional(),
+  relatedEntityType: z.string().optional(),
+  relatedEntityId: z.string().optional(),
+  supplierId: z.string().optional(),
+  customerId: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  expiryFrom: z.string().optional(),
+  expiryTo: z.string().optional(),
+  limit: z.number().min(1).max(100).default(20),
+  offset: z.number().min(0).default(0),
+  sortBy: z.enum(['title', 'createdAt', 'modifiedAt', 'documentDate', 'expiryDate']).default('modifiedAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+});
+
+export const documentUpdateSchema = insertDocumentSchema.partial().extend({
+  id: z.string(),
+});
+
+export const documentVersionCreateSchema = z.object({
+  documentId: z.string(),
+  changeDescription: z.string(),
+  changeReason: z.string(),
+  changeType: z.enum(['major', 'minor', 'patch', 'correction', 'approval']).default('minor'),
+  approvalRequired: z.boolean().default(false),
+});
+
+export const documentComplianceUpdateSchema = z.object({
+  documentId: z.string(),
+  requirementType: z.string(),
+  requirementName: z.string(),
+  requirementDescription: z.string().optional(),
+  regulatoryBody: z.string().optional(),
+  status: z.enum(['compliant', 'non_compliant', 'pending_review', 'expiring_soon', 'expired', 'renewal_required']),
+  complianceDate: z.string().optional(),
+  expiryDate: z.string().optional(),
+  renewalDate: z.string().optional(),
+  complianceLevel: z.string().optional(),
+  certificateNumber: z.string().optional(),
+  issuingAuthority: z.string().optional(),
+  validationMethod: z.string().optional(),
+  autoRenewal: z.boolean().default(false),
+  reminderDaysBefore: z.number().default(30),
+});
+
+export const complianceFilterSchema = z.object({
+  status: z.enum(['compliant', 'non_compliant', 'pending_review', 'expiring_soon', 'expired', 'renewal_required']).optional(),
+  requirementType: z.string().optional(),
+  expiryFrom: z.string().optional(),
+  expiryTo: z.string().optional(),
+  renewalFrom: z.string().optional(),
+  renewalTo: z.string().optional(),
+  limit: z.number().min(1).max(100).default(20),
+  offset: z.number().min(0).default(0),
+});
+
+// Document management request types
+export type DocumentUploadRequest = z.infer<typeof documentUploadSchema>;
+export type DocumentSearchRequest = z.infer<typeof documentSearchSchema>;
+export type DocumentUpdateRequest = z.infer<typeof documentUpdateSchema>;
+export type DocumentVersionCreateRequest = z.infer<typeof documentVersionCreateSchema>;
+export type DocumentComplianceUpdateRequest = z.infer<typeof documentComplianceUpdateSchema>;
+export type ComplianceFilterRequest = z.infer<typeof complianceFilterSchema>;
+
+// Document management response types
+export interface DocumentWithMetadata extends Document {
+  metadata?: DocumentMetadata[];
+  compliance?: DocumentCompliance[];
+  currentVersionInfo?: DocumentVersion;
+  accessLevel: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  canDownload: boolean;
+}
+
+export interface DocumentSearchResponse {
+  documents: DocumentWithMetadata[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface DocumentVersionHistory {
+  document: Document;
+  versions: DocumentVersion[];
+  canRollback: boolean;
+}
+
+export interface ComplianceAlert {
+  documentId: string;
+  documentTitle: string;
+  requirementName: string;
+  status: string;
+  expiryDate?: string;
+  renewalDate?: string;
+  daysUntilExpiry?: number;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface ComplianceDashboard {
+  summary: {
+    total: number;
+    compliant: number;
+    nonCompliant: number;
+    expiringSoon: number;
+    expired: number;
+    pendingReview: number;
+  };
+  alerts: ComplianceAlert[];
+  upcomingRenewals: ComplianceAlert[];
+  criticalItems: ComplianceAlert[];
+}
+
+export interface DocumentAnalytics {
+  totalDocuments: number;
+  documentsByCategory: Array<{ category: string; count: number }>;
+  documentsByStatus: Array<{ status: string; count: number }>;
+  recentActivity: Array<{
+    documentId: string;
+    documentTitle: string;
+    action: string;
+    userName: string;
+    timestamp: string;
+  }>;
+  storageUsed: number;
+  averageFileSize: number;
+}

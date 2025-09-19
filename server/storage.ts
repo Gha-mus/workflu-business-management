@@ -36,6 +36,12 @@ import {
   salesPerformanceMetrics,
   customerCreditLimits,
   pricingRules,
+  documents,
+  documentVersions,
+  documentMetadata,
+  documentCompliance,
+  documentAccessLogs,
+  documentWorkflowStates,
   type User,
   type UpsertUser,
   type Supplier,
@@ -123,6 +129,30 @@ import {
   type SupplierPerformanceResponse,
   type TradingActivityResponse,
   type DateRangeFilter,
+  type Document,
+  type InsertDocument,
+  type DocumentVersion,
+  type InsertDocumentVersion,
+  type DocumentMetadata,
+  type InsertDocumentMetadata,
+  type DocumentCompliance,
+  type InsertDocumentCompliance,
+  type DocumentAccessLog,
+  type InsertDocumentAccessLog,
+  type DocumentWorkflowState,
+  type InsertDocumentWorkflowState,
+  type DocumentWithMetadata,
+  type DocumentSearchResponse,
+  type DocumentVersionHistory,
+  type ComplianceAlert,
+  type ComplianceDashboard,
+  type DocumentAnalytics,
+  type DocumentSearchRequest,
+  type DocumentUploadRequest,
+  type DocumentUpdateRequest,
+  type DocumentVersionCreateRequest,
+  type DocumentComplianceUpdateRequest,
+  type ComplianceFilterRequest,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
@@ -1443,6 +1473,169 @@ export interface IStorage {
     isValid: boolean;
     issues: Array<{ salesOrderId: string; issue: string; severity: 'warning' | 'error' }>;
     recommendations: string[];
+  }>;
+
+  // ===== DOCUMENT MANAGEMENT OPERATIONS =====
+
+  // Document CRUD operations
+  getDocument(id: string, userId?: string): Promise<Document | undefined>;
+  getDocumentWithMetadata(id: string, userId?: string): Promise<DocumentWithMetadata | undefined>;
+  createDocument(document: InsertDocument, auditContext?: AuditContext): Promise<Document>;
+  updateDocument(id: string, document: Partial<InsertDocument>, auditContext?: AuditContext): Promise<Document>;
+  deleteDocument(id: string, auditContext?: AuditContext): Promise<void>;
+  
+  // Document search and filtering
+  searchDocuments(searchRequest: DocumentSearchRequest, userId?: string): Promise<DocumentSearchResponse>;
+  getDocumentsByCategory(category: string, limit?: number, offset?: number): Promise<Document[]>;
+  getDocumentsByEntity(entityType: string, entityId: string): Promise<Document[]>;
+  getDocumentsBySupplier(supplierId: string): Promise<Document[]>;
+  getDocumentsByCustomer(customerId: string): Promise<Document[]>;
+  getDocumentsByPurchase(purchaseId: string): Promise<Document[]>;
+  getDocumentsByOrder(orderId: string): Promise<Document[]>;
+  getDocumentsByShipment(shipmentId: string): Promise<Document[]>;
+  getDocumentsByTags(tags: string[]): Promise<Document[]>;
+  
+  // Document version control
+  getDocumentVersions(documentId: string): Promise<DocumentVersion[]>;
+  getDocumentVersionHistory(documentId: string): Promise<DocumentVersionHistory>;
+  createDocumentVersion(version: InsertDocumentVersion, auditContext?: AuditContext): Promise<DocumentVersion>;
+  getDocumentVersion(versionId: string): Promise<DocumentVersion | undefined>;
+  approveDocumentVersion(versionId: string, userId: string, auditContext?: AuditContext): Promise<DocumentVersion>;
+  rollbackToVersion(documentId: string, versionId: string, userId: string, auditContext?: AuditContext): Promise<{
+    document: Document;
+    newVersion: DocumentVersion;
+  }>;
+  compareDocumentVersions(versionId1: string, versionId2: string): Promise<{
+    version1: DocumentVersion;
+    version2: DocumentVersion;
+    differences: Array<{
+      field: string;
+      version1Value: any;
+      version2Value: any;
+      type: 'added' | 'removed' | 'modified';
+    }>;
+  }>;
+  
+  // Document metadata management
+  getDocumentMetadata(documentId: string): Promise<DocumentMetadata[]>;
+  addDocumentMetadata(metadata: InsertDocumentMetadata, auditContext?: AuditContext): Promise<DocumentMetadata>;
+  updateDocumentMetadata(id: string, metadata: Partial<InsertDocumentMetadata>, auditContext?: AuditContext): Promise<DocumentMetadata>;
+  deleteDocumentMetadata(id: string, auditContext?: AuditContext): Promise<void>;
+  searchDocumentsByMetadata(key: string, value: string): Promise<Document[]>;
+  
+  // Document compliance tracking
+  getDocumentCompliance(documentId: string): Promise<DocumentCompliance[]>;
+  addDocumentCompliance(compliance: InsertDocumentCompliance, auditContext?: AuditContext): Promise<DocumentCompliance>;
+  updateDocumentCompliance(id: string, compliance: Partial<InsertDocumentCompliance>, auditContext?: AuditContext): Promise<DocumentCompliance>;
+  deleteDocumentCompliance(id: string, auditContext?: AuditContext): Promise<void>;
+  getExpiringCompliance(days: number): Promise<ComplianceAlert[]>;
+  getExpiredCompliance(): Promise<ComplianceAlert[]>;
+  getComplianceByStatus(status: string): Promise<DocumentCompliance[]>;
+  updateComplianceStatus(id: string, status: string, userId: string, auditContext?: AuditContext): Promise<DocumentCompliance>;
+  
+  // Compliance dashboard and monitoring
+  getComplianceDashboard(userId?: string): Promise<ComplianceDashboard>;
+  getComplianceAlerts(priority?: 'low' | 'medium' | 'high' | 'critical', limit?: number): Promise<ComplianceAlert[]>;
+  getUpcomingRenewals(days?: number): Promise<ComplianceAlert[]>;
+  getCriticalComplianceItems(): Promise<ComplianceAlert[]>;
+  markComplianceReminderSent(complianceId: string): Promise<void>;
+  generateComplianceReport(filters?: ComplianceFilterRequest): Promise<{
+    summary: {
+      total: number;
+      compliant: number;
+      nonCompliant: number;
+      expiringSoon: number;
+      expired: number;
+      pendingReview: number;
+    };
+    details: DocumentCompliance[];
+    recommendations: string[];
+  }>;
+  
+  // Document access logging and audit
+  logDocumentAccess(accessLog: InsertDocumentAccessLog): Promise<DocumentAccessLog>;
+  getDocumentAccessLogs(documentId: string, limit?: number, offset?: number): Promise<DocumentAccessLog[]>;
+  getDocumentAccessHistory(documentId: string, userId?: string): Promise<DocumentAccessLog[]>;
+  getUserDocumentAccessHistory(userId: string, limit?: number, offset?: number): Promise<DocumentAccessLog[]>;
+  detectSuspiciousDocumentAccess(documentId?: string): Promise<Array<{
+    documentId: string;
+    documentTitle: string;
+    userId: string;
+    userName: string;
+    accessPattern: string;
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    details: string;
+  }>>;
+  
+  // Document workflow integration
+  getDocumentWorkflowStates(documentId: string): Promise<DocumentWorkflowState[]>;
+  createDocumentWorkflowState(workflowState: InsertDocumentWorkflowState, auditContext?: AuditContext): Promise<DocumentWorkflowState>;
+  updateDocumentWorkflowState(id: string, workflowState: Partial<InsertDocumentWorkflowState>, auditContext?: AuditContext): Promise<DocumentWorkflowState>;
+  completeDocumentWorkflowState(id: string, outcome: string, comments?: string, userId?: string): Promise<DocumentWorkflowState>;
+  
+  // Document analytics and reporting
+  getDocumentAnalytics(dateFrom?: Date, dateTo?: Date): Promise<DocumentAnalytics>;
+  getDocumentStatistics(): Promise<{
+    totalDocuments: number;
+    documentsByCategory: Array<{ category: string; count: number; percentage: number }>;
+    documentsByStatus: Array<{ status: string; count: number; percentage: number }>;
+    documentsByAccessLevel: Array<{ accessLevel: string; count: number; percentage: number }>;
+    recentlyCreated: number;
+    recentlyModified: number;
+    averageFileSize: number;
+    totalStorageUsed: number;
+    mostActiveUsers: Array<{ userId: string; userName: string; activityCount: number }>;
+  }>;
+  getRecentDocumentActivity(limit?: number): Promise<Array<{
+    documentId: string;
+    documentTitle: string;
+    action: string;
+    userName: string;
+    userRole: string;
+    timestamp: Date;
+    details?: string;
+  }>>;
+  
+  // Document file management
+  generateDocumentNumber(category: string): Promise<string>;
+  validateDocumentFile(filePath: string, contentType: string, fileSize: number): Promise<{
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  }>;
+  calculateFileChecksum(filePath: string): Promise<string>;
+  getDocumentStorageInfo(): Promise<{
+    totalFiles: number;
+    totalSize: number;
+    averageSize: number;
+    sizeByCategory: Array<{ category: string; totalSize: number; fileCount: number }>;
+    oldestFile: Date;
+    newestFile: Date;
+  }>;
+  
+  // Document export and backup
+  exportDocuments(filters?: DocumentSearchRequest): Promise<{
+    documents: DocumentWithMetadata[];
+    exportInfo: {
+      totalDocuments: number;
+      totalSize: number;
+      exportDate: Date;
+      exportedBy: string;
+    };
+  }>;
+  
+  // Document bulk operations
+  bulkUpdateDocuments(documentIds: string[], updates: Partial<InsertDocument>, userId: string): Promise<{
+    updated: number;
+    failed: Array<{ documentId: string; error: string }>;
+  }>;
+  bulkDeleteDocuments(documentIds: string[], userId: string): Promise<{
+    deleted: number;
+    failed: Array<{ documentId: string; error: string }>;
+  }>;
+  bulkUpdateDocumentStatus(documentIds: string[], status: string, userId: string): Promise<{
+    updated: number;
+    failed: Array<{ documentId: string; error: string }>;
   }>;
 }
 

@@ -15,6 +15,7 @@ import {
   genericPeriodGuard,
   strictPeriodGuard 
 } from "./periodGuard";
+import { DocumentService, upload } from "./documentService";
 import { z } from "zod";
 import Decimal from "decimal.js";
 import crypto from "crypto";
@@ -73,6 +74,14 @@ import {
   cashFlowAnalysisRequestSchema,
   budgetTrackingRequestSchema,
   insertFinancialPeriodSchema,
+  // Document management schemas
+  documentUploadSchema,
+  documentSearchSchema,
+  documentUpdateSchema,
+  documentVersionCreateSchema,
+  documentComplianceUpdateSchema,
+  complianceFilterSchema,
+  insertDocumentSchema,
   insertFinancialMetricSchema,
   insertProfitLossStatementSchema,
   insertCashFlowAnalysisSchema,
@@ -4302,6 +4311,327 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching customer account balance:", error);
       res.status(500).json({ message: "Failed to fetch customer account balance" });
+    }
+  });
+
+  // ===============================================
+  // DOCUMENT MANAGEMENT API ENDPOINTS
+  // ===============================================
+
+  // Document upload
+  app.post('/api/documents/upload', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), 
+    upload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const documentData = documentUploadSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      const result = await DocumentService.processFileUpload(req.file, documentData, userId);
+      
+      res.json({
+        message: "Document uploaded successfully",
+        document: result.document,
+        validation: result.validation
+      });
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to upload document" });
+    }
+  });
+
+  // Document search and listing
+  app.get('/api/documents', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
+    try {
+      const searchRequest = documentSearchSchema.parse(req.query);
+      const userId = req.user.claims.sub;
+      
+      const result = await DocumentService.searchDocuments(searchRequest, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error searching documents:", error);
+      res.status(500).json({ message: "Failed to search documents" });
+    }
+  });
+
+  // Get single document
+  app.get('/api/documents/:id', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const document = await storage.getDocumentWithMetadata(id, userId);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      res.json(document);
+    } catch (error) {
+      console.error("Error fetching document:", error);
+      res.status(500).json({ message: "Failed to fetch document" });
+    }
+  });
+
+  // Update document
+  app.patch('/api/documents/:id', requireRole(['admin', 'finance', 'purchasing']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const updateData = documentUpdateSchema.parse({ ...req.body, id });
+      const userId = req.user.claims.sub;
+      
+      const document = await storage.updateDocument(id, updateData, {
+        userId,
+        userName: 'Document Update',
+        source: 'document_management'
+      });
+      
+      res.json(document);
+    } catch (error) {
+      console.error("Error updating document:", error);
+      res.status(500).json({ message: "Failed to update document" });
+    }
+  });
+
+  // Delete document
+  app.delete('/api/documents/:id', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      await DocumentService.deleteDocument(id, userId);
+      res.json({ message: "Document deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // Download document
+  app.get('/api/documents/:id/download', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const fileInfo = await DocumentService.downloadDocument(id, userId);
+      
+      res.download(fileInfo.filePath, fileInfo.fileName, {
+        headers: {
+          'Content-Type': fileInfo.contentType
+        }
+      });
+    } catch (error) {
+      console.error("Error downloading document:", error);
+      res.status(500).json({ message: "Failed to download document" });
+    }
+  });
+
+  // Document version control
+  app.get('/api/documents/:id/versions', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const versions = await storage.getDocumentVersionHistory(id);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching document versions:", error);
+      res.status(500).json({ message: "Failed to fetch document versions" });
+    }
+  });
+
+  // Create new document version
+  app.post('/api/documents/:id/versions', requireRole(['admin', 'finance', 'purchasing']), 
+    upload.single('file'), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const { id } = req.params;
+      const versionData = documentVersionCreateSchema.parse({ ...req.body, documentId: id });
+      const userId = req.user.claims.sub;
+      
+      const result = await DocumentService.createDocumentVersion(id, req.file, versionData, userId);
+      
+      res.json({
+        message: "Document version created successfully",
+        document: result.document,
+        version: result.version
+      });
+    } catch (error) {
+      console.error("Error creating document version:", error);
+      res.status(500).json({ message: "Failed to create document version" });
+    }
+  });
+
+  // Document compliance management
+  app.get('/api/documents/:id/compliance', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const compliance = await storage.getDocumentCompliance(id);
+      res.json(compliance);
+    } catch (error) {
+      console.error("Error fetching document compliance:", error);
+      res.status(500).json({ message: "Failed to fetch document compliance" });
+    }
+  });
+
+  app.post('/api/documents/:id/compliance', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const complianceData = documentComplianceUpdateSchema.parse({ ...req.body, documentId: id });
+      const userId = req.user.claims.sub;
+      
+      const compliance = await storage.addDocumentCompliance(complianceData, {
+        userId,
+        userName: 'Compliance Update',
+        source: 'compliance_management'
+      });
+      
+      res.json(compliance);
+    } catch (error) {
+      console.error("Error adding document compliance:", error);
+      res.status(500).json({ message: "Failed to add document compliance" });
+    }
+  });
+
+  // Compliance dashboard
+  app.get('/api/compliance/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const dashboard = await DocumentService.getComplianceDashboard(userId);
+      res.json(dashboard);
+    } catch (error) {
+      console.error("Error fetching compliance dashboard:", error);
+      res.status(500).json({ message: "Failed to fetch compliance dashboard" });
+    }
+  });
+
+  // Compliance alerts and monitoring
+  app.get('/api/compliance/alerts', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { priority, limit } = req.query;
+      const alerts = await storage.getComplianceAlerts(
+        priority as any, 
+        limit ? parseInt(limit as string) : 20
+      );
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching compliance alerts:", error);
+      res.status(500).json({ message: "Failed to fetch compliance alerts" });
+    }
+  });
+
+  app.get('/api/compliance/expiring', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { days } = req.query;
+      const expiringItems = await storage.getExpiringCompliance(
+        days ? parseInt(days as string) : 30
+      );
+      res.json(expiringItems);
+    } catch (error) {
+      console.error("Error fetching expiring compliance items:", error);
+      res.status(500).json({ message: "Failed to fetch expiring compliance items" });
+    }
+  });
+
+  // Document analytics
+  app.get('/api/documents/analytics', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query;
+      const analytics = await DocumentService.getDocumentAnalytics(
+        dateFrom ? new Date(dateFrom as string) : undefined,
+        dateTo ? new Date(dateTo as string) : undefined
+      );
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching document analytics:", error);
+      res.status(500).json({ message: "Failed to fetch document analytics" });
+    }
+  });
+
+  // Document statistics
+  app.get('/api/documents/statistics', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const statistics = await storage.getDocumentStatistics();
+      res.json(statistics);
+    } catch (error) {
+      console.error("Error fetching document statistics:", error);
+      res.status(500).json({ message: "Failed to fetch document statistics" });
+    }
+  });
+
+  // Document activity feed
+  app.get('/api/documents/activity', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const activity = await storage.getRecentDocumentActivity(
+        limit ? parseInt(limit as string) : 50
+      );
+      res.json(activity);
+    } catch (error) {
+      console.error("Error fetching document activity:", error);
+      res.status(500).json({ message: "Failed to fetch document activity" });
+    }
+  });
+
+  // Document access logs
+  app.get('/api/documents/:id/access-logs', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { limit, offset } = req.query;
+      const logs = await storage.getDocumentAccessLogs(
+        id,
+        limit ? parseInt(limit as string) : 50,
+        offset ? parseInt(offset as string) : 0
+      );
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching document access logs:", error);
+      res.status(500).json({ message: "Failed to fetch document access logs" });
+    }
+  });
+
+  // Bulk operations
+  app.patch('/api/documents/bulk/status', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { documentIds, status } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!Array.isArray(documentIds) || !status) {
+        return res.status(400).json({ message: "Invalid request data" });
+      }
+      
+      const result = await storage.bulkUpdateDocumentStatus(documentIds, status, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error bulk updating document status:", error);
+      res.status(500).json({ message: "Failed to bulk update document status" });
+    }
+  });
+
+  app.delete('/api/documents/bulk', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { documentIds } = req.body;
+      const userId = req.user.claims.sub;
+      
+      if (!Array.isArray(documentIds)) {
+        return res.status(400).json({ message: "Invalid request data" });
+      }
+      
+      const result = await storage.bulkDeleteDocuments(documentIds, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error bulk deleting documents:", error);
+      res.status(500).json({ message: "Failed to bulk delete documents" });
     }
   });
 
