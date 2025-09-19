@@ -9116,6 +9116,787 @@ export class DatabaseStorage implements IStorage {
     
     return date.toLocaleDateString();
   }
+
+  // ===============================================
+  // STAGE 7 REVENUE MANAGEMENT IMPLEMENTATION
+  // ===============================================
+
+  // ===== REVENUE LEDGER OPERATIONS =====
+
+  async getRevenueLedger(filter?: RevenueLedgerFilter): Promise<RevenueLedger[]> {
+    try {
+      let query = db.select().from(revenueLedger);
+      
+      const conditions = [];
+      
+      if (filter) {
+        if (filter.type) {
+          conditions.push(eq(revenueLedger.type, filter.type));
+        }
+        if (filter.customerId) {
+          conditions.push(eq(revenueLedger.customerId, filter.customerId));
+        }
+        if (filter.salesOrderId) {
+          conditions.push(eq(revenueLedger.salesOrderId, filter.salesOrderId));
+        }
+        if (filter.withdrawalId) {
+          conditions.push(eq(revenueLedger.withdrawalId, filter.withdrawalId));
+        }
+        if (filter.reinvestmentId) {
+          conditions.push(eq(revenueLedger.reinvestmentId, filter.reinvestmentId));
+        }
+        if (filter.accountingPeriod) {
+          conditions.push(eq(revenueLedger.accountingPeriod, filter.accountingPeriod));
+        }
+        if (filter.periodClosed !== undefined) {
+          conditions.push(eq(revenueLedger.periodClosed, filter.periodClosed));
+        }
+        if (filter.dateFrom) {
+          conditions.push(gte(revenueLedger.date, new Date(filter.dateFrom)));
+        }
+        if (filter.dateTo) {
+          conditions.push(lte(revenueLedger.date, new Date(filter.dateTo)));
+        }
+        if (filter.minAmount) {
+          conditions.push(gte(revenueLedger.amountUsd, filter.minAmount.toString()));
+        }
+        if (filter.maxAmount) {
+          conditions.push(lte(revenueLedger.amountUsd, filter.maxAmount.toString()));
+        }
+        if (filter.currency) {
+          conditions.push(eq(revenueLedger.currency, filter.currency));
+        }
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      query = query.orderBy(desc(revenueLedger.date));
+
+      if (filter?.limit) {
+        query = query.limit(filter.limit);
+      }
+      if (filter?.offset) {
+        query = query.offset(filter.offset);
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error fetching revenue ledger:', error);
+      throw new Error('Failed to fetch revenue ledger');
+    }
+  }
+
+  async getRevenueLedgerEntry(id: string): Promise<RevenueLedger | undefined> {
+    try {
+      const [entry] = await db
+        .select()
+        .from(revenueLedger)
+        .where(eq(revenueLedger.id, id));
+      return entry;
+    } catch (error) {
+      console.error('Error fetching revenue ledger entry:', error);
+      throw new Error('Failed to fetch revenue ledger entry');
+    }
+  }
+
+  async createRevenueLedgerEntry(entryData: InsertRevenueLedger, auditContext: AuditContext): Promise<RevenueLedger> {
+    try {
+      // Generate unique entry ID
+      const revEntryId = `REV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Calculate USD amount if not USD currency
+      let amountUsd = new Decimal(entryData.amount);
+      if (entryData.currency !== 'USD' && entryData.exchangeRate) {
+        amountUsd = amountUsd.div(new Decimal(entryData.exchangeRate));
+      }
+
+      // Get current accounting period
+      const currentPeriod = this.getCurrentAccountingPeriod();
+
+      const [newEntry] = await db
+        .insert(revenueLedger)
+        .values({
+          ...entryData,
+          revEntryId,
+          amountUsd: amountUsd.toFixed(2),
+          accountingPeriod: entryData.accountingPeriod || currentPeriod,
+          createdBy: auditContext.userId,
+        })
+        .returning();
+
+      // Audit logging
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'revenue_ledger',
+        newEntry.id,
+        'create',
+        'revenue_management',
+        null,
+        entryData,
+        undefined,
+        undefined,
+        `Created revenue ledger entry: ${entryData.type} for ${amountUsd.toFixed(2)} USD`
+      );
+
+      // Update revenue balance summary
+      await this.updateRevenueBalanceSummary(newEntry.accountingPeriod, auditContext.userId);
+
+      return newEntry;
+    } catch (error) {
+      console.error('Error creating revenue ledger entry:', error);
+      throw new Error('Failed to create revenue ledger entry');
+    }
+  }
+
+  async createCustomerReceiptEntry(receiptData: CustomerReceipt, auditContext: AuditContext): Promise<RevenueLedger> {
+    try {
+      const entryData: InsertRevenueLedger = {
+        type: 'customer_receipt',
+        amount: receiptData.amount.toString(),
+        currency: receiptData.currency,
+        exchangeRate: receiptData.exchangeRate?.toString(),
+        customerId: receiptData.customerId,
+        salesOrderId: receiptData.salesOrderId,
+        invoiceId: receiptData.invoiceId,
+        receiptId: receiptData.receiptId,
+        orderIds: receiptData.orderIds,
+        description: receiptData.description,
+        note: receiptData.note,
+        date: receiptData.recognitionDate ? new Date(receiptData.recognitionDate) : new Date(),
+      };
+
+      return await this.createRevenueLedgerEntry(entryData, auditContext);
+    } catch (error) {
+      console.error('Error creating customer receipt entry:', error);
+      throw new Error('Failed to create customer receipt entry');
+    }
+  }
+
+  async createCustomerRefundEntry(refundData: CustomerRefund, auditContext: AuditContext): Promise<RevenueLedger> {
+    try {
+      const entryData: InsertRevenueLedger = {
+        type: 'customer_refund',
+        amount: (-Math.abs(refundData.amount)).toString(), // Ensure negative for refunds
+        currency: refundData.currency,
+        exchangeRate: refundData.exchangeRate?.toString(),
+        customerId: refundData.customerId,
+        salesOrderId: refundData.salesOrderId,
+        invoiceId: refundData.originalInvoiceId,
+        returnId: refundData.returnId,
+        orderIds: refundData.orderIds,
+        description: refundData.description,
+        note: refundData.note,
+        date: refundData.refundDate ? new Date(refundData.refundDate) : new Date(),
+      };
+
+      return await this.createRevenueLedgerEntry(entryData, auditContext);
+    } catch (error) {
+      console.error('Error creating customer refund entry:', error);
+      throw new Error('Failed to create customer refund entry');
+    }
+  }
+
+  // ===== WITHDRAWAL RECORDS OPERATIONS =====
+
+  async getWithdrawalRecords(filter?: WithdrawalRecordFilter): Promise<WithdrawalRecord[]> {
+    try {
+      let query = db.select().from(withdrawalRecords);
+      
+      const conditions = [];
+      
+      if (filter) {
+        if (filter.partner) {
+          conditions.push(ilike(withdrawalRecords.partner, `%${filter.partner}%`));
+        }
+        if (filter.status) {
+          conditions.push(eq(withdrawalRecords.status, filter.status));
+        }
+        if (filter.dateFrom) {
+          conditions.push(gte(withdrawalRecords.date, new Date(filter.dateFrom)));
+        }
+        if (filter.dateTo) {
+          conditions.push(lte(withdrawalRecords.date, new Date(filter.dateTo)));
+        }
+        if (filter.minAmount) {
+          conditions.push(gte(withdrawalRecords.amountUsd, filter.minAmount.toString()));
+        }
+        if (filter.maxAmount) {
+          conditions.push(lte(withdrawalRecords.amountUsd, filter.maxAmount.toString()));
+        }
+        if (filter.currency) {
+          conditions.push(eq(withdrawalRecords.currency, filter.currency));
+        }
+        if (filter.paymentMethod) {
+          conditions.push(eq(withdrawalRecords.paymentMethod, filter.paymentMethod));
+        }
+        if (filter.approvalRequestId) {
+          conditions.push(eq(withdrawalRecords.approvalRequestId, filter.approvalRequestId));
+        }
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      query = query.orderBy(desc(withdrawalRecords.date));
+
+      if (filter?.limit) {
+        query = query.limit(filter.limit);
+      }
+      if (filter?.offset) {
+        query = query.offset(filter.offset);
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error fetching withdrawal records:', error);
+      throw new Error('Failed to fetch withdrawal records');
+    }
+  }
+
+  async getWithdrawalRecord(id: string): Promise<WithdrawalRecord | undefined> {
+    try {
+      const [record] = await db
+        .select()
+        .from(withdrawalRecords)
+        .where(eq(withdrawalRecords.id, id));
+      return record;
+    } catch (error) {
+      console.error('Error fetching withdrawal record:', error);
+      throw new Error('Failed to fetch withdrawal record');
+    }
+  }
+
+  async createWithdrawalRecord(withdrawalData: InsertWithdrawalRecord, auditContext: AuditContext): Promise<WithdrawalRecord> {
+    try {
+      return await db.transaction(async (tx) => {
+        // Validate withdrawable balance
+        const currentBalance = await this.getWithdrawableBalance();
+        const withdrawalAmount = new Decimal(withdrawalData.amount);
+        
+        if (withdrawalAmount.gt(currentBalance)) {
+          throw new Error(`Insufficient withdrawable balance. Available: ${currentBalance.toFixed(2)} USD, Requested: ${withdrawalAmount.toFixed(2)} USD`);
+        }
+
+        // Generate unique withdrawal ID
+        const withdrawalId = `WD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Calculate USD amount if not USD currency
+        let amountUsd = withdrawalAmount;
+        if (withdrawalData.currency !== 'USD' && withdrawalData.exchangeRate) {
+          amountUsd = amountUsd.div(new Decimal(withdrawalData.exchangeRate));
+        }
+
+        const [newRecord] = await tx
+          .insert(withdrawalRecords)
+          .values({
+            ...withdrawalData,
+            withdrawalId,
+            amountUsd: amountUsd.toFixed(2),
+            createdBy: auditContext.userId,
+          })
+          .returning();
+
+        // Create corresponding revenue ledger entry
+        const revenueLedgerEntry: InsertRevenueLedger = {
+          type: 'withdrawal',
+          amount: (-amountUsd.toNumber()).toString(), // Negative for withdrawal
+          currency: 'USD',
+          withdrawalId: newRecord.id,
+          description: `Partner withdrawal - ${withdrawalData.partner}`,
+          note: withdrawalData.note,
+          accountingPeriod: this.getCurrentAccountingPeriod(),
+        };
+
+        await tx
+          .insert(revenueLedger)
+          .values({
+            ...revenueLedgerEntry,
+            revEntryId: `REV-WD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            amountUsd: revenueLedgerEntry.amount,
+            createdBy: auditContext.userId,
+          });
+
+        // Audit logging
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'withdrawal_records',
+          newRecord.id,
+          'create',
+          'revenue_management',
+          null,
+          withdrawalData,
+          undefined,
+          undefined,
+          `Created withdrawal record for ${withdrawalData.partner}: ${amountUsd.toFixed(2)} USD`
+        );
+
+        return newRecord;
+      });
+    } catch (error) {
+      console.error('Error creating withdrawal record:', error);
+      if (error instanceof Error && error.message.includes('Insufficient withdrawable balance')) {
+        throw error;
+      }
+      throw new Error('Failed to create withdrawal record');
+    }
+  }
+
+  async approveWithdrawal(id: string, approval: WithdrawalApproval, auditContext: AuditContext): Promise<WithdrawalRecord> {
+    try {
+      const [updatedRecord] = await db
+        .update(withdrawalRecords)
+        .set({
+          status: approval.approved ? 'completed' : 'cancelled',
+          approvedBy: auditContext.userId,
+          approvedAt: new Date(),
+          completedAt: approval.approved ? new Date() : null,
+          note: approval.note || undefined,
+          updatedAt: new Date(),
+        })
+        .where(eq(withdrawalRecords.id, id))
+        .returning();
+
+      // Audit logging
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'withdrawal_records',
+        updatedRecord.id,
+        'update',
+        'revenue_management',
+        null,
+        approval,
+        undefined,
+        undefined,
+        `${approval.approved ? 'Approved' : 'Rejected'} withdrawal: ${updatedRecord.withdrawalId}`
+      );
+
+      return updatedRecord;
+    } catch (error) {
+      console.error('Error approving withdrawal:', error);
+      throw new Error('Failed to approve withdrawal');
+    }
+  }
+
+  // ===== REINVESTMENT OPERATIONS =====
+
+  async getReinvestments(filter?: ReinvestmentFilter): Promise<Reinvestment[]> {
+    try {
+      let query = db.select().from(reinvestments);
+      
+      const conditions = [];
+      
+      if (filter) {
+        if (filter.status) {
+          conditions.push(eq(reinvestments.status, filter.status));
+        }
+        if (filter.allocationPolicy) {
+          conditions.push(eq(reinvestments.allocationPolicy, filter.allocationPolicy));
+        }
+        if (filter.dateFrom) {
+          conditions.push(gte(reinvestments.date, new Date(filter.dateFrom)));
+        }
+        if (filter.dateTo) {
+          conditions.push(lte(reinvestments.date, new Date(filter.dateTo)));
+        }
+        if (filter.minAmount) {
+          conditions.push(gte(reinvestments.amount, filter.minAmount.toString()));
+        }
+        if (filter.maxAmount) {
+          conditions.push(lte(reinvestments.amount, filter.maxAmount.toString()));
+        }
+        if (filter.counterparty) {
+          conditions.push(ilike(reinvestments.counterparty, `%${filter.counterparty}%`));
+        }
+        if (filter.capitalEntryId) {
+          conditions.push(eq(reinvestments.capitalEntryId, filter.capitalEntryId));
+        }
+        if (filter.approvalRequestId) {
+          conditions.push(eq(reinvestments.approvalRequestId, filter.approvalRequestId));
+        }
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      query = query.orderBy(desc(reinvestments.date));
+
+      if (filter?.limit) {
+        query = query.limit(filter.limit);
+      }
+      if (filter?.offset) {
+        query = query.offset(filter.offset);
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error fetching reinvestments:', error);
+      throw new Error('Failed to fetch reinvestments');
+    }
+  }
+
+  async getReinvestment(id: string): Promise<Reinvestment | undefined> {
+    try {
+      const [record] = await db
+        .select()
+        .from(reinvestments)
+        .where(eq(reinvestments.id, id));
+      return record;
+    } catch (error) {
+      console.error('Error fetching reinvestment:', error);
+      throw new Error('Failed to fetch reinvestment');
+    }
+  }
+
+  async createReinvestment(reinvestmentData: InsertReinvestment, auditContext: AuditContext): Promise<Reinvestment> {
+    try {
+      return await db.transaction(async (tx) => {
+        // Validate withdrawable balance
+        const currentBalance = await this.getWithdrawableBalance();
+        const transferAmount = new Decimal(reinvestmentData.amount);
+        const transferCost = new Decimal(reinvestmentData.transferCost || '0');
+        const totalRequired = transferAmount.add(transferCost);
+        
+        if (totalRequired.gt(currentBalance)) {
+          throw new Error(`Insufficient withdrawable balance. Available: ${currentBalance.toFixed(2)} USD, Required: ${totalRequired.toFixed(2)} USD (${transferAmount.toFixed(2)} + ${transferCost.toFixed(2)} fees)`);
+        }
+
+        // Generate unique reinvestment ID
+        const reinvestId = `RV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Calculate USD amounts
+        let transferCostUsd = transferCost;
+        if (reinvestmentData.feeCurrency !== 'USD' && reinvestmentData.feeExchangeRate) {
+          transferCostUsd = transferCost.div(new Decimal(reinvestmentData.feeExchangeRate));
+        }
+
+        const [newRecord] = await tx
+          .insert(reinvestments)
+          .values({
+            ...reinvestmentData,
+            reinvestId,
+            transferCostUsd: transferCostUsd.toFixed(2),
+            createdBy: auditContext.userId,
+          })
+          .returning();
+
+        // Create capital entry for the transfer amount
+        const capitalEntry = await this.createCapitalEntry({
+          amount: transferAmount.toFixed(2),
+          type: 'CapitalIn',
+          reference: newRecord.id,
+          description: `Revenue reinvestment - ${reinvestId}`,
+          paymentCurrency: 'USD',
+        }, auditContext);
+
+        // Create operating expense for transfer fees if any
+        let operatingExpenseId: string | undefined;
+        if (transferCostUsd.gt(0)) {
+          const operatingExpense = await this.createOperatingExpense({
+            categoryId: await this.getOrCreateTransferFeeCategoryId(),
+            description: `Transfer fees for revenue reinvestment - ${reinvestId}`,
+            amount: transferCostUsd.toFixed(2),
+            currency: 'USD',
+            paymentDate: new Date().toISOString().split('T')[0],
+            fundingSource: 'external', // Transfer fees are external costs
+            createdBy: auditContext.userId,
+          }, auditContext);
+          operatingExpenseId = operatingExpense.id;
+        }
+
+        // Update reinvestment with generated entry IDs
+        const [updatedRecord] = await tx
+          .update(reinvestments)
+          .set({
+            capitalEntryId: capitalEntry.id,
+            operatingExpenseId,
+            updatedAt: new Date(),
+          })
+          .where(eq(reinvestments.id, newRecord.id))
+          .returning();
+
+        // Create revenue ledger entries
+        const currentPeriod = this.getCurrentAccountingPeriod();
+        
+        // Entry for reinvestment out (negative)
+        await tx
+          .insert(revenueLedger)
+          .values({
+            revEntryId: `REV-RO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: 'reinvest_out',
+            amount: (-transferAmount.toNumber()).toString(),
+            currency: 'USD',
+            amountUsd: (-transferAmount.toNumber()).toString(),
+            reinvestmentId: updatedRecord.id,
+            description: `Revenue reinvestment to capital - ${reinvestId}`,
+            note: reinvestmentData.note,
+            accountingPeriod: currentPeriod,
+            createdBy: auditContext.userId,
+          });
+
+        // Entry for transfer fees (negative) if any
+        if (transferCostUsd.gt(0)) {
+          await tx
+            .insert(revenueLedger)
+            .values({
+              revEntryId: `REV-TF-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              type: 'transfer_fee',
+              amount: (-transferCostUsd.toNumber()).toString(),
+              currency: 'USD',
+              amountUsd: (-transferCostUsd.toNumber()).toString(),
+              reinvestmentId: updatedRecord.id,
+              description: `Transfer fees for reinvestment - ${reinvestId}`,
+              note: `Bank/wire transfer fees`,
+              accountingPeriod: currentPeriod,
+              createdBy: auditContext.userId,
+            });
+        }
+
+        // Audit logging
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'reinvestments',
+          updatedRecord.id,
+          'create',
+          'revenue_management',
+          null,
+          reinvestmentData,
+          undefined,
+          undefined,
+          `Created reinvestment: ${transferAmount.toFixed(2)} USD to capital (fees: ${transferCostUsd.toFixed(2)} USD)`
+        );
+
+        return updatedRecord;
+      });
+    } catch (error) {
+      console.error('Error creating reinvestment:', error);
+      if (error instanceof Error && error.message.includes('Insufficient withdrawable balance')) {
+        throw error;
+      }
+      throw new Error('Failed to create reinvestment');
+    }
+  }
+
+  async approveReinvestment(id: string, approval: ReinvestmentApproval, auditContext: AuditContext): Promise<Reinvestment> {
+    try {
+      const [updatedRecord] = await db
+        .update(reinvestments)
+        .set({
+          status: approval.approved ? 'completed' : 'cancelled',
+          approvedBy: auditContext.userId,
+          approvedAt: new Date(),
+          completedAt: approval.approved ? new Date() : null,
+          note: approval.note || undefined,
+          updatedAt: new Date(),
+        })
+        .where(eq(reinvestments.id, id))
+        .returning();
+
+      // Audit logging
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'reinvestments',
+        updatedRecord.id,
+        'update',
+        'revenue_management',
+        null,
+        approval,
+        undefined,
+        undefined,
+        `${approval.approved ? 'Approved' : 'Rejected'} reinvestment: ${updatedRecord.reinvestId}`
+      );
+
+      return updatedRecord;
+    } catch (error) {
+      console.error('Error approving reinvestment:', error);
+      throw new Error('Failed to approve reinvestment');
+    }
+  }
+
+  // ===== REVENUE BALANCE CALCULATIONS =====
+
+  async getWithdrawableBalance(): Promise<Decimal> {
+    try {
+      const result = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${revenueLedger.amountUsd}), 0)`,
+        })
+        .from(revenueLedger);
+
+      return new Decimal(result[0]?.total || '0');
+    } catch (error) {
+      console.error('Error calculating withdrawable balance:', error);
+      return new Decimal('0');
+    }
+  }
+
+  async getAccountingRevenue(accountingPeriod?: string): Promise<Decimal> {
+    try {
+      let query = db
+        .select({
+          total: sql<string>`COALESCE(SUM(${revenueLedger.amountUsd}), 0)`,
+        })
+        .from(revenueLedger)
+        .where(or(
+          eq(revenueLedger.type, 'customer_receipt'),
+          eq(revenueLedger.type, 'customer_refund')
+        ));
+
+      if (accountingPeriod) {
+        query = query.where(and(
+          or(
+            eq(revenueLedger.type, 'customer_receipt'),
+            eq(revenueLedger.type, 'customer_refund')
+          ),
+          eq(revenueLedger.accountingPeriod, accountingPeriod)
+        ));
+      }
+
+      const result = await query;
+      return new Decimal(result[0]?.total || '0');
+    } catch (error) {
+      console.error('Error calculating accounting revenue:', error);
+      return new Decimal('0');
+    }
+  }
+
+  async updateRevenueBalanceSummary(accountingPeriod: string, calculatedBy: string): Promise<RevenueBalanceSummary> {
+    try {
+      // Calculate all totals for the period
+      const periodQuery = eq(revenueLedger.accountingPeriod, accountingPeriod);
+      
+      // Customer receipts total
+      const customerReceiptsResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${revenueLedger.amountUsd}), 0)`,
+        })
+        .from(revenueLedger)
+        .where(and(periodQuery, eq(revenueLedger.type, 'customer_receipt')));
+      
+      // Customer refunds total
+      const customerRefundsResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(ABS(${revenueLedger.amountUsd})), 0)`,
+        })
+        .from(revenueLedger)
+        .where(and(periodQuery, eq(revenueLedger.type, 'customer_refund')));
+      
+      // Withdrawals total
+      const withdrawalsResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(ABS(${revenueLedger.amountUsd})), 0)`,
+        })
+        .from(revenueLedger)
+        .where(and(periodQuery, eq(revenueLedger.type, 'withdrawal')));
+      
+      // Reinvestments total
+      const reinvestmentsResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(ABS(${revenueLedger.amountUsd})), 0)`,
+        })
+        .from(revenueLedger)
+        .where(and(periodQuery, eq(revenueLedger.type, 'reinvest_out')));
+      
+      // Transfer fees total
+      const transferFeesResult = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(ABS(${revenueLedger.amountUsd})), 0)`,
+        })
+        .from(revenueLedger)
+        .where(and(periodQuery, eq(revenueLedger.type, 'transfer_fee')));
+
+      const totalCustomerReceipts = new Decimal(customerReceiptsResult[0]?.total || '0');
+      const totalCustomerRefunds = new Decimal(customerRefundsResult[0]?.total || '0');
+      const totalWithdrawals = new Decimal(withdrawalsResult[0]?.total || '0');
+      const totalReinvestments = new Decimal(reinvestmentsResult[0]?.total || '0');
+      const totalTransferFees = new Decimal(transferFeesResult[0]?.total || '0');
+
+      const netAccountingRevenue = totalCustomerReceipts.minus(totalCustomerRefunds);
+      const withdrawableBalance = totalCustomerReceipts
+        .minus(totalCustomerRefunds)
+        .minus(totalWithdrawals)
+        .minus(totalReinvestments)
+        .minus(totalTransferFees);
+
+      // Calculate period dates
+      const currentYear = new Date().getFullYear();
+      const [year, month] = accountingPeriod.split('-').map(Number);
+      const periodStart = new Date(year || currentYear, (month || 1) - 1, 1);
+      const periodEnd = new Date(year || currentYear, month || 1, 0);
+
+      const summaryData: InsertRevenueBalanceSummary = {
+        accountingPeriod,
+        periodStart,
+        periodEnd,
+        totalCustomerReceipts: totalCustomerReceipts.toFixed(2),
+        totalCustomerRefunds: totalCustomerRefunds.toFixed(2),
+        netAccountingRevenue: netAccountingRevenue.toFixed(2),
+        totalWithdrawals: totalWithdrawals.toFixed(2),
+        totalReinvestments: totalReinvestments.toFixed(2),
+        totalTransferFees: totalTransferFees.toFixed(2),
+        withdrawableBalance: withdrawableBalance.toFixed(2),
+        calculatedBy,
+      };
+
+      // Upsert the summary
+      const [summary] = await db
+        .insert(revenueBalanceSummary)
+        .values(summaryData)
+        .onConflictDoUpdate({
+          target: revenueBalanceSummary.accountingPeriod,
+          set: {
+            ...summaryData,
+            lastCalculatedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      return summary;
+    } catch (error) {
+      console.error('Error updating revenue balance summary:', error);
+      throw new Error('Failed to update revenue balance summary');
+    }
+  }
+
+  // ===== HELPER METHODS =====
+
+  private getCurrentAccountingPeriod(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private async getOrCreateTransferFeeCategoryId(): Promise<string> {
+    try {
+      // Try to find existing transfer fee category
+      const [existingCategory] = await db
+        .select()
+        .from(operatingExpenseCategories)
+        .where(eq(operatingExpenseCategories.categoryName, 'Transfer Fees'));
+
+      if (existingCategory) {
+        return existingCategory.id;
+      }
+
+      // Create new category if not exists
+      const [newCategory] = await db
+        .insert(operatingExpenseCategories)
+        .values({
+          categoryName: 'Transfer Fees',
+          description: 'Bank and wire transfer fees for revenue operations',
+          isActive: true,
+        })
+        .returning();
+
+      return newCategory.id;
+    } catch (error) {
+      console.error('Error getting/creating transfer fee category:', error);
+      throw new Error('Failed to get transfer fee category');
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();
