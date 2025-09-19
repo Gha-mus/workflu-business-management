@@ -50,7 +50,13 @@ import {
   Users,
   FileText,
   ArrowUpDown,
-  RefreshCw
+  RefreshCw,
+  CheckCircle,
+  AlertTriangle,
+  XCircle,
+  Clock,
+  Shield,
+  AlertCircle
 } from "lucide-react";
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -67,6 +73,12 @@ export default function Reports() {
   const [selectedPeriod, setSelectedPeriod] = useState('last-30-days');
   const [activeTab, setActiveTab] = useState('overview');
   const [isExporting, setIsExporting] = useState(false);
+  
+  // State for validation
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationProgress, setValidationProgress] = useState(0);
+  const [validationStatus, setValidationStatus] = useState<string>('');
+  const [showValidationResults, setShowValidationResults] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -136,6 +148,132 @@ export default function Reports() {
       toast({
         title: "Export Failed",
         description: "Failed to export report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Validation functionality
+  const handleValidateWorkflow = async () => {
+    setIsValidating(true);
+    setValidationProgress(0);
+    setValidationStatus('Initializing validation...');
+
+    try {
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setValidationProgress(prev => {
+          if (prev < 90) return prev + 10;
+          return prev;
+        });
+      }, 2000);
+
+      setValidationStatus('Processing business document...');
+      
+      const response = await fetch('/api/ai/validate-workflow', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
+
+      clearInterval(progressInterval);
+      setValidationProgress(100);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Validation failed');
+      }
+
+      const result = await response.json();
+      
+      setValidationStatus('Validation completed successfully!');
+      
+      toast({
+        title: "Validation Complete",
+        description: `Workflow validation completed with status: ${result.overallStatus}`,
+      });
+
+      // Refresh validation data
+      await refetchValidation();
+      setShowValidationResults(true);
+      
+    } catch (error: any) {
+      console.error('Validation error:', error);
+      
+      if (error.message.includes('rate limit') || error.message.includes('recently')) {
+        toast({
+          title: "Rate Limited",
+          description: "Validation was run recently. Please wait before running again.",
+          variant: "destructive",
+        });
+      } else if (error.message.includes('OpenAI API key')) {
+        toast({
+          title: "AI Service Error",
+          description: "AI service not configured. Please contact administrator.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Validation Failed",
+          description: error.message || "Failed to validate workflow",
+          variant: "destructive",
+        });
+      }
+      
+      setValidationStatus('Validation failed');
+    } finally {
+      setIsValidating(false);
+      setTimeout(() => {
+        setValidationProgress(0);
+        setValidationStatus('');
+      }, 3000);
+    }
+  };
+
+  // Export validation results
+  const handleExportValidation = async (validationId: string, format: string = 'json') => {
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/ai/validation/${validationId}/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ format }),
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('Export failed');
+      
+      const result = await response.json();
+      
+      if (format === 'json' && result.validationReport) {
+        // Direct download for JSON format
+        const blob = new Blob([JSON.stringify(result.validationReport, null, 2)], { 
+          type: 'application/json' 
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `validation_report_${validationId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+      
+      toast({
+        title: "Export Successful",
+        description: `Validation report exported successfully`,
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to export validation report",
         variant: "destructive",
       });
     } finally {
@@ -215,6 +353,30 @@ export default function Reports() {
       if (!response.ok) throw new Error('Failed to fetch trading activity');
       return response.json();
     }
+  });
+
+  // Validation queries
+  const { data: latestValidation, isLoading: validationLoading, refetch: refetchValidation } = useQuery({
+    queryKey: ['/api/ai/validation/latest'],
+    queryFn: async () => {
+      const response = await fetch('/api/ai/validation/latest');
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error('Failed to fetch validation results');
+      }
+      return response.json();
+    },
+    enabled: isAuthenticated
+  });
+
+  const { data: validationHistory } = useQuery({
+    queryKey: ['/api/ai/validation/history'],
+    queryFn: async () => {
+      const response = await fetch('/api/ai/validation/history?limit=5');
+      if (!response.ok) throw new Error('Failed to fetch validation history');
+      return response.json();
+    },
+    enabled: isAuthenticated
   });
 
   // Enhanced KPIs with real-time calculations
@@ -416,13 +578,14 @@ export default function Reports() {
         {/* Content */}
         <div className="flex-1 overflow-auto bg-background p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="financial">Financial</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
               <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
               <TabsTrigger value="trading">Trading</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="validation">Validation</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -1121,6 +1284,294 @@ export default function Reports() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="validation" className="space-y-6">
+              {/* Validation Header and Controls */}
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold">Workflow Validation</h2>
+                  <p className="text-muted-foreground">
+                    Compare system implementation against business requirements document
+                  </p>
+                </div>
+                <Button
+                  onClick={handleValidateWorkflow}
+                  disabled={isValidating}
+                  data-testid="button-validate-workflow"
+                  className="flex items-center gap-2"
+                >
+                  {isValidating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Validating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-4 w-4" />
+                      Validate Against Document
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Validation Progress */}
+              {isValidating && (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
+                        <div className="flex-1">
+                          <p className="font-medium">Validation in Progress</p>
+                          <p className="text-sm text-muted-foreground">{validationStatus}</p>
+                        </div>
+                        <span className="text-sm font-medium">{validationProgress}%</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${validationProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Latest Validation Results */}
+              {latestValidation && (
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-semibold">Latest Validation Results</h3>
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
+                              latestValidation.overallStatus === 'matched' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                : latestValidation.overallStatus === 'partial' 
+                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            }`}
+                          >
+                            {latestValidation.overallStatus === 'matched' && <CheckCircle className="h-4 w-4" />}
+                            {latestValidation.overallStatus === 'partial' && <AlertTriangle className="h-4 w-4" />}
+                            {latestValidation.overallStatus === 'missing' && <XCircle className="h-4 w-4" />}
+                            {latestValidation.overallStatus.charAt(0).toUpperCase() + latestValidation.overallStatus.slice(1)}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleExportValidation(latestValidation.validationId)}
+                            disabled={isExporting}
+                            data-testid="button-export-validation"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Export
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Completed: {new Date(latestValidation.completedAt).toLocaleString()}
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div className="text-center p-4 border rounded-lg">
+                          <p className="text-2xl font-bold text-red-600">
+                            {latestValidation.summary?.criticalGaps || 0}
+                          </p>
+                          <p className="text-sm text-muted-foreground">Critical Gaps</p>
+                        </div>
+                        <div className="text-center p-4 border rounded-lg">
+                          <p className="text-2xl font-bold text-yellow-600">
+                            {latestValidation.summary?.highPriorityGaps || 0}
+                          </p>
+                          <p className="text-sm text-muted-foreground">High Priority</p>
+                        </div>
+                        <div className="text-center p-4 border rounded-lg">
+                          <p className="text-2xl font-bold text-blue-600">
+                            {latestValidation.summary?.totalGaps || 0}
+                          </p>
+                          <p className="text-sm text-muted-foreground">Total Gaps</p>
+                        </div>
+                      </div>
+
+                      {latestValidation.summary?.recommendations && (
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Key Recommendations</h4>
+                          <ul className="space-y-1">
+                            {latestValidation.summary.recommendations.slice(0, 3).map((rec: string, index: number) => (
+                              <li key={index} className="text-sm text-muted-foreground flex items-start gap-2">
+                                <AlertCircle className="h-4 w-4 mt-0.5 text-blue-500" />
+                                {rec}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Stage-by-Stage Analysis */}
+                  {latestValidation.gapReport?.stages && (
+                    <Card>
+                      <CardHeader>
+                        <h3 className="text-lg font-semibold">Stage Analysis</h3>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {Object.entries(latestValidation.gapReport.stages).map(([stageName, stageData]: [string, any]) => (
+                            <div key={stageName} className="border rounded-lg p-4">
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-medium capitalize">{stageName.replace('_', ' ')}</h4>
+                                <div className={`flex items-center gap-2 px-2 py-1 rounded text-sm ${
+                                  stageData.status === 'matched' 
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                    : stageData.status === 'partial' 
+                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                }`}>
+                                  {stageData.status === 'matched' && <CheckCircle className="h-3 w-3" />}
+                                  {stageData.status === 'partial' && <AlertTriangle className="h-3 w-3" />}
+                                  {stageData.status === 'missing' && <XCircle className="h-3 w-3" />}
+                                  {stageData.status}
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                {stageData.missingItems && stageData.missingItems.length > 0 && (
+                                  <div>
+                                    <p className="font-medium text-red-600 mb-2">Missing Items</p>
+                                    <ul className="space-y-1">
+                                      {stageData.missingItems.slice(0, 3).map((item: string, index: number) => (
+                                        <li key={index} className="text-muted-foreground">• {item}</li>
+                                      ))}
+                                      {stageData.missingItems.length > 3 && (
+                                        <li className="text-muted-foreground italic">
+                                          +{stageData.missingItems.length - 3} more items
+                                        </li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {stageData.remediation && stageData.remediation.length > 0 && (
+                                  <div>
+                                    <p className="font-medium text-blue-600 mb-2">Remediation Steps</p>
+                                    <ul className="space-y-1">
+                                      {stageData.remediation.slice(0, 2).map((step: string, index: number) => (
+                                        <li key={index} className="text-muted-foreground">• {step}</li>
+                                      ))}
+                                      {stageData.remediation.length > 2 && (
+                                        <li className="text-muted-foreground italic">
+                                          +{stageData.remediation.length - 2} more steps
+                                        </li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+
+                              {stageData.severity && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                                    stageData.severity === 'critical' 
+                                      ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                      : stageData.severity === 'high' 
+                                      ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+                                      : stageData.severity === 'medium'
+                                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                                      : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+                                  }`}>
+                                    Severity: {stageData.severity}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Validation History */}
+              {validationHistory && validationHistory.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <h3 className="text-lg font-semibold">Validation History</h3>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {validationHistory.map((validation: any) => (
+                        <div key={validation.validationId} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <div className={`flex items-center gap-2 ${
+                              validation.overallStatus === 'matched' 
+                                ? 'text-green-600'
+                                : validation.overallStatus === 'partial' 
+                                ? 'text-yellow-600'
+                                : 'text-red-600'
+                            }`}>
+                              {validation.overallStatus === 'matched' && <CheckCircle className="h-4 w-4" />}
+                              {validation.overallStatus === 'partial' && <AlertTriangle className="h-4 w-4" />}
+                              {validation.overallStatus === 'missing' && <XCircle className="h-4 w-4" />}
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {validation.overallStatus.charAt(0).toUpperCase() + validation.overallStatus.slice(1)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(validation.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {validation.summary?.totalGaps || 0} gaps
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleExportValidation(validation.validationId)}
+                              data-testid={`button-export-${validation.validationId}`}
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* No Validation Results */}
+              {!latestValidation && !validationLoading && (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center py-12">
+                      <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No Validation Results</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Run your first workflow validation to compare the system against business requirements.
+                      </p>
+                      <Button
+                        onClick={handleValidateWorkflow}
+                        disabled={isValidating}
+                        data-testid="button-first-validation"
+                      >
+                        <Shield className="h-4 w-4 mr-2" />
+                        Start Validation
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
           </Tabs>
         </div>

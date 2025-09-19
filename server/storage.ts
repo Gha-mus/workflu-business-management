@@ -9,6 +9,13 @@ import {
   settings,
   aiInsightsCache,
   aiConversations,
+  periods,
+  periodClosingLogs,
+  periodAdjustments,
+  exportHistory,
+  exportPreferences,
+  exportJobs,
+  workflowValidations,
   type User,
   type UpsertUser,
   type Supplier,
@@ -29,6 +36,20 @@ import {
   type InsertAiInsightsCache,
   type AiConversation,
   type InsertAiConversation,
+  type Period,
+  type InsertPeriod,
+  type PeriodClosingLog,
+  type InsertPeriodClosingLog,
+  type PeriodAdjustment,
+  type InsertPeriodAdjustment,
+  type ExportHistory,
+  type InsertExportHistory,
+  type ExportPreferences,
+  type InsertExportPreferences,
+  type ExportJob,
+  type InsertExportJob,
+  type WorkflowValidation,
+  type InsertWorkflowValidation,
   type FinancialSummaryResponse,
   type CashFlowResponse,
   type InventoryAnalyticsResponse,
@@ -108,6 +129,57 @@ export interface IStorage {
   getAiConversation(sessionId: string, userId: string): Promise<AiConversation | undefined>;
   createOrUpdateAiConversation(conversation: InsertAiConversation): Promise<AiConversation>;
   getRecentAiConversations(userId: string, limit: number): Promise<AiConversation[]>;
+  
+  // Workflow validation operations
+  getWorkflowValidations(userId?: string, limit?: number): Promise<WorkflowValidation[]>;
+  getLatestWorkflowValidation(userId?: string): Promise<WorkflowValidation | undefined>;
+  createWorkflowValidation(validation: InsertWorkflowValidation): Promise<WorkflowValidation>;
+  updateWorkflowValidationAsLatest(validationId: string): Promise<void>;
+  
+  // Period management operations
+  getPeriods(): Promise<Period[]>;
+  getPeriod(id: string): Promise<Period | undefined>;
+  createPeriod(period: InsertPeriod): Promise<Period>;
+  updatePeriod(id: string, period: Partial<InsertPeriod>): Promise<Period>;
+  closePeriod(periodId: string, userId: string, adjustments?: InsertPeriodAdjustment[]): Promise<Period>;
+  reopenPeriod(periodId: string, userId: string, reason: string): Promise<Period>;
+  getPeriodClosingLogs(periodId: string): Promise<PeriodClosingLog[]>;
+  createPeriodAdjustment(adjustment: InsertPeriodAdjustment): Promise<PeriodAdjustment>;
+  getPeriodAdjustments(periodId: string): Promise<PeriodAdjustment[]>;
+  approvePeriodAdjustment(adjustmentId: string, userId: string): Promise<PeriodAdjustment>;
+  
+  // Enhanced export operations
+  createExportRequest(exportData: InsertExportHistory): Promise<ExportHistory>;
+  getExportHistory(userId?: string, limit?: number): Promise<ExportHistory[]>;
+  updateExportStatus(exportId: string, status: string, filePath?: string, fileSize?: number): Promise<ExportHistory>;
+  getExportJob(id: string): Promise<ExportHistory | undefined>;
+  deleteExpiredExports(): Promise<void>;
+  incrementDownloadCount(exportId: string): Promise<void>;
+  
+  // Enhanced period operations with compliance
+  closePeriodWithCompliance(periodId: string, userId: string, adjustments?: InsertPeriodAdjustment[], complianceData?: {
+    complianceValidationId?: string | null;
+    aiValidationStatus: 'passed' | 'skipped' | 'failed';
+  }): Promise<Period>;
+  reopenPeriodWithAudit(periodId: string, userId: string, reason: string): Promise<Period>;
+  
+  // Export preferences operations
+  getUserExportPreferences(userId: string, reportType?: string): Promise<ExportPreferences[]>;
+  setExportPreference(preference: InsertExportPreferences): Promise<ExportPreferences>;
+  updateExportPreference(userId: string, reportType: string, updates: Partial<InsertExportPreferences>): Promise<ExportPreferences>;
+  
+  // Scheduled export operations
+  getExportJobs(userId?: string): Promise<ExportJob[]>;
+  createExportJob(job: InsertExportJob): Promise<ExportJob>;
+  updateExportJob(id: string, updates: Partial<InsertExportJob>): Promise<ExportJob>;
+  deleteExportJob(id: string): Promise<void>;
+  
+  // Enhanced export format operations
+  exportToCSV(data: any[], filename: string): Promise<string>;
+  exportToExcel(data: Record<string, any[]>, filename: string): Promise<string>;
+  exportToPDF(data: any, reportType: string, filename: string): Promise<string>;
+  compressFile(filePath: string): Promise<string>;
+  sendEmailWithAttachment(recipients: string[], subject: string, body: string, attachmentPath: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1305,6 +1377,591 @@ export class DatabaseStorage implements IStorage {
       .where(eq(aiConversations.userId, userId))
       .orderBy(desc(aiConversations.updatedAt))
       .limit(limit);
+  }
+
+  // Workflow validation operations
+  async getWorkflowValidations(userId?: string, limit: number = 10): Promise<WorkflowValidation[]> {
+    const query = db
+      .select()
+      .from(workflowValidations)
+      .orderBy(desc(workflowValidations.createdAt))
+      .limit(limit);
+
+    if (userId) {
+      return await query.where(eq(workflowValidations.userId, userId));
+    }
+    return await query;
+  }
+
+  async getLatestWorkflowValidation(userId?: string): Promise<WorkflowValidation | undefined> {
+    const query = db
+      .select()
+      .from(workflowValidations)
+      .where(eq(workflowValidations.isLatest, true))
+      .orderBy(desc(workflowValidations.createdAt))
+      .limit(1);
+
+    if (userId) {
+      const [validation] = await query.where(eq(workflowValidations.userId, userId));
+      return validation;
+    }
+    
+    const [validation] = await query;
+    return validation;
+  }
+
+  async createWorkflowValidation(validation: InsertWorkflowValidation): Promise<WorkflowValidation> {
+    return await db.transaction(async (tx) => {
+      // Mark all previous validations as not latest
+      await tx
+        .update(workflowValidations)
+        .set({ isLatest: false })
+        .where(eq(workflowValidations.userId, validation.userId));
+
+      // Insert new validation with completedAt timestamp
+      const [result] = await tx
+        .insert(workflowValidations)
+        .values({
+          ...validation,
+          isLatest: true,
+          completedAt: new Date(),
+        })
+        .returning();
+
+      return result;
+    });
+  }
+
+  async updateWorkflowValidationAsLatest(validationId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Get the validation to update
+      const [validation] = await tx
+        .select()
+        .from(workflowValidations)
+        .where(eq(workflowValidations.id, validationId));
+
+      if (!validation) {
+        throw new Error('Validation not found');
+      }
+
+      // Mark all previous validations for this user as not latest
+      await tx
+        .update(workflowValidations)
+        .set({ isLatest: false })
+        .where(eq(workflowValidations.userId, validation.userId));
+
+      // Mark the specified validation as latest
+      await tx
+        .update(workflowValidations)
+        .set({ isLatest: true })
+        .where(eq(workflowValidations.id, validationId));
+    });
+  }
+
+  // Period management operations
+  async getPeriods(): Promise<Period[]> {
+    return await db.select().from(periods).orderBy(desc(periods.createdAt));
+  }
+
+  async getPeriod(id: string): Promise<Period | undefined> {
+    const [period] = await db.select().from(periods).where(eq(periods.id, id));
+    return period;
+  }
+
+  async createPeriod(period: InsertPeriod): Promise<Period> {
+    const [result] = await db.insert(periods).values(period).returning();
+    return result;
+  }
+
+  async updatePeriod(id: string, period: Partial<InsertPeriod>): Promise<Period> {
+    const [result] = await db
+      .update(periods)
+      .set({ ...period, updatedAt: new Date() })
+      .where(eq(periods.id, id))
+      .returning();
+    return result;
+  }
+
+  async closePeriod(periodId: string, userId: string, adjustments?: InsertPeriodAdjustment[]): Promise<Period> {
+    // Start transaction for period closing
+    return await db.transaction(async (tx) => {
+      // Create adjustments if provided
+      if (adjustments && adjustments.length > 0) {
+        for (const adjustment of adjustments) {
+          await tx.insert(periodAdjustments).values({
+            ...adjustment,
+            periodId,
+            createdBy: userId,
+            approvedBy: userId,
+            approvedAt: new Date()
+          });
+        }
+      }
+
+      // Create closing log entry
+      await tx.insert(periodClosingLogs).values({
+        periodId,
+        action: 'close',
+        performedBy: userId,
+        description: 'Period closed with final adjustments',
+        metadata: { adjustmentCount: adjustments?.length || 0 }
+      });
+
+      // Update period status to closed
+      const [result] = await tx
+        .update(periods)
+        .set({ 
+          status: 'closed',
+          closedBy: userId,
+          closedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(periods.id, periodId))
+        .returning();
+
+      return result;
+    });
+  }
+
+  async closePeriodWithCompliance(
+    periodId: string, 
+    userId: string, 
+    adjustments?: InsertPeriodAdjustment[],
+    complianceData?: {
+      complianceValidationId?: string | null;
+      aiValidationStatus: 'passed' | 'skipped' | 'failed';
+    }
+  ): Promise<Period> {
+    // Start transaction for period closing with compliance
+    return await db.transaction(async (tx) => {
+      // Create adjustments if provided
+      if (adjustments && adjustments.length > 0) {
+        for (const adjustment of adjustments) {
+          await tx.insert(periodAdjustments).values({
+            ...adjustment,
+            periodId,
+            createdBy: userId,
+            approvedBy: userId,
+            approvedAt: new Date()
+          });
+        }
+      }
+
+      // Create comprehensive closing log entry with compliance data
+      await tx.insert(periodClosingLogs).values({
+        periodId,
+        action: 'close',
+        performedBy: userId,
+        description: 'Period closed with compliance validation and final adjustments',
+        metadata: { 
+          adjustmentCount: adjustments?.length || 0,
+          complianceValidationId: complianceData?.complianceValidationId,
+          aiValidationStatus: complianceData?.aiValidationStatus,
+          closingTimestamp: new Date().toISOString(),
+          complianceAttestation: complianceData?.aiValidationStatus === 'passed'
+        }
+      });
+
+      // Update period status to closed
+      const [result] = await tx
+        .update(periods)
+        .set({ 
+          status: 'closed',
+          closedBy: userId,
+          closedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(periods.id, periodId))
+        .returning();
+
+      return result;
+    });
+  }
+
+  async reopenPeriod(periodId: string, userId: string, reason: string): Promise<Period> {
+    return await db.transaction(async (tx) => {
+      // Create log entry for reopening
+      await tx.insert(periodClosingLogs).values({
+        periodId,
+        action: 'reopen',
+        performedBy: userId,
+        description: reason,
+        metadata: { reason }
+      });
+
+      // Update period status to open
+      const [result] = await tx
+        .update(periods)
+        .set({ 
+          status: 'open',
+          closedBy: null,
+          closedAt: null,
+          updatedAt: new Date()
+        })
+        .where(eq(periods.id, periodId))
+        .returning();
+
+      return result;
+    });
+  }
+
+  async reopenPeriodWithAudit(periodId: string, userId: string, reason: string): Promise<Period> {
+    return await db.transaction(async (tx) => {
+      // Get period details for audit
+      const [period] = await tx.select().from(periods).where(eq(periods.id, periodId));
+      
+      if (!period) {
+        throw new Error('Period not found');
+      }
+
+      // Create comprehensive audit log entry for reopening
+      await tx.insert(periodClosingLogs).values({
+        periodId,
+        action: 'reopen',
+        performedBy: userId,
+        description: `Period reopened: ${reason}`,
+        metadata: { 
+          reason,
+          previousStatus: period.status,
+          previousClosedBy: period.closedBy,
+          previousClosedAt: period.closedAt?.toISOString(),
+          reopenTimestamp: new Date().toISOString(),
+          auditTrail: true
+        }
+      });
+
+      // Update period status to open
+      const [result] = await tx
+        .update(periods)
+        .set({ 
+          status: 'open',
+          closedBy: null,
+          closedAt: null,
+          updatedAt: new Date()
+        })
+        .where(eq(periods.id, periodId))
+        .returning();
+
+      return result;
+    });
+  }
+
+  async getPeriodClosingLogs(periodId: string): Promise<PeriodClosingLog[]> {
+    return await db
+      .select()
+      .from(periodClosingLogs)
+      .where(eq(periodClosingLogs.periodId, periodId))
+      .orderBy(desc(periodClosingLogs.createdAt));
+  }
+
+  async createPeriodAdjustment(adjustment: InsertPeriodAdjustment): Promise<PeriodAdjustment> {
+    const [result] = await db.insert(periodAdjustments).values(adjustment).returning();
+    return result;
+  }
+
+  async getPeriodAdjustments(periodId: string): Promise<PeriodAdjustment[]> {
+    return await db
+      .select()
+      .from(periodAdjustments)
+      .where(eq(periodAdjustments.periodId, periodId))
+      .orderBy(desc(periodAdjustments.createdAt));
+  }
+
+  async approvePeriodAdjustment(adjustmentId: string, userId: string): Promise<PeriodAdjustment> {
+    const [result] = await db
+      .update(periodAdjustments)
+      .set({ 
+        approvedBy: userId,
+        approvedAt: new Date()
+      })
+      .where(eq(periodAdjustments.id, adjustmentId))
+      .returning();
+    return result;
+  }
+
+  // Enhanced export operations
+  async createExportRequest(exportData: InsertExportHistory): Promise<ExportHistory> {
+    const [result] = await db.insert(exportHistory).values(exportData).returning();
+    return result;
+  }
+
+  async getExportHistory(userId?: string, limit: number = 50): Promise<ExportHistory[]> {
+    let query = db.select().from(exportHistory);
+    
+    if (userId) {
+      query = query.where(eq(exportHistory.userId, userId));
+    }
+    
+    return await query.orderBy(desc(exportHistory.createdAt)).limit(limit);
+  }
+
+  async updateExportStatus(exportId: string, status: string, filePath?: string, fileSize?: number): Promise<ExportHistory> {
+    const updateData: any = { status };
+    
+    if (filePath) updateData.filePath = filePath;
+    if (fileSize) updateData.fileSize = fileSize;
+    if (status === 'completed') updateData.completedAt = new Date();
+    
+    const [result] = await db
+      .update(exportHistory)
+      .set(updateData)
+      .where(eq(exportHistory.id, exportId))
+      .returning();
+    return result;
+  }
+
+  async getExportJob(id: string): Promise<ExportHistory | undefined> {
+    const [exportJob] = await db.select().from(exportHistory).where(eq(exportHistory.id, id));
+    return exportJob;
+  }
+
+  async deleteExpiredExports(): Promise<void> {
+    await db
+      .delete(exportHistory)
+      .where(and(
+        sql`expires_at IS NOT NULL`,
+        sql`expires_at < NOW()`
+      ));
+  }
+
+  async incrementDownloadCount(exportId: string): Promise<void> {
+    await db
+      .update(exportHistory)
+      .set({ downloadCount: sql`download_count + 1` })
+      .where(eq(exportHistory.id, exportId));
+  }
+
+  // Export preferences operations
+  async getUserExportPreferences(userId: string, reportType?: string): Promise<ExportPreferences[]> {
+    let query = db.select().from(exportPreferences).where(eq(exportPreferences.userId, userId));
+    
+    if (reportType) {
+      query = query.where(and(
+        eq(exportPreferences.userId, userId),
+        eq(exportPreferences.reportType, reportType)
+      ));
+    }
+    
+    return await query.orderBy(desc(exportPreferences.updatedAt));
+  }
+
+  async setExportPreference(preference: InsertExportPreferences): Promise<ExportPreferences> {
+    const [result] = await db
+      .insert(exportPreferences)
+      .values(preference)
+      .onConflictDoUpdate({
+        target: [exportPreferences.userId, exportPreferences.reportType],
+        set: {
+          preferredFormat: preference.preferredFormat,
+          defaultDateRange: preference.defaultDateRange,
+          customFields: preference.customFields,
+          emailDelivery: preference.emailDelivery,
+          compression: preference.compression,
+          updatedAt: new Date()
+        }
+      })
+      .returning();
+    return result;
+  }
+
+  async updateExportPreference(userId: string, reportType: string, updates: Partial<InsertExportPreferences>): Promise<ExportPreferences> {
+    const [result] = await db
+      .update(exportPreferences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(
+        eq(exportPreferences.userId, userId),
+        eq(exportPreferences.reportType, reportType)
+      ))
+      .returning();
+    return result;
+  }
+
+  // Scheduled export operations
+  async getExportJobs(userId?: string): Promise<ExportJob[]> {
+    let query = db.select().from(exportJobs);
+    
+    if (userId) {
+      query = query.where(eq(exportJobs.userId, userId));
+    }
+    
+    return await query.orderBy(desc(exportJobs.createdAt));
+  }
+
+  async createExportJob(job: InsertExportJob): Promise<ExportJob> {
+    const [result] = await db.insert(exportJobs).values(job).returning();
+    return result;
+  }
+
+  async updateExportJob(id: string, updates: Partial<InsertExportJob>): Promise<ExportJob> {
+    const [result] = await db
+      .update(exportJobs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(exportJobs.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteExportJob(id: string): Promise<void> {
+    await db.delete(exportJobs).where(eq(exportJobs.id, id));
+  }
+
+  // Enhanced export format operations
+  async exportToCSV(data: any[], filename: string): Promise<string> {
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    if (!data || data.length === 0) {
+      throw new Error('No data to export');
+    }
+
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => 
+        headers.map(header => {
+          const value = row[header];
+          // Escape commas and quotes in CSV
+          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value || '';
+        }).join(',')
+      )
+    ].join('\n');
+
+    const exportDir = path.join(process.cwd(), 'exports');
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
+
+    const filePath = path.join(exportDir, filename);
+    fs.writeFileSync(filePath, csvContent, 'utf8');
+    
+    return filePath;
+  }
+
+  async exportToExcel(data: Record<string, any[]>, filename: string): Promise<string> {
+    const XLSX = await import('xlsx');
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const workbook = XLSX.utils.book_new();
+
+    // Add each sheet to the workbook
+    Object.entries(data).forEach(([sheetName, sheetData]) => {
+      if (sheetData && sheetData.length > 0) {
+        const worksheet = XLSX.utils.json_to_sheet(sheetData);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      }
+    });
+
+    const exportDir = path.join(process.cwd(), 'exports');
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
+
+    const filePath = path.join(exportDir, filename);
+    XLSX.writeFile(workbook, filePath);
+    
+    return filePath;
+  }
+
+  async exportToPDF(data: any, reportType: string, filename: string): Promise<string> {
+    const jsPDF = (await import('jspdf')).jsPDF;
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(20);
+    doc.text(`WorkFlu ${reportType.replace('_', ' ').toUpperCase()} Report`, 20, 30);
+    
+    // Add date
+    doc.setFontSize(12);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 45);
+    
+    let yPosition = 60;
+    
+    if (Array.isArray(data)) {
+      // Table format for array data
+      const autoTable = (await import('jspdf-autotable')).default;
+      if (data.length > 0) {
+        const headers = Object.keys(data[0]);
+        const rows = data.map(item => headers.map(header => item[header] || ''));
+        
+        autoTable(doc, {
+          head: [headers],
+          body: rows,
+          startY: yPosition,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [63, 123, 191] }
+        });
+      }
+    } else {
+      // Summary format for object data
+      doc.setFontSize(10);
+      Object.entries(data).forEach(([key, value]) => {
+        doc.text(`${key}: ${JSON.stringify(value)}`, 20, yPosition);
+        yPosition += 10;
+      });
+    }
+
+    const exportDir = path.join(process.cwd(), 'exports');
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
+
+    const filePath = path.join(exportDir, filename);
+    doc.save(filePath);
+    
+    return filePath;
+  }
+
+  async compressFile(filePath: string): Promise<string> {
+    const archiver = await import('archiver');
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    const compressedPath = filePath.replace(path.extname(filePath), '.zip');
+    const output = fs.createWriteStream(compressedPath);
+    const archive = archiver.default('zip', { zlib: { level: 9 } });
+    
+    return new Promise((resolve, reject) => {
+      output.on('close', () => resolve(compressedPath));
+      archive.on('error', reject);
+      
+      archive.pipe(output);
+      archive.file(filePath, { name: path.basename(filePath) });
+      archive.finalize();
+    });
+  }
+
+  async sendEmailWithAttachment(recipients: string[], subject: string, body: string, attachmentPath: string): Promise<void> {
+    const nodemailer = await import('nodemailer');
+    
+    // Configure transporter (you may need to configure this based on your email service)
+    const transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST || 'localhost',
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.FROM_EMAIL || 'reports@workflu.com',
+      to: recipients.join(', '),
+      subject,
+      text: body,
+      attachments: [{
+        path: attachmentPath
+      }]
+    };
+
+    await transporter.sendMail(mailOptions);
   }
 }
 

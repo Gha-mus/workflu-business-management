@@ -3,6 +3,14 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole } from "./replitAuth";
 import { aiService } from "./aiService";
+import { exportService } from "./exportService";
+import { 
+  purchasePeriodGuard, 
+  capitalEntryPeriodGuard, 
+  warehousePeriodGuard, 
+  genericPeriodGuard,
+  strictPeriodGuard 
+} from "./periodGuard";
 import { z } from "zod";
 import Decimal from "decimal.js";
 import crypto from "crypto";
@@ -121,7 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/capital/entries', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/capital/entries', requireRole(['admin', 'finance']), capitalEntryPeriodGuard, async (req: any, res) => {
     try {
       const entryData = insertCapitalEntrySchema.parse({
         ...req.body,
@@ -175,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/suppliers', requireRole(['admin', 'purchasing']), async (req, res) => {
+  app.post('/api/suppliers', requireRole(['admin', 'purchasing']), genericPeriodGuard, async (req, res) => {
     try {
       const supplierData = insertSupplierSchema.parse(req.body);
       const supplier = await storage.createSupplier(supplierData);
@@ -210,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/orders', requireRole(['admin', 'sales']), async (req, res) => {
+  app.post('/api/orders', requireRole(['admin', 'sales']), genericPeriodGuard, async (req, res) => {
     try {
       const orderData = insertOrderSchema.parse(req.body);
       const order = await storage.createOrder(orderData);
@@ -232,7 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/purchases', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+  app.post('/api/purchases', requireRole(['admin', 'purchasing']), purchasePeriodGuard, async (req: any, res) => {
     try {
       const purchaseData = insertPurchaseSchema.parse({
         ...req.body,
@@ -345,7 +353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/warehouse/stock/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+  app.patch('/api/warehouse/stock/:id', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req, res) => {
     try {
       const stockData = req.body;
       const stock = await storage.updateWarehouseStock(req.params.id, stockData);
@@ -356,7 +364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/warehouse/stock/:id/status', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.patch('/api/warehouse/stock/:id/status', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -385,7 +393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/filter', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.post('/api/warehouse/filter', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
     try {
       const filterData = warehouseFilterOperationSchema.parse(req.body);
       
@@ -415,7 +423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/move-to-final', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.post('/api/warehouse/move-to-final', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
     try {
       const moveData = warehouseMoveToFinalSchema.parse(req.body);
       
@@ -1102,6 +1110,471 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error cleaning up AI cache:", error);
       res.status(500).json({ message: "Failed to cleanup cache" });
+    }
+  });
+
+  // ======================================
+  // WORKFLOW VALIDATION ENDPOINTS
+  // ======================================
+
+  // Initiate workflow validation against business document
+  app.post('/api/ai/validate-workflow', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Basic rate limiting: check if validation was run recently
+      const recentValidation = await storage.getLatestWorkflowValidation(userId);
+      if (recentValidation) {
+        const timeSinceLastValidation = new Date().getTime() - new Date(recentValidation.createdAt).getTime();
+        const cooldownPeriod = 5 * 60 * 1000; // 5 minutes
+        
+        if (timeSinceLastValidation < cooldownPeriod) {
+          return res.status(429).json({
+            message: 'Validation was run recently. Please wait before running again.',
+            nextAllowedTime: new Date(new Date(recentValidation.createdAt).getTime() + cooldownPeriod).toISOString()
+          });
+        }
+      }
+
+      console.log(`Starting workflow validation for user ${userId}`);
+      
+      // Generate hashes for caching
+      const documentPath = 'attached_assets/workflu_1758260129381.docx';
+      const documentHash = crypto.createHash('md5').update(documentPath + Date.now()).digest('hex');
+      const systemSpecHash = crypto.createHash('md5').update(JSON.stringify({
+        timestamp: Date.now(),
+        version: '1.0'
+      })).digest('hex');
+
+      // Run the complete validation pipeline
+      const gapReport = await aiService.validateWorkflowAgainstDocument();
+
+      // Store validation results
+      const validationResult = await storage.createWorkflowValidation({
+        userId,
+        documentPath,
+        documentHash,
+        systemSpecHash,
+        overallStatus: gapReport.overallStatus,
+        gapReport: gapReport,
+        stageResults: gapReport.stages,
+        summary: gapReport.summary,
+        validationMetadata: {
+          aiModel: 'gpt-5',
+          processingTime: Date.now(),
+          version: '1.0'
+        }
+      });
+
+      // Also create export history entry for compliance tracking
+      await storage.createExportRequest({
+        userId,
+        exportType: 'compliance_report',
+        format: 'json',
+        fileName: `workflow_validation_${Date.now()}.json`,
+        parameters: {
+          validationId: validationResult.id,
+          documentPath,
+          overallStatus: gapReport.overallStatus
+        }
+      });
+
+      console.log(`Workflow validation completed for user ${userId}. Status: ${gapReport.overallStatus}`);
+      
+      res.json({
+        validationId: validationResult.id,
+        overallStatus: gapReport.overallStatus,
+        summary: gapReport.summary,
+        completedAt: validationResult.completedAt,
+        stages: Object.keys(gapReport.stages),
+        message: 'Workflow validation completed successfully'
+      });
+    } catch (error) {
+      console.error("Error validating workflow:", error);
+      
+      if (error.message.includes('OpenAI API key')) {
+        return res.status(500).json({
+          message: "AI service not configured. Please set OPENAI_API_KEY environment variable."
+        });
+      }
+      
+      if (error.message.includes('Document appears to be empty')) {
+        return res.status(400).json({
+          message: "Business document is invalid or corrupted. Please check the document file."
+        });
+      }
+      
+      res.status(500).json({
+        message: "Failed to validate workflow",
+        error: error.message
+      });
+    }
+  });
+
+  // Get latest workflow validation results
+  app.get('/api/ai/validation/latest', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.query.global === 'true' ? undefined : req.user.claims.sub;
+      const validation = await storage.getLatestWorkflowValidation(userId);
+      
+      if (!validation) {
+        return res.status(404).json({
+          message: 'No validation results found. Please run a validation first.'
+        });
+      }
+
+      res.json({
+        validationId: validation.id,
+        overallStatus: validation.overallStatus,
+        gapReport: validation.gapReport,
+        summary: validation.summary,
+        createdAt: validation.createdAt,
+        completedAt: validation.completedAt,
+        documentPath: validation.documentPath,
+        isLatest: validation.isLatest
+      });
+    } catch (error) {
+      console.error("Error fetching latest validation:", error);
+      res.status(500).json({ message: "Failed to fetch validation results" });
+    }
+  });
+
+  // Get validation history
+  app.get('/api/ai/validation/history', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const userId = req.query.userId as string;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const validations = await storage.getWorkflowValidations(userId, limit);
+      
+      res.json(validations.map(validation => ({
+        validationId: validation.id,
+        overallStatus: validation.overallStatus,
+        summary: validation.summary,
+        createdAt: validation.createdAt,
+        completedAt: validation.completedAt,
+        isLatest: validation.isLatest
+      })));
+    } catch (error) {
+      console.error("Error fetching validation history:", error);
+      res.status(500).json({ message: "Failed to fetch validation history" });
+    }
+  });
+
+  // Export validation results
+  app.post('/api/ai/validation/:id/export', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { format = 'json' } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const validations = await storage.getWorkflowValidations(undefined, 100);
+      const validation = validations.find(v => v.id === id);
+      
+      if (!validation) {
+        return res.status(404).json({ message: 'Validation not found' });
+      }
+
+      // Create export request
+      const exportRequest = await storage.createExportRequest({
+        userId,
+        exportType: 'compliance_report',
+        format,
+        fileName: `validation_report_${id}.${format}`,
+        parameters: {
+          validationId: id,
+          format,
+          includeDetails: true
+        }
+      });
+
+      // For immediate download, return the validation data
+      if (format === 'json') {
+        res.json({
+          exportId: exportRequest.id,
+          validationReport: {
+            validationId: validation.id,
+            overallStatus: validation.overallStatus,
+            gapReport: validation.gapReport,
+            summary: validation.summary,
+            createdAt: validation.createdAt,
+            completedAt: validation.completedAt,
+            documentPath: validation.documentPath
+          }
+        });
+      } else {
+        res.json({
+          exportId: exportRequest.id,
+          message: `Export in ${format} format has been queued`,
+          downloadUrl: `/api/exports/${exportRequest.id}/download`
+        });
+      }
+    } catch (error) {
+      console.error("Error exporting validation results:", error);
+      res.status(500).json({ message: "Failed to export validation results" });
+    }
+  });
+
+  // Initialize scheduler service
+  const { schedulerService } = await import('./schedulerService');
+  await schedulerService.initialize();
+
+  // Export job management routes
+  app.get('/api/export-jobs', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobs = await storage.getExportJobs(userId);
+      res.json(jobs);
+    } catch (error) {
+      console.error("Error fetching export jobs:", error);
+      res.status(500).json({ message: "Failed to fetch export jobs" });
+    }
+  });
+
+  app.post('/api/export-jobs', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobData = {
+        ...req.body,
+        userId
+      };
+      
+      const validation = exportService.validateExportParams(jobData);
+      if (!validation.valid) {
+        return res.status(400).json({
+          message: "Invalid export job parameters",
+          errors: validation.errors
+        });
+      }
+
+      const job = await schedulerService.createScheduledJob(jobData);
+      res.json(job);
+    } catch (error) {
+      console.error("Error creating export job:", error);
+      res.status(500).json({ message: "Failed to create export job" });
+    }
+  });
+
+  app.patch('/api/export-jobs/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const job = await schedulerService.updateScheduledJob(id, updates);
+      res.json(job);
+    } catch (error) {
+      console.error("Error updating export job:", error);
+      res.status(500).json({ message: "Failed to update export job" });
+    }
+  });
+
+  app.delete('/api/export-jobs/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await schedulerService.deleteScheduledJob(id);
+      res.json({ message: "Export job deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting export job:", error);
+      res.status(500).json({ message: "Failed to delete export job" });
+    }
+  });
+
+  // Enhanced export routes with real file generation
+  app.post('/api/exports', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const exportParams = {
+        ...req.body,
+        userId
+      };
+
+      const validation = exportService.validateExportParams(exportParams);
+      if (!validation.valid) {
+        return res.status(400).json({
+          message: "Invalid export parameters",
+          errors: validation.errors
+        });
+      }
+
+      const exportRecord = await exportService.createExport(exportParams);
+      res.json(exportRecord);
+    } catch (error) {
+      console.error("Error creating export:", error);
+      res.status(500).json({ message: "Failed to create export" });
+    }
+  });
+
+  app.get('/api/exports/history', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+      const history = await storage.getExportHistory(userId, limit);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching export history:", error);
+      res.status(500).json({ message: "Failed to fetch export history" });
+    }
+  });
+
+  app.get('/api/exports/download/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const exportRecord = await storage.getExportJob(id);
+      
+      if (!exportRecord || !exportRecord.filePath) {
+        return res.status(404).json({ message: "Export file not found" });
+      }
+
+      if (exportRecord.status !== 'completed') {
+        return res.status(400).json({ 
+          message: "Export is not ready for download",
+          status: exportRecord.status
+        });
+      }
+
+      // Increment download count
+      await storage.incrementDownloadCount(id);
+
+      // Set appropriate headers and send file
+      res.download(exportRecord.filePath, exportRecord.fileName);
+    } catch (error) {
+      console.error("Error downloading export:", error);
+      res.status(500).json({ message: "Failed to download export" });
+    }
+  });
+
+  // Enhanced period management routes with compliance integration
+  app.get('/api/periods', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const periods = await storage.getPeriods();
+      res.json(periods);
+    } catch (error) {
+      console.error("Error fetching periods:", error);
+      res.status(500).json({ message: "Failed to fetch periods" });
+    }
+  });
+
+  app.post('/api/periods', requireRole(['admin']), async (req, res) => {
+    try {
+      const periodData = req.body;
+      const period = await storage.createPeriod(periodData);
+      res.json(period);
+    } catch (error) {
+      console.error("Error creating period:", error);
+      res.status(500).json({ message: "Failed to create period" });
+    }
+  });
+
+  app.post('/api/periods/:id/close', requireRole(['admin']), strictPeriodGuard, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const { adjustments, requireCompliance = true } = req.body;
+
+      // Compliance validation - require successful AI validation before closing
+      if (requireCompliance) {
+        const latestValidation = await storage.getLatestWorkflowValidation(userId);
+        
+        if (!latestValidation) {
+          return res.status(400).json({
+            message: "Period closing requires compliance validation. Please run workflow validation first.",
+            error: "COMPLIANCE_VALIDATION_REQUIRED"
+          });
+        }
+
+        const validationAge = Date.now() - new Date(latestValidation.createdAt).getTime();
+        const maxValidationAge = 24 * 60 * 60 * 1000; // 24 hours
+        
+        if (validationAge > maxValidationAge) {
+          return res.status(400).json({
+            message: "Compliance validation is outdated. Please run a fresh validation before closing the period.",
+            error: "COMPLIANCE_VALIDATION_EXPIRED"
+          });
+        }
+
+        if (latestValidation.overallStatus !== 'matched') {
+          return res.status(400).json({
+            message: `Period closing blocked due to compliance issues. Validation status: ${latestValidation.overallStatus}`,
+            error: "COMPLIANCE_VALIDATION_FAILED",
+            validationDetails: latestValidation.summary
+          });
+        }
+      }
+
+      // Close the period with enhanced audit logging
+      const closedPeriod = await storage.closePeriodWithCompliance(id, userId, adjustments, {
+        complianceValidationId: requireCompliance ? (await storage.getLatestWorkflowValidation(userId))?.id : null,
+        aiValidationStatus: requireCompliance ? 'passed' : 'skipped'
+      });
+
+      res.json(closedPeriod);
+    } catch (error) {
+      console.error("Error closing period:", error);
+      res.status(500).json({ message: "Failed to close period" });
+    }
+  });
+
+  app.post('/api/periods/:id/reopen', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const { reason } = req.body;
+
+      if (!reason) {
+        return res.status(400).json({ message: "Reason is required for reopening a period" });
+      }
+
+      const reopenedPeriod = await storage.reopenPeriodWithAudit(id, userId, reason);
+      res.json(reopenedPeriod);
+    } catch (error) {
+      console.error("Error reopening period:", error);
+      res.status(500).json({ message: "Failed to reopen period" });
+    }
+  });
+
+  app.get('/api/periods/:id/logs', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const logs = await storage.getPeriodClosingLogs(id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching period logs:", error);
+      res.status(500).json({ message: "Failed to fetch period logs" });
+    }
+  });
+
+  app.get('/api/periods/:id/adjustments', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const adjustments = await storage.getPeriodAdjustments(id);
+      res.json(adjustments);
+    } catch (error) {
+      console.error("Error fetching period adjustments:", error);
+      res.status(500).json({ message: "Failed to fetch period adjustments" });
+    }
+  });
+
+  app.post('/api/periods/:id/adjustments/:adjustmentId/approve', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const { adjustmentId } = req.params;
+      const userId = req.user.claims.sub;
+      
+      const approvedAdjustment = await storage.approvePeriodAdjustment(adjustmentId, userId);
+      res.json(approvedAdjustment);
+    } catch (error) {
+      console.error("Error approving period adjustment:", error);
+      res.status(500).json({ message: "Failed to approve period adjustment" });
+    }
+  });
+
+  // Scheduler status route
+  app.get('/api/scheduler/status', requireRole(['admin']), async (req, res) => {
+    try {
+      const status = schedulerService.getStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching scheduler status:", error);
+      res.status(500).json({ message: "Failed to fetch scheduler status" });
     }
   });
 
