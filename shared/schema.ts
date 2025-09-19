@@ -417,6 +417,152 @@ export const inventoryAdjustments = pgTable("inventory_adjustments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ===== OPERATING EXPENSES SYSTEM TABLES (STAGE 5) =====
+
+// Supply types enum
+export const supplyTypeEnum = pgEnum('supply_type', ['cartons_8kg', 'cartons_20kg', 'labels', 'wraps', 'other']);
+
+// Operating expense category enum
+export const expenseCategoryEnum = pgEnum('expense_category', ['wages', 'rent', 'utilities', 'supplies', 'transfer_fees', 'other']);
+
+// Supplies table - Inventory of cartons, labels, wraps, etc.
+export const supplies = pgTable("supplies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  supplyNumber: varchar("supply_number").notNull().unique(),
+  name: varchar("name").notNull(),
+  supplyType: supplyTypeEnum("supply_type").notNull(),
+  description: text("description"),
+  unitOfMeasure: varchar("unit_of_measure").notNull(), // pieces, boxes, rolls, etc.
+  
+  // Inventory tracking
+  quantityOnHand: decimal("quantity_on_hand", { precision: 10, scale: 2 }).notNull().default('0'),
+  minimumStock: decimal("minimum_stock", { precision: 10, scale: 2 }).notNull().default('0'),
+  reorderPoint: decimal("reorder_point", { precision: 10, scale: 2 }).notNull().default('0'),
+  
+  // Cost tracking
+  unitCostUsd: decimal("unit_cost_usd", { precision: 10, scale: 4 }).notNull(),
+  totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }).notNull().default('0'),
+  
+  // Purchase information
+  lastPurchaseDate: timestamp("last_purchase_date"),
+  lastPurchasePrice: decimal("last_purchase_price", { precision: 10, scale: 4 }),
+  
+  // Usage tracking for packing
+  usagePerCarton: decimal("usage_per_carton", { precision: 5, scale: 2 }), // How much used per carton packed
+  
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Operating expense categories table
+export const operatingExpenseCategories = pgTable("operating_expense_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryName: varchar("category_name").notNull().unique(),
+  category: expenseCategoryEnum("category").notNull(),
+  description: text("description"),
+  budgetAllocated: decimal("budget_allocated", { precision: 12, scale: 2 }),
+  
+  // Allocation method for order costing
+  allocationMethod: varchar("allocation_method").notNull().default('direct'), // direct, time_based, order_count, weight_based
+  
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Operating expenses table - Wages, rent, utilities, etc.
+export const operatingExpenses = pgTable("operating_expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  expenseNumber: varchar("expense_number").notNull().unique(),
+  categoryId: varchar("category_id").notNull().references(() => operatingExpenseCategories.id),
+  
+  // Expense details
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // Payment tracking
+  paymentMethod: varchar("payment_method").notNull(), // cash, bank_transfer, credit
+  fundingSource: varchar("funding_source").notNull(), // capital, external
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
+  remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
+  
+  // Period and allocation
+  expenseDate: timestamp("expense_date").notNull().defaultNow(),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  
+  // Order allocation (for period expenses like rent)
+  orderId: varchar("order_id").references(() => orders.id), // Direct allocation to specific order
+  allocationToOrders: jsonb("allocation_to_orders"), // JSON with order_id: allocation_amount pairs
+  
+  // Approval and audit
+  isApproved: boolean("is_approved").notNull().default(false),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Supply consumption table - Track supplies used during packing
+export const supplyConsumption = pgTable("supply_consumption", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  consumptionNumber: varchar("consumption_number").notNull().unique(),
+  
+  // What was consumed
+  supplyId: varchar("supply_id").notNull().references(() => supplies.id),
+  quantityConsumed: decimal("quantity_consumed", { precision: 10, scale: 2 }).notNull(),
+  unitCostUsd: decimal("unit_cost_usd", { precision: 10, scale: 4 }).notNull(),
+  totalCostUsd: decimal("total_cost_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // What it was used for
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
+  packingOperation: varchar("packing_operation").notNull(), // packing, labeling, wrapping
+  cartonsProcessed: integer("cartons_processed"), // Number of cartons packed
+  
+  // Automatic vs manual consumption
+  consumptionType: varchar("consumption_type").notNull().default('automatic'), // automatic, manual, adjustment
+  
+  consumedBy: varchar("consumed_by").notNull().references(() => users.id),
+  consumedAt: timestamp("consumed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Supply purchases table - Track supply purchases (separate from goods purchases)
+export const supplyPurchases = pgTable("supply_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseNumber: varchar("purchase_number").notNull().unique(),
+  supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
+  
+  // Purchase details
+  supplyId: varchar("supply_id").notNull().references(() => supplies.id),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 4 }).notNull(),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  
+  // Payment and funding
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  fundingSource: varchar("funding_source").notNull(), // capital, external
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
+  remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
+  
+  purchaseDate: timestamp("purchase_date").notNull().defaultNow(),
+  receivedDate: timestamp("received_date"),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ===== DOCUMENT MANAGEMENT SYSTEM TABLES =====
 
 // Document category enum
@@ -2281,6 +2427,68 @@ export const insertPricingRuleSchema = createInsertSchema(pricingRules).omit({
   updatedAt: true,
 });
 
+// ===== OPERATING EXPENSES SYSTEM SCHEMAS (STAGE 5) =====
+
+export const insertSupplySchema = createInsertSchema(supplies).omit({
+  id: true,
+  supplyNumber: true,
+  totalValueUsd: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOperatingExpenseCategorySchema = createInsertSchema(operatingExpenseCategories).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOperatingExpenseSchema = createInsertSchema(operatingExpenses).omit({
+  id: true,
+  expenseNumber: true,
+  amountUsd: true,
+  remaining: true,
+  approvedAt: true,
+  createdAt: true,
+  updatedAt: true,
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
+export const insertSupplyConsumptionSchema = createInsertSchema(supplyConsumption).omit({
+  id: true,
+  consumptionNumber: true,
+  totalCostUsd: true,
+  createdAt: true,
+});
+
+export const insertSupplyPurchaseSchema = createInsertSchema(supplyPurchases).omit({
+  id: true,
+  purchaseNumber: true,
+  totalAmount: true,
+  amountUsd: true,
+  remaining: true,
+  receivedDate: true,
+  createdAt: true,
+  updatedAt: true,
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -2372,6 +2580,23 @@ export type InsertCustomerCreditLimit = z.infer<typeof insertCustomerCreditLimit
 
 export type PricingRule = typeof pricingRules.$inferSelect;
 export type InsertPricingRule = z.infer<typeof insertPricingRuleSchema>;
+
+// ===== OPERATING EXPENSES SYSTEM TYPES (STAGE 5) =====
+
+export type Supply = typeof supplies.$inferSelect;
+export type InsertSupply = z.infer<typeof insertSupplySchema>;
+
+export type OperatingExpenseCategory = typeof operatingExpenseCategories.$inferSelect;
+export type InsertOperatingExpenseCategory = z.infer<typeof insertOperatingExpenseCategorySchema>;
+
+export type OperatingExpense = typeof operatingExpenses.$inferSelect;
+export type InsertOperatingExpense = z.infer<typeof insertOperatingExpenseSchema>;
+
+export type SupplyConsumption = typeof supplyConsumption.$inferSelect;
+export type InsertSupplyConsumption = z.infer<typeof insertSupplyConsumptionSchema>;
+
+export type SupplyPurchase = typeof supplyPurchases.$inferSelect;
+export type InsertSupplyPurchase = z.infer<typeof insertSupplyPurchaseSchema>;
 
 // ===== APPROVAL WORKFLOW AND AUDIT SYSTEM SCHEMAS AND TYPES =====
 
