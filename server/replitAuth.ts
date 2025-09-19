@@ -4,6 +4,7 @@ import { Strategy, type VerifyFunction } from "openid-client/passport";
 import passport from "passport";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
+import type { User } from "@shared/schema";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
@@ -155,3 +156,51 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return;
   }
 };
+
+/**
+ * Role-based access control middleware
+ * Checks if the authenticated user has one of the required roles
+ */
+export function requireRole(allowedRoles: User['role'][]): RequestHandler {
+  return (req, res, next) => {
+    // Use proper callback pattern with isAuthenticated
+    isAuthenticated(req, res, async () => {
+      // Return early if response headers have already been sent
+      if (res.headersSent) {
+        return;
+      }
+
+      try {
+        const user = req.user as any;
+        const userId = user.claims.sub;
+        
+        // Fetch user data from storage to get role
+        const userData = await storage.getUser(userId);
+        
+        if (!userData) {
+          return res.status(403).json({ message: "Access forbidden: User not found" });
+        }
+
+        if (!userData.isActive) {
+          return res.status(403).json({ message: "Access forbidden: User account is inactive" });
+        }
+
+        // Check if user's role is in the allowed roles
+        if (!allowedRoles.includes(userData.role)) {
+          return res.status(403).json({ 
+            message: `Access forbidden: Required role(s): ${allowedRoles.join(', ')}. Current role: ${userData.role}` 
+          });
+        }
+
+        // User has required role, continue
+        next();
+      } catch (error) {
+        console.error("Error in requireRole middleware:", error);
+        // Check if headers have been sent before responding
+        if (!res.headersSent) {
+          return res.status(500).json({ message: "Internal server error" });
+        }
+      }
+    });
+  };
+}
