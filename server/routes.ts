@@ -1714,6 +1714,341 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== REVENUE MANAGEMENT SYSTEM ROUTES (STAGE 7) =====
+
+  // Revenue ledger routes
+  app.get('/api/revenue/ledger', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const filter = req.query as Partial<RevenueLedgerFilter>;
+      const entries = await storage.getRevenueLedger(filter);
+      res.json(entries);
+    } catch (error) {
+      console.error("Error fetching revenue ledger:", error);
+      res.status(500).json({ message: "Failed to fetch revenue ledger" });
+    }
+  });
+
+  app.get('/api/revenue/ledger/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const entry = await storage.getRevenueLedgerEntry(req.params.id);
+      if (!entry) {
+        return res.status(404).json({ message: "Revenue ledger entry not found" });
+      }
+      res.json(entry);
+    } catch (error) {
+      console.error("Error fetching revenue ledger entry:", error);
+      res.status(500).json({ message: "Failed to fetch revenue ledger entry" });
+    }
+  });
+
+  app.post('/api/revenue/ledger', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const entryData = insertRevenueLedgerSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+
+      const entry = await storage.createRevenueLedgerEntry(entryData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_revenue_ledger',
+        businessContext: `Create revenue ledger entry: ${entryData.type}`
+      });
+
+      res.json(entry);
+    } catch (error) {
+      console.error("Error creating revenue ledger entry:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create revenue ledger entry" });
+    }
+  });
+
+  // Customer receipt/refund routes
+  app.post('/api/revenue/customer-receipt', requireRole(['admin', 'finance', 'sales']), async (req: any, res) => {
+    try {
+      const receiptData = customerReceiptSchema.parse(req.body);
+
+      const entry = await storage.createCustomerReceiptEntry(receiptData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_customer_receipt',
+        businessContext: `Record customer receipt: ${receiptData.amount} ${receiptData.currency}`
+      });
+
+      res.json(entry);
+    } catch (error) {
+      console.error("Error creating customer receipt:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create customer receipt" });
+    }
+  });
+
+  app.post('/api/revenue/customer-refund', requireRole(['admin', 'finance', 'sales']), async (req: any, res) => {
+    try {
+      const refundData = customerRefundSchema.parse(req.body);
+
+      const entry = await storage.createCustomerRefundEntry(refundData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_customer_refund',
+        businessContext: `Record customer refund: ${refundData.amount} ${refundData.currency}`
+      });
+
+      res.json(entry);
+    } catch (error) {
+      console.error("Error creating customer refund:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create customer refund" });
+    }
+  });
+
+  // Withdrawal records routes
+  app.get('/api/revenue/withdrawals', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const filter = req.query as Partial<WithdrawalRecordFilter>;
+      const withdrawals = await storage.getWithdrawalRecords(filter);
+      res.json(withdrawals);
+    } catch (error) {
+      console.error("Error fetching withdrawal records:", error);
+      res.status(500).json({ message: "Failed to fetch withdrawal records" });
+    }
+  });
+
+  app.get('/api/revenue/withdrawals/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const withdrawal = await storage.getWithdrawalRecord(req.params.id);
+      if (!withdrawal) {
+        return res.status(404).json({ message: "Withdrawal record not found" });
+      }
+      res.json(withdrawal);
+    } catch (error) {
+      console.error("Error fetching withdrawal record:", error);
+      res.status(500).json({ message: "Failed to fetch withdrawal record" });
+    }
+  });
+
+  app.post('/api/revenue/withdrawals', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const withdrawalData = insertWithdrawalRecordSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+
+      const withdrawal = await storage.createWithdrawalRecord(withdrawalData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_withdrawals',
+        businessContext: `Create withdrawal for ${withdrawalData.partner}: ${withdrawalData.amount} ${withdrawalData.currency}`
+      });
+
+      res.json(withdrawal);
+    } catch (error) {
+      console.error("Error creating withdrawal:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+
+      // Handle specific business logic errors
+      if (error instanceof Error && error.message.includes('Insufficient withdrawable balance')) {
+        return res.status(400).json({
+          message: error.message,
+          field: "amount",
+          suggestion: "Check current withdrawable balance and reduce withdrawal amount"
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create withdrawal" });
+    }
+  });
+
+  app.patch('/api/revenue/withdrawals/:id/approve', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const approvalData = withdrawalApprovalSchema.parse(req.body);
+      
+      const withdrawal = await storage.approveWithdrawal(req.params.id, approvalData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_withdrawal_approval',
+        businessContext: `${approvalData.approved ? 'Approve' : 'Reject'} withdrawal`
+      });
+
+      res.json(withdrawal);
+    } catch (error) {
+      console.error("Error approving withdrawal:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to approve withdrawal" });
+    }
+  });
+
+  // Reinvestment routes
+  app.get('/api/revenue/reinvestments', requireRole(['admin']), async (req, res) => {
+    try {
+      const filter = req.query as Partial<ReinvestmentFilter>;
+      const reinvestments = await storage.getReinvestments(filter);
+      res.json(reinvestments);
+    } catch (error) {
+      console.error("Error fetching reinvestments:", error);
+      res.status(500).json({ message: "Failed to fetch reinvestments" });
+    }
+  });
+
+  app.get('/api/revenue/reinvestments/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const reinvestment = await storage.getReinvestment(req.params.id);
+      if (!reinvestment) {
+        return res.status(404).json({ message: "Reinvestment not found" });
+      }
+      res.json(reinvestment);
+    } catch (error) {
+      console.error("Error fetching reinvestment:", error);
+      res.status(500).json({ message: "Failed to fetch reinvestment" });
+    }
+  });
+
+  app.post('/api/revenue/reinvestments', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const reinvestmentData = insertReinvestmentSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+
+      const reinvestment = await storage.createReinvestment(reinvestmentData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_reinvestments',
+        businessContext: `Create reinvestment: ${reinvestmentData.amount} USD to capital (fees: ${reinvestmentData.transferCost || 0})`
+      });
+
+      res.json(reinvestment);
+    } catch (error) {
+      console.error("Error creating reinvestment:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+
+      // Handle specific business logic errors
+      if (error instanceof Error && error.message.includes('Insufficient withdrawable balance')) {
+        return res.status(400).json({
+          message: error.message,
+          field: "amount",
+          suggestion: "Check current withdrawable balance and reduce reinvestment amount"
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create reinvestment" });
+    }
+  });
+
+  app.patch('/api/revenue/reinvestments/:id/approve', requireRole(['admin']), async (req: any, res) => {
+    try {
+      const approvalData = reinvestmentApprovalSchema.parse(req.body);
+      
+      const reinvestment = await storage.approveReinvestment(req.params.id, approvalData, {
+        userId: req.user.claims.sub,
+        userName: req.user.claims.email,
+        userRole: req.user.role,
+        source: 'api_reinvestment_approval',
+        businessContext: `${approvalData.approved ? 'Approve' : 'Reject'} reinvestment`
+      });
+
+      res.json(reinvestment);
+    } catch (error) {
+      console.error("Error approving reinvestment:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to approve reinvestment" });
+    }
+  });
+
+  // Revenue balance routes
+  app.get('/api/revenue/balance/withdrawable', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const balance = await storage.getWithdrawableBalance();
+      res.json({ balance: balance.toFixed(2) });
+    } catch (error) {
+      console.error("Error fetching withdrawable balance:", error);
+      res.status(500).json({ message: "Failed to fetch withdrawable balance" });
+    }
+  });
+
+  app.get('/api/revenue/balance/accounting', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const accountingPeriod = req.query.period as string;
+      const revenue = await storage.getAccountingRevenue(accountingPeriod);
+      res.json({ 
+        revenue: revenue.toFixed(2),
+        period: accountingPeriod || 'all_time'
+      });
+    } catch (error) {
+      console.error("Error fetching accounting revenue:", error);
+      res.status(500).json({ message: "Failed to fetch accounting revenue" });
+    }
+  });
+
+  app.get('/api/revenue/balance/summary', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const withdrawableBalance = await storage.getWithdrawableBalance();
+      const accountingRevenue = await storage.getAccountingRevenue();
+      
+      res.json({
+        withdrawableBalance: withdrawableBalance.toFixed(2),
+        accountingRevenue: accountingRevenue.toFixed(2),
+        lastUpdated: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error fetching revenue balance summary:", error);
+      res.status(500).json({ message: "Failed to fetch revenue balance summary" });
+    }
+  });
+
   // Warehouse routes
   app.get('/api/warehouse/stock', requireRole(['admin', 'warehouse']), async (req, res) => {
     try {

@@ -37,7 +37,18 @@ export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', '
 export const approvalStatusEnum = pgEnum('approval_status', ['pending', 'approved', 'rejected', 'cancelled', 'escalated']);
 export const approvalOperationTypeEnum = pgEnum('approval_operation_type', [
   'capital_entry', 'purchase', 'sale_order', 'warehouse_operation', 'shipping_operation', 
-  'financial_adjustment', 'user_role_change', 'system_setting_change', 'system_startup', 'system_diagnostics'
+  'financial_adjustment', 'user_role_change', 'system_setting_change', 'system_startup', 'system_diagnostics',
+  'operating_expense', 'supply_purchase'
+]);
+
+// Revenue entry types enum for Stage 7 Revenue Management
+export const revenueEntryTypeEnum = pgEnum('revenue_entry_type', [
+  'customer_receipt', 'customer_refund', 'withdrawal', 'reinvest_out', 'transfer_fee', 'reclass', 'reverse'
+]);
+
+// Reinvestment allocation policy enum
+export const reinvestmentAllocationPolicyEnum = pgEnum('reinvestment_allocation_policy', [
+  'aggregate', 'pro_rata', 'specified'
 ]);
 export const auditActionEnum = pgEnum('audit_action', [
   'create', 'update', 'delete', 'view', 'approve', 'reject', 'login', 'logout', 'export', 'import'
@@ -1699,6 +1710,177 @@ export const pricingRules = pgTable("pricing_rules", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ===== STAGE 7 REVENUE MANAGEMENT TABLES =====
+
+// Revenue ledger table - central ledger for all revenue-related transactions
+export const revenueLedger = pgTable("revenue_ledger", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  revEntryId: varchar("rev_entry_id").notNull().unique(),
+  
+  // Entry details
+  date: timestamp("date").notNull().defaultNow(),
+  type: revenueEntryTypeEnum("type").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  
+  // Currency handling with historical FX
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // References to source transactions
+  customerId: varchar("customer_id").references(() => customers.id),
+  salesOrderId: varchar("sales_order_id").references(() => salesOrders.id),
+  invoiceId: varchar("invoice_id"), // External invoice reference
+  receiptId: varchar("receipt_id"), // External receipt reference
+  returnId: varchar("return_id"), // External return reference
+  withdrawalId: varchar("withdrawal_id").references(() => withdrawalRecords.id),
+  reinvestmentId: varchar("reinvestment_id").references(() => reinvestments.id),
+  
+  // Business context
+  description: text("description").notNull(),
+  note: text("note"),
+  orderIds: text("order_ids").array(), // For per-order analysis
+  
+  // Accounting period tracking
+  accountingPeriod: varchar("accounting_period").notNull(),
+  periodClosed: boolean("period_closed").notNull().default(false),
+  
+  // Audit fields
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_revenue_ledger_date").on(table.date),
+  index("idx_revenue_ledger_type").on(table.type),
+  index("idx_revenue_ledger_customer").on(table.customerId),
+  index("idx_revenue_ledger_period").on(table.accountingPeriod),
+  index("idx_revenue_ledger_withdrawal").on(table.withdrawalId),
+  index("idx_revenue_ledger_reinvestment").on(table.reinvestmentId),
+]);
+
+// Withdrawal records table - partner withdrawals from revenue balance
+export const withdrawalRecords = pgTable("withdrawal_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  withdrawalId: varchar("withdrawal_id").notNull().unique(),
+  
+  // Withdrawal details
+  partner: varchar("partner").notNull(), // Partner/owner name
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // Withdrawal metadata
+  date: timestamp("date").notNull().defaultNow(),
+  note: text("note"),
+  paymentMethod: varchar("payment_method"), // bank_transfer, cash, check
+  bankAccount: varchar("bank_account"),
+  reference: varchar("reference"), // Bank reference or check number
+  
+  // Approval tracking
+  approvalRequestId: varchar("approval_request_id").references(() => approvalRequests.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  
+  // Status
+  status: varchar("status").notNull().default('pending'), // pending, completed, cancelled
+  completedAt: timestamp("completed_at"),
+  
+  // Audit fields
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_withdrawal_records_date").on(table.date),
+  index("idx_withdrawal_records_partner").on(table.partner),
+  index("idx_withdrawal_records_status").on(table.status),
+  index("idx_withdrawal_records_approval").on(table.approvalRequestId),
+]);
+
+// Reinvestments table - transferring revenue balance to working capital
+export const reinvestments = pgTable("reinvestments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reinvestId: varchar("reinvest_id").notNull().unique(),
+  
+  // Transfer details
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(), // Amount to transfer to capital
+  transferCost: decimal("transfer_cost", { precision: 12, scale: 2 }).notNull().default('0'), // Bank/wire/spread fees
+  
+  // Fee currency handling
+  feeCurrency: varchar("fee_currency").notNull().default('USD'),
+  feeExchangeRate: decimal("fee_exchange_rate", { precision: 10, scale: 4 }),
+  transferCostUsd: decimal("transfer_cost_usd", { precision: 12, scale: 2 }).notNull(),
+  
+  // Transfer metadata
+  date: timestamp("date").notNull().defaultNow(),
+  note: text("note"),
+  counterparty: varchar("counterparty"), // Bank/internal entry
+  bankReference: varchar("bank_reference"),
+  
+  // Allocation policy
+  allocationPolicy: reinvestmentAllocationPolicyEnum("allocation_policy").notNull().default('aggregate'),
+  allocatedOrderIds: text("allocated_order_ids").array(), // For pro-rata or specified allocation
+  allocationDetails: jsonb("allocation_details"), // Detailed allocation breakdown
+  
+  // Generated entries tracking
+  capitalEntryId: varchar("capital_entry_id").references(() => capitalEntries.id), // Link to generated capital entry
+  operatingExpenseId: varchar("operating_expense_id").references(() => operatingExpenses.id), // Link to transfer fee expense
+  
+  // Approval tracking
+  approvalRequestId: varchar("approval_request_id").references(() => approvalRequests.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  
+  // Status
+  status: varchar("status").notNull().default('pending'), // pending, completed, cancelled
+  completedAt: timestamp("completed_at"),
+  
+  // Audit fields
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_reinvestments_date").on(table.date),
+  index("idx_reinvestments_status").on(table.status),
+  index("idx_reinvestments_policy").on(table.allocationPolicy),
+  index("idx_reinvestments_capital").on(table.capitalEntryId),
+  index("idx_reinvestments_approval").on(table.approvalRequestId),
+]);
+
+// Revenue balance summary table - computed balance for quick access
+export const revenueBalanceSummary = pgTable("revenue_balance_summary", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Period details
+  accountingPeriod: varchar("accounting_period").notNull().unique(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  
+  // Revenue totals (accounting view)
+  totalCustomerReceipts: decimal("total_customer_receipts", { precision: 12, scale: 2 }).notNull().default('0'),
+  totalCustomerRefunds: decimal("total_customer_refunds", { precision: 12, scale: 2 }).notNull().default('0'),
+  netAccountingRevenue: decimal("net_accounting_revenue", { precision: 12, scale: 2 }).notNull().default('0'),
+  
+  // Withdrawable balance (cash view)
+  totalWithdrawals: decimal("total_withdrawals", { precision: 12, scale: 2 }).notNull().default('0'),
+  totalReinvestments: decimal("total_reinvestments", { precision: 12, scale: 2 }).notNull().default('0'),
+  totalTransferFees: decimal("total_transfer_fees", { precision: 12, scale: 2 }).notNull().default('0'),
+  withdrawableBalance: decimal("withdrawable_balance", { precision: 12, scale: 2 }).notNull().default('0'),
+  
+  // Currency breakdown
+  balanceBreakdown: jsonb("balance_breakdown"), // By currency analysis
+  
+  // Status and metadata
+  isLocked: boolean("is_locked").notNull().default(false),
+  lastCalculatedAt: timestamp("last_calculated_at").notNull().defaultNow(),
+  calculatedBy: varchar("calculated_by").references(() => users.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_revenue_balance_period").on(table.accountingPeriod),
+  index("idx_revenue_balance_dates").on(table.periodStart, table.periodEnd),
+]);
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
@@ -4640,6 +4822,201 @@ export type NotificationHistory = typeof notificationHistory.$inferSelect;
 export type NotificationHistoryFilter = z.infer<typeof notificationHistoryFilterSchema>;
 
 export type ThresholdConfiguration = z.infer<typeof thresholdConfigurationSchema>;
+
+// ===== STAGE 7 REVENUE MANAGEMENT SCHEMAS =====
+
+// Revenue ledger schemas
+export const insertRevenueLedgerSchema = createInsertSchema(revenueLedger).omit({
+  id: true,
+  revEntryId: true,
+  amountUsd: true,
+  createdAt: true,
+});
+
+export const updateRevenueLedgerSchema = insertRevenueLedgerSchema.partial().extend({
+  id: z.string(),
+});
+
+export const revenueLedgerFilterSchema = z.object({
+  type: z.enum(['customer_receipt', 'customer_refund', 'withdrawal', 'reinvest_out', 'transfer_fee', 'reclass', 'reverse']).optional(),
+  customerId: z.string().optional(),
+  salesOrderId: z.string().optional(),
+  withdrawalId: z.string().optional(),
+  reinvestmentId: z.string().optional(),
+  accountingPeriod: z.string().optional(),
+  periodClosed: z.boolean().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  minAmount: z.number().optional(),
+  maxAmount: z.number().optional(),
+  currency: z.string().optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+});
+
+// Withdrawal records schemas
+export const insertWithdrawalRecordSchema = createInsertSchema(withdrawalRecords).omit({
+  id: true,
+  withdrawalId: true,
+  amountUsd: true,
+  approvedAt: true,
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateWithdrawalRecordSchema = insertWithdrawalRecordSchema.partial().extend({
+  id: z.string(),
+});
+
+export const withdrawalRecordFilterSchema = z.object({
+  partner: z.string().optional(),
+  status: z.enum(['pending', 'completed', 'cancelled']).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  minAmount: z.number().optional(),
+  maxAmount: z.number().optional(),
+  currency: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  approvalRequestId: z.string().optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+});
+
+export const withdrawalApprovalSchema = z.object({
+  id: z.string(),
+  approved: z.boolean(),
+  note: z.string().optional(),
+});
+
+// Reinvestment schemas
+export const insertReinvestmentSchema = createInsertSchema(reinvestments).omit({
+  id: true,
+  reinvestId: true,
+  transferCostUsd: true,
+  capitalEntryId: true,
+  operatingExpenseId: true,
+  approvedAt: true,
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateReinvestmentSchema = insertReinvestmentSchema.partial().extend({
+  id: z.string(),
+});
+
+export const reinvestmentFilterSchema = z.object({
+  status: z.enum(['pending', 'completed', 'cancelled']).optional(),
+  allocationPolicy: z.enum(['aggregate', 'pro_rata', 'specified']).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  minAmount: z.number().optional(),
+  maxAmount: z.number().optional(),
+  counterparty: z.string().optional(),
+  capitalEntryId: z.string().optional(),
+  approvalRequestId: z.string().optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+});
+
+export const reinvestmentApprovalSchema = z.object({
+  id: z.string(),
+  approved: z.boolean(),
+  note: z.string().optional(),
+});
+
+// Revenue balance summary schemas
+export const insertRevenueBalanceSummarySchema = createInsertSchema(revenueBalanceSummary).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateRevenueBalanceSummarySchema = insertRevenueBalanceSummarySchema.partial().extend({
+  id: z.string(),
+});
+
+export const revenueBalanceSummaryFilterSchema = z.object({
+  accountingPeriod: z.string().optional(),
+  isLocked: z.boolean().optional(),
+  periodStartFrom: z.string().optional(),
+  periodStartTo: z.string().optional(),
+  periodEndFrom: z.string().optional(),
+  periodEndTo: z.string().optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+});
+
+// Revenue balance calculation schema
+export const revenueBalanceCalculationSchema = z.object({
+  periodStart: z.string().optional(),
+  periodEnd: z.string().optional(),
+  includeProjections: z.boolean().default(false),
+  currencyBreakdown: z.boolean().default(true),
+  includeOrderAnalysis: z.boolean().default(false),
+});
+
+// Customer receipt/refund schemas for revenue integration
+export const customerReceiptSchema = z.object({
+  customerId: z.string(),
+  salesOrderId: z.string().optional(),
+  amount: z.number().positive(),
+  currency: z.string().default('USD'),
+  exchangeRate: z.number().positive().optional(),
+  paymentMethod: z.string().optional(),
+  paymentReference: z.string().optional(),
+  bankAccount: z.string().optional(),
+  invoiceId: z.string().optional(),
+  receiptId: z.string().optional(),
+  orderIds: z.array(z.string()).optional(),
+  description: z.string(),
+  note: z.string().optional(),
+  recognitionDate: z.string().optional(),
+});
+
+export const customerRefundSchema = z.object({
+  customerId: z.string(),
+  salesOrderId: z.string().optional(),
+  amount: z.number().positive(),
+  currency: z.string().default('USD'),
+  exchangeRate: z.number().positive().optional(),
+  refundMethod: z.string().optional(),
+  refundReference: z.string().optional(),
+  originalInvoiceId: z.string().optional(),
+  returnId: z.string().optional(),
+  orderIds: z.array(z.string()).optional(),
+  description: z.string(),
+  note: z.string().optional(),
+  refundDate: z.string().optional(),
+});
+
+// TypeScript types for Stage 7 Revenue Management
+export type RevenueLedger = typeof revenueLedger.$inferSelect;
+export type InsertRevenueLedger = z.infer<typeof insertRevenueLedgerSchema>;
+export type UpdateRevenueLedger = z.infer<typeof updateRevenueLedgerSchema>;
+export type RevenueLedgerFilter = z.infer<typeof revenueLedgerFilterSchema>;
+
+export type WithdrawalRecord = typeof withdrawalRecords.$inferSelect;
+export type InsertWithdrawalRecord = z.infer<typeof insertWithdrawalRecordSchema>;
+export type UpdateWithdrawalRecord = z.infer<typeof updateWithdrawalRecordSchema>;
+export type WithdrawalRecordFilter = z.infer<typeof withdrawalRecordFilterSchema>;
+export type WithdrawalApproval = z.infer<typeof withdrawalApprovalSchema>;
+
+export type Reinvestment = typeof reinvestments.$inferSelect;
+export type InsertReinvestment = z.infer<typeof insertReinvestmentSchema>;
+export type UpdateReinvestment = z.infer<typeof updateReinvestmentSchema>;
+export type ReinvestmentFilter = z.infer<typeof reinvestmentFilterSchema>;
+export type ReinvestmentApproval = z.infer<typeof reinvestmentApprovalSchema>;
+
+export type RevenueBalanceSummary = typeof revenueBalanceSummary.$inferSelect;
+export type InsertRevenueBalanceSummary = z.infer<typeof insertRevenueBalanceSummarySchema>;
+export type UpdateRevenueBalanceSummary = z.infer<typeof updateRevenueBalanceSummarySchema>;
+export type RevenueBalanceSummaryFilter = z.infer<typeof revenueBalanceSummaryFilterSchema>;
+
+export type RevenueBalanceCalculation = z.infer<typeof revenueBalanceCalculationSchema>;
+export type CustomerReceipt = z.infer<typeof customerReceiptSchema>;
+export type CustomerRefund = z.infer<typeof customerRefundSchema>;
 
 // Notification system response types
 export interface NotificationCenterResponse {
