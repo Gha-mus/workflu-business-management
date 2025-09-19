@@ -208,6 +208,8 @@ export const capitalEntriesRelations = relations(capitalEntries, ({ one }) => ({
   }),
 }));
 
+// Relations will be added after all table definitions to avoid initialization errors
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -502,10 +504,62 @@ export const periodFilterSchema = z.object({
   period: z.enum(['last-7-days', 'last-30-days', 'last-90-days', 'last-year']),
 });
 
-// Export Type Schema
+// Export Type Schema - Enhanced with more formats
 export const exportTypeSchema = z.object({
   type: z.enum(['financial', 'inventory', 'suppliers', 'trading', 'all']),
-  format: z.enum(['json', 'csv']).optional().default('json'),
+  format: z.enum(['json', 'csv', 'xlsx', 'pdf']).optional().default('json'),
+});
+
+// Enhanced export request schema with advanced options
+export const exportRequestSchema = z.object({
+  type: z.enum(['financial', 'inventory', 'suppliers', 'trading', 'all']),
+  format: z.enum(['json', 'csv', 'xlsx', 'pdf']).default('json'),
+  dateRange: dateRangeFilterSchema.optional(),
+  customFields: z.array(z.string()).optional(), // Selected fields for export
+  compression: z.boolean().default(false),
+  emailDelivery: z.boolean().default(false),
+  emailRecipients: z.array(z.string().email()).optional(),
+});
+
+// Bulk export schema for multiple reports
+export const bulkExportRequestSchema = z.object({
+  reports: z.array(exportRequestSchema),
+  format: z.enum(['json', 'csv', 'xlsx', 'pdf']).default('json'),
+  compression: z.boolean().default(true), // Default to compressed for bulk exports
+  emailDelivery: z.boolean().default(false),
+  emailRecipients: z.array(z.string().email()).optional(),
+});
+
+// Period management schemas
+export const periodRequestSchema = z.object({
+  periodType: z.enum(['monthly', 'quarterly', 'yearly']),
+  startDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid start date'),
+  endDate: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid end date'),
+  description: z.string().optional(),
+}).refine((data) => {
+  const start = new Date(data.startDate);
+  const end = new Date(data.endDate);
+  return start < end;
+}, {
+  message: "Start date must be before end date",
+  path: ["startDate"],
+});
+
+export const periodClosingRequestSchema = z.object({
+  periodId: z.string().min(1),
+  adjustments: z.array(z.object({
+    adjustmentType: z.enum(['balance', 'inventory', 'reconciliation']),
+    amount: z.string().refine((val) => !isNaN(parseFloat(val)), 'Invalid amount'),
+    currency: z.string().default('USD'),
+    description: z.string().min(1),
+    reason: z.string().min(1),
+  })).optional(),
+  notes: z.string().optional(),
+});
+
+export const periodComparisonRequestSchema = z.object({
+  periodIds: z.array(z.string()).min(2).max(4), // Compare 2-4 periods
+  metrics: z.array(z.enum(['revenue', 'expenses', 'profit', 'inventory', 'capital'])).optional(),
 });
 
 // Response Types
@@ -546,6 +600,123 @@ export const aiConversations = pgTable("ai_conversations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Period Management Tables
+
+// Period status enum
+export const periodStatusEnum = pgEnum('period_status', ['open', 'pending_close', 'closed']);
+
+// Periods table for financial period management
+export const periods = pgTable("periods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodNumber: varchar("period_number").notNull().unique(), // e.g., "2025-Q1", "2025-01"
+  periodType: varchar("period_type").notNull(), // monthly, quarterly, yearly
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: periodStatusEnum("status").notNull().default('open'),
+  closedBy: varchar("closed_by").references(() => users.id),
+  closedAt: timestamp("closed_at"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Period closing logs table for audit trail
+export const periodClosingLogs = pgTable("period_closing_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => periods.id),
+  action: varchar("action").notNull(), // open, close, reopen, validate, adjust
+  performedBy: varchar("performed_by").notNull().references(() => users.id),
+  description: text("description"),
+  metadata: jsonb("metadata"), // Additional context about the action
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Period adjustments table for period-end corrections
+export const periodAdjustments = pgTable("period_adjustments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => periods.id),
+  adjustmentType: varchar("adjustment_type").notNull(), // balance, inventory, reconciliation
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  description: text("description").notNull(),
+  reason: text("reason").notNull(),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  approvedAt: timestamp("approved_at"),
+});
+
+// Export Management Tables
+
+// Export status enum  
+export const exportStatusEnum = pgEnum('export_status', ['queued', 'processing', 'completed', 'failed', 'cancelled']);
+
+// Export history table for tracking all exports
+export const exportHistory = pgTable("export_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  exportType: varchar("export_type").notNull(), // financial, inventory, suppliers, trading, all
+  format: varchar("format").notNull(), // csv, xlsx, pdf, json
+  status: exportStatusEnum("status").notNull().default('queued'),
+  filePath: varchar("file_path"), // Path to the generated file
+  fileName: varchar("file_name").notNull(),
+  fileSize: integer("file_size"), // File size in bytes
+  downloadCount: integer("download_count").notNull().default(0),
+  parameters: jsonb("parameters"), // Export parameters (filters, date ranges, etc.)
+  errorMessage: text("error_message"), // Error details if failed
+  expiresAt: timestamp("expires_at"), // When the file expires
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Export preferences table for user export settings
+export const exportPreferences = pgTable("export_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  reportType: varchar("report_type").notNull(), // financial, inventory, suppliers, trading
+  preferredFormat: varchar("preferred_format").notNull().default('csv'),
+  defaultDateRange: varchar("default_date_range").notNull().default('last-30-days'),
+  customFields: jsonb("custom_fields"), // Array of selected fields for export
+  emailDelivery: boolean("email_delivery").notNull().default(false),
+  emailRecipients: text("email_recipients").array(), // Array of email addresses
+  compression: boolean("compression").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Export jobs table for scheduled exports
+export const exportJobs = pgTable("export_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  jobName: varchar("job_name").notNull(),
+  exportType: varchar("export_type").notNull(),
+  format: varchar("format").notNull(),
+  schedule: varchar("schedule").notNull(), // daily, weekly, monthly, cron expression
+  parameters: jsonb("parameters"), // Export parameters
+  emailRecipients: text("email_recipients").array(), // Array of email addresses
+  isActive: boolean("is_active").notNull().default(true),
+  lastRun: timestamp("last_run"),
+  nextRun: timestamp("next_run"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Workflow validation table for storing validation results
+export const workflowValidations = pgTable("workflow_validations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  documentPath: varchar("document_path").notNull(), // Path to business document
+  documentHash: varchar("document_hash").notNull(), // Hash of document for cache invalidation
+  systemSpecHash: varchar("system_spec_hash").notNull(), // Hash of system state
+  overallStatus: varchar("overall_status").notNull(), // matched, partial, missing
+  gapReport: jsonb("gap_report").notNull(), // Complete gap analysis results
+  stageResults: jsonb("stage_results").notNull(), // Detailed per-stage analysis
+  summary: jsonb("summary").notNull(), // Summary metrics and recommendations
+  validationMetadata: jsonb("validation_metadata"), // Processing metadata
+  isLatest: boolean("is_latest").notNull().default(false), // Flag for latest validation
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
 // AI-related insert schemas
 export const insertAiInsightsCacheSchema = createInsertSchema(aiInsightsCache).omit({
   id: true,
@@ -558,12 +729,81 @@ export const insertAiConversationSchema = createInsertSchema(aiConversations).om
   updatedAt: true,
 });
 
+// Period management insert schemas
+export const insertPeriodSchema = createInsertSchema(periods).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPeriodClosingLogSchema = createInsertSchema(periodClosingLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPeriodAdjustmentSchema = createInsertSchema(periodAdjustments).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+});
+
+// Workflow validation insert schema
+export const insertWorkflowValidationSchema = createInsertSchema(workflowValidations).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+// Export management insert schemas
+export const insertExportHistorySchema = createInsertSchema(exportHistory).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export const insertExportPreferencesSchema = createInsertSchema(exportPreferences).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertExportJobSchema = createInsertSchema(exportJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastRun: true,
+  nextRun: true,
+});
+
 // AI-related types
 export type AiInsightsCache = typeof aiInsightsCache.$inferSelect;
 export type InsertAiInsightsCache = z.infer<typeof insertAiInsightsCacheSchema>;
 
 export type AiConversation = typeof aiConversations.$inferSelect;
 export type InsertAiConversation = z.infer<typeof insertAiConversationSchema>;
+
+// Period management types
+export type Period = typeof periods.$inferSelect;
+export type InsertPeriod = z.infer<typeof insertPeriodSchema>;
+
+export type PeriodClosingLog = typeof periodClosingLogs.$inferSelect;
+export type InsertPeriodClosingLog = z.infer<typeof insertPeriodClosingLogSchema>;
+
+export type PeriodAdjustment = typeof periodAdjustments.$inferSelect;
+export type InsertPeriodAdjustment = z.infer<typeof insertPeriodAdjustmentSchema>;
+
+// Export management types
+export type ExportHistory = typeof exportHistory.$inferSelect;
+export type InsertExportHistory = z.infer<typeof insertExportHistorySchema>;
+
+export type ExportPreferences = typeof exportPreferences.$inferSelect;
+export type InsertExportPreferences = z.infer<typeof insertExportPreferencesSchema>;
+
+export type ExportJob = typeof exportJobs.$inferSelect;
+export type InsertExportJob = z.infer<typeof insertExportJobSchema>;
+
+// Workflow validation types
+export type WorkflowValidation = typeof workflowValidations.$inferSelect;
+export type InsertWorkflowValidation = z.infer<typeof insertWorkflowValidationSchema>;
 
 // AI Response Types
 

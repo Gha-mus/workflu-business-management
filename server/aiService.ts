@@ -1,4 +1,7 @@
 import OpenAI from "openai";
+import * as fs from "fs/promises";
+import * as path from "path";
+import mammoth from "mammoth";
 import type {
   Purchase,
   Supplier,
@@ -10,6 +13,70 @@ import type {
   SupplierPerformanceResponse,
   TradingActivityResponse,
 } from "@shared/schema";
+
+// Types for workflow validation system
+export interface WorkflowSpec {
+  stages: {
+    [stageName: string]: {
+      fields: string[];
+      processes: string[];
+      roles: string[];
+      statuses: string[];
+      transitions: Array<{from: string; to: string; conditions: string[]}>;
+      validations: string[];
+      currencies?: string[];
+    };
+  };
+  overallRequirements: string[];
+  complianceRules: string[];
+}
+
+export interface SystemSpec {
+  tables: {
+    [tableName: string]: {
+      fields: string[];
+      relationships: string[];
+      enums: string[];
+    };
+  };
+  endpoints: {
+    [endpoint: string]: {
+      method: string;
+      roles: string[];
+      validation: string;
+    };
+  };
+  uiFlows: {
+    [pageName: string]: {
+      features: string[];
+      actions: string[];
+    };
+  };
+  currencies: string[];
+  roles: string[];
+  statuses: string[];
+}
+
+export interface GapReport {
+  overallStatus: 'matched' | 'partial' | 'missing';
+  stages: {
+    [stageName: string]: {
+      status: 'matched' | 'partial' | 'missing';
+      missingItems: string[];
+      extraItems: string[];
+      misalignments: string[];
+      severity: 'low' | 'medium' | 'high' | 'critical';
+      remediation: string[];
+    };
+  };
+  summary: {
+    totalGaps: number;
+    criticalGaps: number;
+    highPriorityGaps: number;
+    recommendations: string[];
+  };
+  generatedAt: string;
+}
 
 /*
 Follow these instructions when using this blueprint:
@@ -710,6 +777,307 @@ Provide a helpful response with actionable suggestions and any relevant action i
       throw new Error('No response received from AI service');
     }
     return JSON.parse(result);
+  }
+
+  // ======================================
+  // WORKFLOW VALIDATION SYSTEM
+  // ======================================
+
+  /**
+   * Extract requirements from business document (workflu.docx)
+   */
+  async extractRequirementsFromDoc(docChunks: string[]): Promise<WorkflowSpec> {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: `You are a business analyst extracting structured workflow requirements from business documents.
+                  Analyze the provided document content and extract a comprehensive WorkflowSpec covering all business stages.
+                  Focus on identifying stages, fields, processes, roles, statuses, validations, and compliance rules.
+                  
+                  Respond with JSON in this exact format:
+                  {
+                    "stages": {
+                      "capital": {
+                        "fields": ["string"],
+                        "processes": ["string"],
+                        "roles": ["string"],
+                        "statuses": ["string"],
+                        "transitions": [{"from": "string", "to": "string", "conditions": ["string"]}],
+                        "validations": ["string"],
+                        "currencies": ["string"]
+                      }
+                    },
+                    "overallRequirements": ["string"],
+                    "complianceRules": ["string"]
+                  }`
+      },
+      {
+        role: "user",
+        content: `Extract structured workflow requirements from this business document:
+
+${docChunks.join('\n\n---CHUNK BREAK---\n\n')}
+
+Identify and extract for each business stage (capital, purchases, warehouse, shipping, expenses, sales, revenues, users, reports):
+1. Required fields and data elements
+2. Business processes and workflows
+3. User roles and permissions
+4. Status transitions and states
+5. Validation rules and constraints
+6. Currency handling requirements
+7. Compliance and regulatory requirements
+
+Ensure comprehensive coverage of all operational aspects mentioned in the document.`
+      }
+    ];
+
+    const result = await this.createCompletion(messages, true);
+    if (!result) {
+      throw new Error('No response received from AI service');
+    }
+    return JSON.parse(result);
+  }
+
+  /**
+   * Generate SystemSpec from current implementation
+   */
+  async generateSystemSpec(): Promise<SystemSpec> {
+    try {
+      // Read schema file
+      const schemaPath = path.join(process.cwd(), 'shared', 'schema.ts');
+      const schemaContent = await fs.readFile(schemaPath, 'utf-8');
+
+      // Read routes file
+      const routesPath = path.join(process.cwd(), 'server', 'routes.ts');
+      const routesContent = await fs.readFile(routesPath, 'utf-8');
+
+      // Read key frontend files
+      const frontendFiles = [
+        'client/src/pages/Dashboard.tsx',
+        'client/src/pages/Reports.tsx',
+        'client/src/pages/WorkingCapital.tsx',
+        'client/src/pages/Purchases.tsx',
+        'client/src/pages/Warehouse.tsx',
+        'client/src/pages/Orders.tsx',
+        'client/src/pages/Settings.tsx'
+      ];
+
+      const frontendContent: { [key: string]: string } = {};
+      for (const filePath of frontendFiles) {
+        try {
+          const fullPath = path.join(process.cwd(), filePath);
+          frontendContent[filePath] = await fs.readFile(fullPath, 'utf-8');
+        } catch (error) {
+          console.warn(`Could not read frontend file: ${filePath}`);
+          frontendContent[filePath] = '';
+        }
+      }
+
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        {
+          role: "system",
+          content: `You are a system analyzer extracting the current implementation structure from code files.
+                    Analyze the provided schema, routes, and frontend files to generate a comprehensive SystemSpec.
+                    Extract tables, endpoints, UI flows, roles, and system capabilities.
+                    
+                    Respond with JSON in this exact format:
+                    {
+                      "tables": {
+                        "tableName": {
+                          "fields": ["string"],
+                          "relationships": ["string"],
+                          "enums": ["string"]
+                        }
+                      },
+                      "endpoints": {
+                        "/api/endpoint": {
+                          "method": "GET|POST|PUT|DELETE",
+                          "roles": ["string"],
+                          "validation": "string"
+                        }
+                      },
+                      "uiFlows": {
+                        "pageName": {
+                          "features": ["string"],
+                          "actions": ["string"]
+                        }
+                      },
+                      "currencies": ["string"],
+                      "roles": ["string"],
+                      "statuses": ["string"]
+                    }`
+        },
+        {
+          role: "user",
+          content: `Analyze the current system implementation and extract structural information:
+
+SCHEMA CONTENT:
+${schemaContent}
+
+ROUTES CONTENT:
+${routesContent}
+
+FRONTEND FILES:
+${Object.entries(frontendContent).map(([file, content]) => `=== ${file} ===\n${content.substring(0, 2000)}`).join('\n\n')}
+
+Extract:
+1. Database tables with fields, relationships, and enums
+2. API endpoints with methods, required roles, and validation
+3. UI flows and features from frontend pages
+4. Available currencies, user roles, and status values
+5. System capabilities and constraints
+
+Focus on structural metadata only - do not include sensitive data like specific IDs or personal information.`
+        }
+      ];
+
+      const result = await this.createCompletion(messages, true);
+      if (!result) {
+        throw new Error('No response received from AI service');
+      }
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Error generating system spec:', error);
+      throw new Error('Failed to generate system specification');
+    }
+  }
+
+  /**
+   * Compare WorkflowSpec against SystemSpec to generate GapReport
+   */
+  async compareSpecs(workflowSpec: WorkflowSpec, systemSpec: SystemSpec): Promise<GapReport> {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: `You are a compliance analyst comparing business requirements against system implementation.
+                  Analyze the WorkflowSpec (requirements) against SystemSpec (current implementation) to identify gaps.
+                  Generate a comprehensive GapReport with detailed analysis for each workflow stage.
+                  
+                  Respond with JSON in this exact format:
+                  {
+                    "overallStatus": "matched|partial|missing",
+                    "stages": {
+                      "stageName": {
+                        "status": "matched|partial|missing",
+                        "missingItems": ["string"],
+                        "extraItems": ["string"],
+                        "misalignments": ["string"],
+                        "severity": "low|medium|high|critical",
+                        "remediation": ["string"]
+                      }
+                    },
+                    "summary": {
+                      "totalGaps": 0,
+                      "criticalGaps": 0,
+                      "highPriorityGaps": 0,
+                      "recommendations": ["string"]
+                    },
+                    "generatedAt": "2025-09-19T08:00:00.000Z"
+                  }`
+      },
+      {
+        role: "user",
+        content: `Compare business requirements against current system implementation:
+
+WORKFLOW REQUIREMENTS (WorkflowSpec):
+${JSON.stringify(workflowSpec, null, 2)}
+
+CURRENT SYSTEM (SystemSpec):
+${JSON.stringify(systemSpec, null, 2)}
+
+Perform comprehensive gap analysis for each stage:
+1. Capital management workflow
+2. Purchase workflow  
+3. Warehouse operations
+4. Shipping processes
+5. Expense management
+6. Sales pipeline
+7. Revenue tracking
+8. User management
+9. Reporting systems
+
+For each stage, identify:
+- Missing required features/fields
+- Extra implementation not in requirements
+- Misalignments between spec and implementation
+- Severity level (low/medium/high/critical)
+- Specific remediation steps
+
+Provide overall assessment and prioritized recommendations for closing gaps.`
+      }
+    ];
+
+    const result = await this.createCompletion(messages, true);
+    if (!result) {
+      throw new Error('No response received from AI service');
+    }
+    
+    const gapReport = JSON.parse(result);
+    gapReport.generatedAt = new Date().toISOString();
+    return gapReport;
+  }
+
+  /**
+   * Process business document and cache requirements
+   */
+  async processBusinessDocument(): Promise<WorkflowSpec> {
+    try {
+      const docPath = path.join(process.cwd(), 'attached_assets', 'workflu_1758260129381.docx');
+      
+      // Check if file exists
+      await fs.access(docPath);
+      
+      // Convert docx to text using mammoth
+      const result = await mammoth.extractRawText({ path: docPath });
+      const docText = result.value;
+      
+      if (!docText || docText.length < 100) {
+        throw new Error('Document appears to be empty or corrupted');
+      }
+
+      // Chunk the document to stay within token limits (approximate 4000 characters per chunk)
+      const chunkSize = 4000;
+      const chunks: string[] = [];
+      for (let i = 0; i < docText.length; i += chunkSize) {
+        chunks.push(docText.substring(i, i + chunkSize));
+      }
+
+      console.log(`Document processed: ${docText.length} characters, ${chunks.length} chunks`);
+
+      // Extract requirements using AI
+      const workflowSpec = await this.extractRequirementsFromDoc(chunks);
+      
+      return workflowSpec;
+    } catch (error) {
+      console.error('Error processing business document:', error);
+      throw new Error('Failed to process business document');
+    }
+  }
+
+  /**
+   * Complete workflow validation pipeline
+   */
+  async validateWorkflowAgainstDocument(): Promise<GapReport> {
+    try {
+      console.log('Starting workflow validation pipeline...');
+      
+      // Step 1: Process business document and extract requirements
+      console.log('Processing business document...');
+      const workflowSpec = await this.processBusinessDocument();
+      
+      // Step 2: Generate current system specification
+      console.log('Generating system specification...');
+      const systemSpec = await this.generateSystemSpec();
+      
+      // Step 3: Compare specs and generate gap report
+      console.log('Comparing specifications...');
+      const gapReport = await this.compareSpecs(workflowSpec, systemSpec);
+      
+      console.log('Workflow validation completed successfully');
+      return gapReport;
+    } catch (error) {
+      console.error('Error in workflow validation pipeline:', error);
+      throw new Error('Failed to complete workflow validation');
+    }
   }
 }
 
