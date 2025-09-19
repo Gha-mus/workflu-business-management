@@ -70,8 +70,8 @@ export default function Settings() {
 
   // Update exchange rate when settings data changes
   useEffect(() => {
-    if (settings?.exchangeRate) {
-      setExchangeRate(settings.exchangeRate.toString());
+    if (settings?.financial?.exchangeRate) {
+      setExchangeRate(settings.financial.exchangeRate.toString());
     }
   }, [settings]);
 
@@ -91,7 +91,8 @@ export default function Settings() {
       return await apiRequest('POST', '/api/settings', {
         key: 'USD_ETB_RATE',
         value: rate,
-        description: 'USD to ETB exchange rate'
+        description: 'USD to ETB exchange rate',
+        category: 'financial'
       });
     },
     onSuccess: () => {
@@ -126,7 +127,8 @@ export default function Settings() {
       return await apiRequest('POST', '/api/settings', {
         key: 'PREVENT_NEGATIVE_BALANCE',
         value: prevent.toString(),
-        description: 'Prevent capital balance from going negative'
+        description: 'Prevent capital balance from going negative',
+        category: 'financial'
       });
     },
     onSuccess: () => {
@@ -372,7 +374,7 @@ export default function Settings() {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Current rate: {settings?.exchangeRate?.toFixed(4) || 'Not set'}
+                        Current rate: {settings?.financial?.exchangeRate?.toFixed(4) || 'Not set'}
                       </p>
                     </div>
 

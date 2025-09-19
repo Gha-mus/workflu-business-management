@@ -250,6 +250,7 @@ import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzl
 import Decimal from "decimal.js";
 import { auditService } from "./auditService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
+import { ConfigurationService } from "./configurationService";
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -1888,7 +1889,10 @@ export class DatabaseStorage implements IStorage {
 
   // Settings operations
   async getSetting(key: string): Promise<Setting | undefined> {
-    const [setting] = await db.select().from(settings).where(eq(settings.key, key));
+    const [setting] = await db.select().from(settings).where(and(
+      eq(settings.key, key),
+      eq(settings.isActive, true)
+    ));
     return setting;
   }
 
@@ -1955,8 +1959,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExchangeRate(): Promise<number> {
-    const setting = await this.getSetting('USD_ETB_RATE');
-    return setting ? parseFloat(setting.value) : 57.25; // Default rate
+    try {
+      // STAGE 10 COMPLIANCE: Use ConfigurationService for central FX rate enforcement
+      const configService = ConfigurationService.getInstance();
+      return await configService.getCentralExchangeRate();
+    } catch (error) {
+      console.error('Failed to get exchange rate from ConfigurationService:', error);
+      throw new Error('Exchange rate not available. Please configure USD_ETB_RATE in settings.');
+    }
   }
 
   // Supplier operations
