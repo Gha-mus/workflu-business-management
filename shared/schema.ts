@@ -1931,7 +1931,9 @@ export const aiConversations = pgTable("ai_conversations", {
   context: jsonb("context"), // Business context at conversation time
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_ai_conversations_user_session").on(table.userId, table.sessionId),
+]);
 
 // Period Management Tables
 
@@ -2292,3 +2294,680 @@ export type AiSupplierRecommendationRequest = z.infer<typeof aiSupplierRecommend
 export type AiCapitalOptimizationRequest = z.infer<typeof aiCapitalOptimizationRequestSchema>;
 export type AiChatRequest = z.infer<typeof aiChatRequestSchema>;
 export type AiContextualHelpRequest = z.infer<typeof aiContextualHelpRequestSchema>;
+
+// =====================================
+// COMPREHENSIVE FINANCIAL REPORTING TABLES
+// =====================================
+
+// Financial periods for comparative reporting
+export const financialPeriods = pgTable("financial_periods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodName: varchar("period_name").notNull(), // e.g., "Q1 2025", "Jan 2025"
+  periodType: varchar("period_type").notNull(), // month, quarter, year, custom
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: varchar("status").notNull().default('open'), // open, closed, locked
+  exchangeRateSnapshot: jsonb("exchange_rate_snapshot"), // Exchange rates at period close
+  closedBy: varchar("closed_by").references(() => users.id),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Financial metrics for calculated KPIs and ratios
+export const financialMetrics = pgTable("financial_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => financialPeriods.id),
+  metricDate: timestamp("metric_date").notNull().defaultNow(),
+  
+  // Revenue metrics
+  totalRevenue: decimal("total_revenue", { precision: 15, scale: 2 }).notNull().default('0'),
+  revenueGrowthRate: decimal("revenue_growth_rate", { precision: 8, scale: 4 }),
+  averageOrderValue: decimal("average_order_value", { precision: 12, scale: 2 }),
+  revenuePerCustomer: decimal("revenue_per_customer", { precision: 12, scale: 2 }),
+  
+  // Cost and margin metrics  
+  totalCogs: decimal("total_cogs", { precision: 15, scale: 2 }).notNull().default('0'),
+  grossMargin: decimal("gross_margin", { precision: 15, scale: 2 }).notNull().default('0'),
+  grossMarginPercent: decimal("gross_margin_percent", { precision: 8, scale: 4 }),
+  operatingExpenses: decimal("operating_expenses", { precision: 15, scale: 2 }).notNull().default('0'),
+  operatingMargin: decimal("operating_margin", { precision: 15, scale: 2 }).notNull().default('0'),
+  operatingMarginPercent: decimal("operating_margin_percent", { precision: 8, scale: 4 }),
+  netProfit: decimal("net_profit", { precision: 15, scale: 2 }).notNull().default('0'),
+  netProfitMargin: decimal("net_profit_margin", { precision: 8, scale: 4 }),
+  
+  // Working capital and cash flow metrics
+  workingCapital: decimal("working_capital", { precision: 15, scale: 2 }).notNull().default('0'),
+  workingCapitalRatio: decimal("working_capital_ratio", { precision: 8, scale: 4 }),
+  cashFlowFromOperations: decimal("cash_flow_from_operations", { precision: 15, scale: 2 }),
+  cashConversionCycle: integer("cash_conversion_cycle"), // Days
+  
+  // Inventory and efficiency metrics
+  inventoryValue: decimal("inventory_value", { precision: 15, scale: 2 }).notNull().default('0'),
+  inventoryTurnover: decimal("inventory_turnover", { precision: 8, scale: 4 }),
+  daysInventoryOutstanding: integer("days_inventory_outstanding"),
+  assetUtilizationRatio: decimal("asset_utilization_ratio", { precision: 8, scale: 4 }),
+  
+  // Customer and supplier metrics
+  customerAcquisitionCost: decimal("customer_acquisition_cost", { precision: 12, scale: 2 }),
+  customerLifetimeValue: decimal("customer_lifetime_value", { precision: 12, scale: 2 }),
+  supplierConcentrationRisk: decimal("supplier_concentration_risk", { precision: 8, scale: 4 }),
+  
+  // Currency and exchange metrics
+  currencyExposure: jsonb("currency_exposure"), // Currency exposure breakdown
+  exchangeRateImpact: decimal("exchange_rate_impact", { precision: 12, scale: 2 }),
+  
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+  calculatedBy: varchar("calculated_by").references(() => users.id),
+});
+
+// Profit and loss statements with detailed breakdowns
+export const profitLossStatements = pgTable("profit_loss_statements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => financialPeriods.id),
+  statementDate: timestamp("statement_date").notNull().defaultNow(),
+  statementType: varchar("statement_type").notNull(), // monthly, quarterly, annual, custom
+  
+  // Revenue breakdown
+  productSalesRevenue: decimal("product_sales_revenue", { precision: 15, scale: 2 }).notNull().default('0'),
+  shippingRevenue: decimal("shipping_revenue", { precision: 15, scale: 2 }).default('0'),
+  otherRevenue: decimal("other_revenue", { precision: 15, scale: 2 }).default('0'),
+  totalRevenue: decimal("total_revenue", { precision: 15, scale: 2 }).notNull().default('0'),
+  
+  // Cost of goods sold breakdown
+  directMaterialCosts: decimal("direct_material_costs", { precision: 15, scale: 2 }).notNull().default('0'),
+  directLaborCosts: decimal("direct_labor_costs", { precision: 15, scale: 2 }).default('0'),
+  warehouseOperationCosts: decimal("warehouse_operation_costs", { precision: 15, scale: 2 }).default('0'),
+  shippingCosts: decimal("shipping_costs", { precision: 15, scale: 2 }).default('0'),
+  qualityControlCosts: decimal("quality_control_costs", { precision: 15, scale: 2 }).default('0'),
+  totalCogs: decimal("total_cogs", { precision: 15, scale: 2 }).notNull().default('0'),
+  
+  // Gross profit
+  grossProfit: decimal("gross_profit", { precision: 15, scale: 2 }).notNull().default('0'),
+  grossProfitMargin: decimal("gross_profit_margin", { precision: 8, scale: 4 }),
+  
+  // Operating expenses breakdown
+  salesExpenses: decimal("sales_expenses", { precision: 15, scale: 2 }).default('0'),
+  marketingExpenses: decimal("marketing_expenses", { precision: 15, scale: 2 }).default('0'),
+  administrativeExpenses: decimal("administrative_expenses", { precision: 15, scale: 2 }).default('0'),
+  equipmentDepreciation: decimal("equipment_depreciation", { precision: 15, scale: 2 }).default('0'),
+  facilityExpenses: decimal("facility_expenses", { precision: 15, scale: 2 }).default('0'),
+  totalOperatingExpenses: decimal("total_operating_expenses", { precision: 15, scale: 2 }).default('0'),
+  
+  // Operating profit
+  operatingProfit: decimal("operating_profit", { precision: 15, scale: 2 }).notNull().default('0'),
+  operatingProfitMargin: decimal("operating_profit_margin", { precision: 8, scale: 4 }),
+  
+  // Other income/expenses
+  interestIncome: decimal("interest_income", { precision: 15, scale: 2 }).default('0'),
+  interestExpense: decimal("interest_expense", { precision: 15, scale: 2 }).default('0'),
+  exchangeGainLoss: decimal("exchange_gain_loss", { precision: 15, scale: 2 }).default('0'),
+  otherIncomeExpense: decimal("other_income_expense", { precision: 15, scale: 2 }).default('0'),
+  
+  // Net profit
+  profitBeforeTax: decimal("profit_before_tax", { precision: 15, scale: 2 }).notNull().default('0'),
+  taxExpense: decimal("tax_expense", { precision: 15, scale: 2 }).default('0'),
+  netProfit: decimal("net_profit", { precision: 15, scale: 2 }).notNull().default('0'),
+  netProfitMargin: decimal("net_profit_margin", { precision: 8, scale: 4 }),
+  
+  // Variance analysis (comparison to previous period)
+  revenueVariance: decimal("revenue_variance", { precision: 15, scale: 2 }),
+  cogsVariance: decimal("cogs_variance", { precision: 15, scale: 2 }),
+  operatingExpenseVariance: decimal("operating_expense_variance", { precision: 15, scale: 2 }),
+  netProfitVariance: decimal("net_profit_variance", { precision: 15, scale: 2 }),
+  
+  // Currency breakdown
+  usdAmounts: jsonb("usd_amounts"), // All amounts normalized to USD
+  originalCurrencyAmounts: jsonb("original_currency_amounts"), // Original currency amounts
+  exchangeRatesUsed: jsonb("exchange_rates_used"), // Exchange rates applied
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+});
+
+// Cash flow analysis with projection capabilities  
+export const cashFlowAnalysis = pgTable("cash_flow_analysis", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => financialPeriods.id),
+  analysisDate: timestamp("analysis_date").notNull().defaultNow(),
+  analysisType: varchar("analysis_type").notNull(), // actual, forecast, budget
+  forecastHorizon: integer("forecast_horizon"), // Days ahead for forecast
+  
+  // Operating cash flows
+  operatingCashInflows: decimal("operating_cash_inflows", { precision: 15, scale: 2 }).notNull().default('0'),
+  customerPayments: decimal("customer_payments", { precision: 15, scale: 2 }).default('0'),
+  operatingCashOutflows: decimal("operating_cash_outflows", { precision: 15, scale: 2 }).notNull().default('0'),
+  supplierPayments: decimal("supplier_payments", { precision: 15, scale: 2 }).default('0'),
+  operatingExpenses: decimal("operating_expenses", { precision: 15, scale: 2 }).default('0'),
+  netOperatingCashFlow: decimal("net_operating_cash_flow", { precision: 15, scale: 2 }).notNull().default('0'),
+  
+  // Investment cash flows
+  investmentCashInflows: decimal("investment_cash_inflows", { precision: 15, scale: 2 }).default('0'),
+  investmentCashOutflows: decimal("investment_cash_outflows", { precision: 15, scale: 2 }).default('0'),
+  netInvestmentCashFlow: decimal("net_investment_cash_flow", { precision: 15, scale: 2 }).default('0'),
+  
+  // Financing cash flows
+  financingCashInflows: decimal("financing_cash_inflows", { precision: 15, scale: 2 }).default('0'),
+  capitalInjections: decimal("capital_injections", { precision: 15, scale: 2 }).default('0'),
+  financingCashOutflows: decimal("financing_cash_outflows", { precision: 15, scale: 2 }).default('0'),
+  capitalWithdrawals: decimal("capital_withdrawals", { precision: 15, scale: 2 }).default('0'),
+  netFinancingCashFlow: decimal("net_financing_cash_flow", { precision: 15, scale: 2 }).default('0'),
+  
+  // Total cash flow
+  totalCashInflows: decimal("total_cash_inflows", { precision: 15, scale: 2 }).notNull().default('0'),
+  totalCashOutflows: decimal("total_cash_outflows", { precision: 15, scale: 2 }).notNull().default('0'),
+  netCashFlow: decimal("net_cash_flow", { precision: 15, scale: 2 }).notNull().default('0'),
+  
+  // Cash position
+  openingCashBalance: decimal("opening_cash_balance", { precision: 15, scale: 2 }).notNull().default('0'),
+  closingCashBalance: decimal("closing_cash_balance", { precision: 15, scale: 2 }).notNull().default('0'),
+  
+  // Forecast-specific fields
+  outstandingReceivables: decimal("outstanding_receivables", { precision: 15, scale: 2 }),
+  projectedCollections: decimal("projected_collections", { precision: 15, scale: 2 }),
+  outstandingPayables: decimal("outstanding_payables", { precision: 15, scale: 2 }),
+  projectedPayments: decimal("projected_payments", { precision: 15, scale: 2 }),
+  
+  // Liquidity analysis
+  liquidityRatio: decimal("liquidity_ratio", { precision: 8, scale: 4 }),
+  burnRate: decimal("burn_rate", { precision: 12, scale: 2 }), // Monthly burn rate
+  runwayDays: integer("runway_days"), // Days of cash runway
+  
+  // Currency breakdown
+  cashFlowByCurrency: jsonb("cash_flow_by_currency"), // Cash flows by currency
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Margin analysis by customer, product, and grade
+export const marginAnalysis = pgTable("margin_analysis", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => financialPeriods.id),
+  analysisDate: timestamp("analysis_date").notNull().defaultNow(),
+  analysisType: varchar("analysis_type").notNull(), // customer, product, grade, transaction, combined
+  
+  // Analysis dimensions
+  customerId: varchar("customer_id").references(() => customers.id),
+  supplierId: varchar("supplier_id").references(() => suppliers.id),
+  orderId: varchar("order_id").references(() => orders.id),
+  qualityGrade: qualityGradeEnum("quality_grade"),
+  country: varchar("country"),
+  
+  // Volume metrics
+  totalQuantityKg: decimal("total_quantity_kg", { precision: 12, scale: 2 }).notNull().default('0'),
+  totalTransactions: integer("total_transactions").notNull().default(0),
+  averageTransactionSize: decimal("average_transaction_size", { precision: 12, scale: 2 }),
+  
+  // Revenue metrics
+  totalRevenue: decimal("total_revenue", { precision: 15, scale: 2 }).notNull().default('0'),
+  averageSellingPrice: decimal("average_selling_price", { precision: 10, scale: 2 }),
+  priceVariance: decimal("price_variance", { precision: 10, scale: 2 }),
+  
+  // Cost metrics
+  totalCogs: decimal("total_cogs", { precision: 15, scale: 2 }).notNull().default('0'),
+  averageCostPerKg: decimal("average_cost_per_kg", { precision: 10, scale: 2 }),
+  directCosts: decimal("direct_costs", { precision: 15, scale: 2 }).default('0'),
+  indirectCosts: decimal("indirect_costs", { precision: 15, scale: 2 }).default('0'),
+  shippingCosts: decimal("shipping_costs", { precision: 15, scale: 2 }).default('0'),
+  warehouseCosts: decimal("warehouse_costs", { precision: 15, scale: 2 }).default('0'),
+  qualityControlCosts: decimal("quality_control_costs", { precision: 15, scale: 2 }).default('0'),
+  
+  // Margin calculations
+  grossMargin: decimal("gross_margin", { precision: 15, scale: 2 }).notNull().default('0'),
+  grossMarginPercent: decimal("gross_margin_percent", { precision: 8, scale: 4 }),
+  grossMarginPerKg: decimal("gross_margin_per_kg", { precision: 10, scale: 2 }),
+  contributionMargin: decimal("contribution_margin", { precision: 15, scale: 2 }),
+  contributionMarginPercent: decimal("contribution_margin_percent", { precision: 8, scale: 4 }),
+  
+  // Quality impact analysis
+  qualityPremium: decimal("quality_premium", { precision: 10, scale: 2 }),
+  qualityDiscount: decimal("quality_discount", { precision: 10, scale: 2 }),
+  filteringImpact: decimal("filtering_impact", { precision: 12, scale: 2 }),
+  yieldEfficiency: decimal("yield_efficiency", { precision: 8, scale: 4 }),
+  
+  // Profitability ranking
+  profitabilityScore: decimal("profitability_score", { precision: 8, scale: 4 }),
+  profitabilityRank: integer("profitability_rank"),
+  performanceCategory: varchar("performance_category"), // high, medium, low, unprofitable
+  
+  // Trend analysis
+  marginTrend: varchar("margin_trend"), // improving, declining, stable, volatile
+  volumeTrend: varchar("volume_trend"),
+  priceTrend: varchar("price_trend"),
+  
+  // Risk factors
+  concentrationRisk: decimal("concentration_risk", { precision: 8, scale: 4 }),
+  priceVolatility: decimal("price_volatility", { precision: 8, scale: 4 }),
+  customerDependency: decimal("customer_dependency", { precision: 8, scale: 4 }),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Budget tracking for budget vs actual analysis
+export const budgetTracking = pgTable("budget_tracking", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => financialPeriods.id),
+  budgetDate: timestamp("budget_date").notNull().defaultNow(),
+  budgetType: varchar("budget_type").notNull(), // master, revised, forecast
+  budgetVersion: integer("budget_version").notNull().default(1),
+  
+  // Budget categories
+  category: varchar("category").notNull(), // revenue, cogs, operating_expenses, capital
+  subcategory: varchar("subcategory"), // specific line items
+  
+  // Budget amounts
+  budgetedAmount: decimal("budgeted_amount", { precision: 15, scale: 2 }).notNull(),
+  actualAmount: decimal("actual_amount", { precision: 15, scale: 2 }).default('0'),
+  forecastAmount: decimal("forecast_amount", { precision: 15, scale: 2 }),
+  
+  // Variance analysis
+  variance: decimal("variance", { precision: 15, scale: 2 }),
+  variancePercent: decimal("variance_percent", { precision: 8, scale: 4 }),
+  varianceType: varchar("variance_type"), // favorable, unfavorable
+  
+  // Performance tracking
+  budgetUtilization: decimal("budget_utilization", { precision: 8, scale: 4 }),
+  performanceRating: varchar("performance_rating"), // excellent, good, poor, critical
+  
+  // Forecast updates
+  revisedForecast: decimal("revised_forecast", { precision: 15, scale: 2 }),
+  confidenceLevel: varchar("confidence_level"), // high, medium, low
+  
+  // Notes and explanations
+  varianceExplanation: text("variance_explanation"),
+  actionItems: text("action_items").array(),
+  riskFactors: text("risk_factors").array(),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+});
+
+// Financial reporting insert schemas
+export const insertFinancialPeriodSchema = createInsertSchema(financialPeriods).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  closedAt: true,
+});
+
+export const insertFinancialMetricSchema = createInsertSchema(financialMetrics).omit({
+  id: true,
+  calculatedAt: true,
+});
+
+export const insertProfitLossStatementSchema = createInsertSchema(profitLossStatements).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+});
+
+export const insertCashFlowAnalysisSchema = createInsertSchema(cashFlowAnalysis).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMarginAnalysisSchema = createInsertSchema(marginAnalysis).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBudgetTrackingSchema = createInsertSchema(budgetTracking).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+});
+
+// Financial reporting types
+export type FinancialPeriod = typeof financialPeriods.$inferSelect;
+export type InsertFinancialPeriod = z.infer<typeof insertFinancialPeriodSchema>;
+
+export type FinancialMetric = typeof financialMetrics.$inferSelect;
+export type InsertFinancialMetric = z.infer<typeof insertFinancialMetricSchema>;
+
+export type ProfitLossStatement = typeof profitLossStatements.$inferSelect;
+export type InsertProfitLossStatement = z.infer<typeof insertProfitLossStatementSchema>;
+
+export type CashFlowAnalysis = typeof cashFlowAnalysis.$inferSelect;
+export type InsertCashFlowAnalysis = z.infer<typeof insertCashFlowAnalysisSchema>;
+
+export type MarginAnalysis = typeof marginAnalysis.$inferSelect;
+export type InsertMarginAnalysis = z.infer<typeof insertMarginAnalysisSchema>;
+
+export type BudgetTracking = typeof budgetTracking.$inferSelect;
+export type InsertBudgetTracking = z.infer<typeof insertBudgetTrackingSchema>;
+
+// Financial reporting response types for comprehensive analytics
+export interface AdvancedFinancialSummaryResponse {
+  periodOverview: {
+    periodName: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  };
+  keyMetrics: {
+    totalRevenue: number;
+    totalCogs: number;
+    grossMargin: number;
+    grossMarginPercent: number;
+    operatingExpenses: number;
+    operatingMargin: number;
+    operatingMarginPercent: number;
+    netProfit: number;
+    netProfitMargin: number;
+    workingCapital: number;
+    cashFlow: number;
+  };
+  trends: {
+    revenueGrowth: number;
+    marginTrend: string;
+    profitabilityTrend: string;
+    efficiencyTrend: string;
+  };
+  breakdown: {
+    revenueByCategory: Array<{ category: string; amount: number; percentage: number }>;
+    costsByCategory: Array<{ category: string; amount: number; percentage: number }>;
+    expensesByCategory: Array<{ category: string; amount: number; percentage: number }>;
+  };
+}
+
+export interface ComprehensivePLResponse {
+  statement: ProfitLossStatement;
+  varianceAnalysis: {
+    revenue: { amount: number; percentage: number; trend: string };
+    cogs: { amount: number; percentage: number; trend: string };
+    grossProfit: { amount: number; percentage: number; trend: string };
+    operatingExpenses: { amount: number; percentage: number; trend: string };
+    operatingProfit: { amount: number; percentage: number; trend: string };
+    netProfit: { amount: number; percentage: number; trend: string };
+  };
+  breakdown: {
+    revenueBySource: Array<{ source: string; amount: number; percentage: number }>;
+    cogsByCategory: Array<{ category: string; amount: number; percentage: number }>;
+    expensesByType: Array<{ type: string; amount: number; percentage: number }>;
+  };
+  insights: {
+    keyFindings: string[];
+    recommendations: string[];
+    riskAreas: string[];
+  };
+}
+
+export interface AdvancedCashFlowResponse {
+  analysis: CashFlowAnalysis;
+  forecast: {
+    projections: Array<{
+      date: string;
+      inflows: number;
+      outflows: number;
+      netFlow: number;
+      cumulativeBalance: number;
+    }>;
+    summary: {
+      totalInflows: number;
+      totalOutflows: number;
+      netCashFlow: number;
+      runwayDays: number;
+      liquidityRatio: number;
+    };
+  };
+  workingCapital: {
+    currentAssets: number;
+    currentLiabilities: number;
+    workingCapital: number;
+    workingCapitalRatio: number;
+    cashConversionCycle: number;
+  };
+  optimization: Array<{
+    area: string;
+    currentValue: number;
+    targetValue: number;
+    impact: number;
+    recommendation: string;
+  }>;
+}
+
+export interface ComprehensiveMarginResponse {
+  customerAnalysis: Array<{
+    customerId: string;
+    customerName: string;
+    totalRevenue: number;
+    totalCogs: number;
+    grossMargin: number;
+    grossMarginPercent: number;
+    volumeKg: number;
+    profitabilityRank: number;
+    performanceCategory: string;
+    trend: string;
+  }>;
+  productAnalysis: Array<{
+    qualityGrade: string;
+    country: string;
+    totalRevenue: number;
+    totalCogs: number;
+    grossMargin: number;
+    grossMarginPercent: number;
+    volumeKg: number;
+    qualityPremium: number;
+    filteringImpact: number;
+  }>;
+  transactionAnalysis: Array<{
+    orderId: string;
+    customerId: string;
+    customerName: string;
+    totalRevenue: number;
+    totalCogs: number;
+    grossMargin: number;
+    grossMarginPercent: number;
+    qualityGrade: string;
+    country: string;
+    date: Date;
+  }>;
+  insights: {
+    topPerformers: string[];
+    underperformers: string[];
+    opportunities: string[];
+    risks: string[];
+  };
+}
+
+export interface FinancialKPIResponse {
+  revenue: { current: number; previous: number; growth: number };
+  grossMargin: { amount: number; percentage: number; trend: string };
+  operatingMargin: { amount: number; percentage: number; trend: string };
+  netProfit: { amount: number; percentage: number; trend: string };
+  workingCapital: { amount: number; ratio: number; trend: string };
+  inventoryTurnover: { ratio: number; days: number; trend: string };
+  cashFlow: { operating: number; total: number; runway: number };
+  efficiency: {
+    assetTurnover: number;
+    receivablesTurnover: number;
+    payablesTurnover: number;
+    inventoryTurnover: number;
+  };
+  profitability: {
+    grossProfitMargin: number;
+    operatingProfitMargin: number;
+    netProfitMargin: number;
+    returnOnAssets: number;
+    returnOnEquity: number;
+  };
+  liquidity: {
+    currentRatio: number;
+    quickRatio: number;
+    cashRatio: number;
+  };
+}
+
+export interface BudgetVarianceResponse {
+  categories: Array<{
+    category: string;
+    subcategory?: string;
+    budgeted: number;
+    actual: number;
+    variance: number;
+    variancePercent: number;
+    varianceType: string;
+    performanceRating: string;
+  }>;
+  summary: {
+    totalBudgeted: number;
+    totalActual: number;
+    totalVariance: number;
+    totalVariancePercent: number;
+    favorableVariances: number;
+    unfavorableVariances: number;
+  };
+  insights: {
+    significantVariances: string[];
+    performanceHighlights: string[];
+    areasOfConcern: string[];
+    recommendations: string[];
+  };
+}
+
+export interface BreakEvenAnalysisResponse {
+  breakEvenRevenue: number;
+  breakEvenUnits: number;
+  marginOfSafety: number;
+  marginOfSafetyPercent: number;
+  contributionMargin: number;
+  contributionMarginRatio: number;
+  fixedCosts: number;
+  variableCostRatio: number;
+  scenarios: Array<{
+    scenario: string;
+    salesVolume: number;
+    revenue: number;
+    profit: number;
+    marginOfSafety: number;
+  }>;
+}
+
+export interface ROIAnalysisResponse {
+  overallROI: number;
+  purchaseROI: number;
+  inventoryROI: number;
+  workingCapitalROI: number;
+  roiBySupplier: Array<{
+    supplierId: string;
+    supplierName: string;
+    totalInvestment: number;
+    totalReturn: number;
+    roi: number;
+    roiRank: number;
+  }>;
+  roiByQualityGrade: Array<{
+    qualityGrade: string;
+    totalInvestment: number;
+    totalReturn: number;
+    roi: number;
+  }>;
+  recommendations: string[];
+}
+
+export interface CurrencyExposureResponse {
+  exposureByTransaction: Array<{
+    currency: string;
+    totalAmount: number;
+    amountUsd: number;
+    exchangeRate: number;
+    exposurePercent: number;
+  }>;
+  hedgeRecommendations: Array<{
+    currency: string;
+    exposureAmount: number;
+    hedgeAmount: number;
+    strategy: string;
+    costBenefit: number;
+  }>;
+  riskMetrics: {
+    totalExposure: number;
+    concentrationRisk: number;
+    volatilityRisk: number;
+  };
+}
+
+export interface FinancialForecastResponse {
+  revenueForecast: Array<{
+    period: string;
+    forecastRevenue: number;
+    confidence: number;
+    factors: string[];
+  }>;
+  costForecast: Array<{
+    period: string;
+    forecastCogs: number;
+    forecastExpenses: number;
+    confidence: number;
+  }>;
+  profitForecast: Array<{
+    period: string;
+    forecastGrossProfit: number;
+    forecastOperatingProfit: number;
+    forecastNetProfit: number;
+    confidence: number;
+  }>;
+  recommendations: string[];
+  risks: Array<{
+    risk: string;
+    probability: number;
+    impact: number;
+    mitigation: string;
+  }>;
+}
+
+// Financial reporting validation schemas
+export const financialPeriodFilterSchema = z.object({
+  status: z.enum(['open', 'closed', 'locked']).optional(),
+  periodType: z.enum(['month', 'quarter', 'year', 'custom']).optional(),
+});
+
+export const financialAnalysisRequestSchema = z.object({
+  periodId: z.string().optional(),
+  comparisonPeriodId: z.string().optional(),
+  analysisType: z.enum(['detailed', 'summary', 'forecast']).optional(),
+  filters: z.object({
+    customerId: z.string().optional(),
+    supplierId: z.string().optional(),
+    qualityGrade: z.enum(['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']).optional(),
+    country: z.string().optional(),
+  }).optional(),
+});
+
+export const marginAnalysisRequestSchema = z.object({
+  periodId: z.string().optional(),
+  analysisType: z.enum(['customer', 'product', 'transaction', 'combined']).default('combined'),
+  filters: z.object({
+    customerId: z.string().optional(),
+    supplierId: z.string().optional(),
+    qualityGrade: z.enum(['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']).optional(),
+    country: z.string().optional(),
+    minMargin: z.number().optional(),
+  }).optional(),
+});
+
+export const cashFlowAnalysisRequestSchema = z.object({
+  periodId: z.string().optional(),
+  analysisType: z.enum(['actual', 'forecast', 'budget']).default('actual'),
+  forecastDays: z.number().min(1).max(365).optional(),
+  includeProjections: z.boolean().default(true),
+});
+
+export const budgetTrackingRequestSchema = z.object({
+  periodId: z.string(),
+  category: z.string().optional(),
+  includeVarianceAnalysis: z.boolean().default(true),
+});
+
+// Financial reporting request types
+export type FinancialPeriodFilter = z.infer<typeof financialPeriodFilterSchema>;
+export type FinancialAnalysisRequest = z.infer<typeof financialAnalysisRequestSchema>;
+export type MarginAnalysisRequest = z.infer<typeof marginAnalysisRequestSchema>;
+export type CashFlowAnalysisRequest = z.infer<typeof cashFlowAnalysisRequestSchema>;
+export type BudgetTrackingRequest = z.infer<typeof budgetTrackingRequestSchema>;
