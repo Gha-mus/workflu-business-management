@@ -2125,21 +2125,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCapitalBalance(): Promise<number> {
-    const result = await db
-      .select({
-        capitalIn: sum(
-          sql`CASE WHEN ${capitalEntries.type} = 'CapitalIn' THEN ${capitalEntries.amount} ELSE 0 END`
-        ),
-        capitalOut: sum(
-          sql`CASE WHEN ${capitalEntries.type} = 'CapitalOut' THEN ${capitalEntries.amount} ELSE 0 END`
-        ),
-      })
-      .from(capitalEntries);
-
-    const capitalIn = parseFloat(result[0]?.capitalIn || '0');
-    const capitalOut = parseFloat(result[0]?.capitalOut || '0');
+    // STAGE 1 COMPLIANCE: Use proper business logic for all entry types
+    const entries = await db.select().from(capitalEntries);
     
-    return capitalIn - capitalOut;
+    let totalBalance = 0;
+    for (const entry of entries) {
+      const impact = await this.calculateCapitalEntryBalanceImpact(entry);
+      totalBalance += impact;
+    }
+    
+    return totalBalance;
   }
 
   async createCapitalEntry(entry: InsertCapitalEntry, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<CapitalEntry> {
@@ -2155,6 +2150,11 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    // STAGE 1 COMPLIANCE: Amount matching validation for linked operations
+    if (entry.reference) {
+      await this.validateCapitalEntryAmountMatching(entry);
+    }
+
     const [result] = await db.insert(capitalEntries).values(entry).returning();
     
     // CRITICAL SECURITY: Audit logging for financial operations
@@ -2167,7 +2167,7 @@ export class DatabaseStorage implements IStorage {
         'capital_entry',
         null,
         result,
-        parseFloat(entry.amount) * (entry.type === 'CapitalOut' ? -1 : 1),
+        await this.calculateCapitalEntryBalanceImpact(result),
         entry.paymentCurrency || 'USD'
       );
     }
@@ -2203,7 +2203,7 @@ export class DatabaseStorage implements IStorage {
         'capital_entry',
         null,
         result,
-        parseFloat(entry.amount) * (entry.type === 'CapitalOut' ? -1 : 1),
+        await this.calculateCapitalEntryBalanceImpact(result),
         entry.paymentCurrency || 'USD'
       );
     }
@@ -2219,24 +2219,144 @@ export class DatabaseStorage implements IStorage {
     // Acquire advisory transaction lock for capital operations
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${capitalLockId})`);
     
-    // For CapitalOut entries, check balance atomically within the lock
-    if (entry.type === 'CapitalOut') {
-      const currentBalance = await this.getCapitalBalanceInTransaction(tx);
-      const withdrawalAmount = new Decimal(entry.amount);
-      const newBalance = new Decimal(currentBalance).sub(withdrawalAmount);
+    // STAGE 1 COMPLIANCE: Check balance impact for all entry types that can reduce balance
+    const config = ConfigurationService.getInstance();
+    const preventNegativeConfig = await config.getSystemSetting('PREVENT_NEGATIVE_BALANCE', 'financial');
+    const preventNegative = preventNegativeConfig === 'true';
+    
+    if (preventNegative) {
+      // Calculate the balance impact for this entry (handles all types correctly)
+      const balanceImpact = await this.calculateCapitalEntryBalanceImpactForValidation(entry);
       
-      // Check if negative balance prevention is enabled
-      const [preventNegativeSetting] = await tx.select().from(settings).where(eq(settings.key, 'PREVENT_NEGATIVE_BALANCE'));
-      const preventNegative = preventNegativeSetting?.value === 'true';
-      
-      if (preventNegative && newBalance.lt(0)) {
-        throw new Error(`Cannot create capital withdrawal. Would result in negative balance: ${newBalance.toFixed(2)} USD`);
+      // Only check if the impact is negative (would reduce balance)
+      if (balanceImpact < 0) {
+        const currentBalance = await this.getCapitalBalanceInTransaction(tx);
+        const impactAmount = new Decimal(Math.abs(balanceImpact));
+        const newBalance = new Decimal(currentBalance).sub(impactAmount);
+        
+        if (newBalance.lt(0)) {
+          throw new Error(`Cannot create ${entry.type} entry. Would result in negative balance: ${newBalance.toFixed(2)} USD`);
+        }
       }
     }
     
     // Create the capital entry
     const [result] = await tx.insert(capitalEntries).values(entry).returning();
     return result;
+  }
+
+  // STAGE 1 COMPLIANCE: Calculate balance impact for validation (simpler version for transaction checks)
+  private async calculateCapitalEntryBalanceImpactForValidation(entry: InsertCapitalEntry): Promise<number> {
+    const amount = parseFloat(entry.amount);
+    
+    switch (entry.type) {
+      case 'CapitalIn':
+        return amount; // Positive impact
+      case 'CapitalOut':
+        return -amount; // Negative impact
+      case 'Reclass':
+        return 0; // Net-zero balance impact
+      case 'Reverse':
+        // STAGE 1 COMPLIANCE: Reverse entries should be exempt from negative balance checking
+        // since they reference existing entries and their actual impact depends on what they reverse
+        // To avoid circular dependencies during transaction, we exempt them from validation
+        return 0;
+      default:
+        throw new Error(`Unknown capital entry type: ${entry.type}`);
+    }
+  }
+
+  // STAGE 1 COMPLIANCE: Calculate correct balance impact for different entry types
+  private async calculateCapitalEntryBalanceImpact(entry: CapitalEntry | InsertCapitalEntry): Promise<number> {
+    const amount = parseFloat(entry.amount);
+    
+    switch (entry.type) {
+      case 'CapitalIn':
+        return amount; // Positive impact
+      case 'CapitalOut':
+        return -amount; // Negative impact
+      case 'Reclass':
+        return 0; // Net-zero balance impact (just changes classification)
+      case 'Reverse':
+        // Reverse entries negate the original entry's balance impact
+        if (!entry.reference) {
+          throw new Error('Reverse entries must reference the original entry');
+        }
+        
+        // Look up the referenced entry to determine its balance impact
+        const [referencedEntry] = await db.select().from(capitalEntries).where(eq(capitalEntries.id, entry.reference));
+        if (!referencedEntry) {
+          throw new Error(`Referenced capital entry not found: ${entry.reference}`);
+        }
+        
+        // Return the exact negative of the referenced entry's balance impact
+        const referencedImpact = await this.calculateCapitalEntryBalanceImpact(referencedEntry);
+        return -referencedImpact;
+      default:
+        throw new Error(`Unknown capital entry type: ${entry.type}`);
+    }
+  }
+
+  // STAGE 1 COMPLIANCE: Amount matching validation for capital entries
+  private async validateCapitalEntryAmountMatching(entry: InsertCapitalEntry): Promise<void> {
+    if (!entry.reference) return;
+
+    const referenceId = entry.reference;
+    const entryAmountUSD = new Decimal(entry.amount);
+    const config = ConfigurationService.getInstance();
+
+    // Check if reference is a purchase
+    const [purchase] = await db.select().from(purchases).where(eq(purchases.id, referenceId));
+    if (purchase) {
+      let expectedAmount = new Decimal(purchase.amountPaid);
+      
+      // Convert from purchase currency to USD if needed
+      if (purchase.currency === 'ETB') {
+        const rate = purchase.exchangeRate ? parseFloat(purchase.exchangeRate) : await config.getCentralExchangeRate();
+        expectedAmount = expectedAmount.div(rate);
+      }
+      
+      // Allow 1% tolerance for rounding differences
+      const tolerance = expectedAmount.mul(0.01);
+      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      
+      if (difference.gt(tolerance)) {
+        throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked purchase payment ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
+      }
+      return;
+    }
+
+    // TODO: Add validation for shipping and expense references when those are implemented
+  }
+
+  // STAGE 1 COMPLIANCE: Linked deletion protection for capital entries
+  async deleteCapitalEntry(id: string, auditContext?: AuditContext): Promise<void> {
+    // Check if capital entry has a reference (is linked to an operation)
+    const [entry] = await db.select().from(capitalEntries).where(eq(capitalEntries.id, id));
+    if (!entry) {
+      throw new Error(`Capital entry not found: ${id}`);
+    }
+
+    if (entry.reference) {
+      throw new Error(`Cannot delete capital entry ${entry.entryId} - it is linked to operation ${entry.reference}. Use Reverse entry instead.`);
+    }
+
+    await db.delete(capitalEntries).where(eq(capitalEntries.id, id));
+    
+    // CRITICAL SECURITY: Audit logging for deletion
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'capital_entries',
+        id,
+        'delete',
+        'capital_entry',
+        entry,
+        null,
+        await this.calculateCapitalEntryBalanceImpact(entry),
+        entry.paymentCurrency || 'USD'
+      );
+    }
   }
 
   // Purchase operations
@@ -2458,21 +2578,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async getCapitalBalanceInTransaction(tx: any): Promise<number> {
-    const result = await tx
-      .select({
-        capitalIn: sum(
-          sql`CASE WHEN ${capitalEntries.type} = 'CapitalIn' THEN ${capitalEntries.amount} ELSE 0 END`
-        ),
-        capitalOut: sum(
-          sql`CASE WHEN ${capitalEntries.type} = 'CapitalOut' THEN ${capitalEntries.amount} ELSE 0 END`
-        ),
-      })
-      .from(capitalEntries);
-
-    const capitalIn = parseFloat(result[0]?.capitalIn || '0');
-    const capitalOut = parseFloat(result[0]?.capitalOut || '0');
+    // STAGE 1 COMPLIANCE: Use proper business logic for all entry types within transaction
+    const entries = await tx.select().from(capitalEntries);
     
-    return capitalIn - capitalOut;
+    let totalBalance = 0;
+    for (const entry of entries) {
+      const impact = await this.calculateCapitalEntryBalanceImpact(entry);
+      totalBalance += impact;
+    }
+    
+    return totalBalance;
   }
 
   async updatePurchase(id: string, purchase: Partial<InsertPurchase>): Promise<Purchase> {

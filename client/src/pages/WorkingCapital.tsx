@@ -35,9 +35,10 @@ export default function WorkingCapital() {
   const queryClient = useQueryClient();
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
   const [amount, setAmount] = useState("");
-  const [type, setType] = useState<"CapitalIn" | "CapitalOut">("CapitalIn");
+  const [type, setType] = useState<"CapitalIn" | "CapitalOut" | "Reverse" | "Reclass">("CapitalIn");
   const [description, setDescription] = useState("");
   const [currency, setCurrency] = useState<"USD" | "ETB">("USD");
+  const [reference, setReference] = useState("");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -75,6 +76,7 @@ export default function WorkingCapital() {
         description: data.description,
         paymentCurrency: data.currency,
         exchangeRate: exchangeRate,
+        reference: data.reference || undefined,
       });
     },
     onSuccess: () => {
@@ -87,6 +89,7 @@ export default function WorkingCapital() {
       setShowAddEntryModal(false);
       setAmount("");
       setDescription("");
+      setReference("");
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
@@ -128,6 +131,16 @@ export default function WorkingCapital() {
       return;
     }
 
+    // STAGE 1 COMPLIANCE: Validate reference field for Reverse/Reclass entries
+    if ((type === "Reverse" || type === "Reclass") && !reference) {
+      toast({
+        title: "Error",
+        description: `${type} entries must include a reference to the linked operation`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate exchange rate for ETB entries
     if (currency === "ETB" && (!settings?.exchangeRate || settings.exchangeRate <= 0)) {
       toast({
@@ -143,6 +156,7 @@ export default function WorkingCapital() {
       type,
       description,
       currency,
+      reference,
     });
   };
 
@@ -180,13 +194,15 @@ export default function WorkingCapital() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="type">Type</Label>
-                    <Select value={type} onValueChange={(value: "CapitalIn" | "CapitalOut") => setType(value)}>
+                    <Select value={type} onValueChange={(value: "CapitalIn" | "CapitalOut" | "Reverse" | "Reclass") => setType(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="CapitalIn">Capital In (Deposit)</SelectItem>
                         <SelectItem value="CapitalOut">Capital Out (Withdrawal)</SelectItem>
+                        <SelectItem value="Reverse">Reverse Entry</SelectItem>
+                        <SelectItem value="Reclass">Reclassification</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -228,6 +244,21 @@ export default function WorkingCapital() {
                       </div>
                     )}
                   </div>
+                  
+                  {(type === "Reverse" || type === "Reclass") && (
+                    <div>
+                      <Label htmlFor="reference">Reference (Operation ID)</Label>
+                      <Input
+                        value={reference}
+                        onChange={(e) => setReference(e.target.value)}
+                        placeholder="Enter operation ID to link to (purchase_id, order_id, etc.)"
+                        data-testid="input-reference"
+                      />
+                      <p className="text-sm text-muted-foreground mt-1">
+                        For reversals: Enter the ID of the operation being reversed
+                      </p>
+                    </div>
+                  )}
                   
                   <div>
                     <Label htmlFor="description">Description</Label>

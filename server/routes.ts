@@ -1343,26 +1343,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.user.claims.sub,
       });
       
-      // Require exchangeRate for non-USD entries
-      if (entryData.paymentCurrency !== 'USD' && (!entryData.exchangeRate || entryData.exchangeRate === '0')) {
+      // STAGE 1 COMPLIANCE: Validate Reverse/Reclass entries require reference
+      if ((entryData.type === 'Reverse' || entryData.type === 'Reclass') && !entryData.reference) {
         return res.status(400).json({ 
-          message: "Exchange rate is required for non-USD currencies",
-          field: "exchangeRate"
+          message: `${entryData.type} entries must include a reference to the linked operation`,
+          field: "reference"
         });
       }
       
-      // Convert amount to USD for capital tracking normalization
-      const entryAmount = new Decimal(entryData.amount);
-      let amountInUsd = entryAmount;
-      if (entryData.paymentCurrency === 'ETB' && entryData.exchangeRate) {
-        amountInUsd = entryAmount.div(new Decimal(entryData.exchangeRate));
+      // STAGE 1 SECURITY: Enforce central FX rate, never trust client-supplied rates
+      let centralExchangeRate: string | undefined;
+      let amountInUsd = new Decimal(entryData.amount);
+      
+      if (entryData.paymentCurrency === 'ETB') {
+        try {
+          const config = configurationService;
+          const rate = await config.getCentralExchangeRate();
+          centralExchangeRate = rate.toString();
+          amountInUsd = new Decimal(entryData.amount).div(rate);
+        } catch (error) {
+          return res.status(400).json({ 
+            message: "Central exchange rate not configured. Please set USD_ETB_RATE in settings.",
+            field: "centralExchangeRate"
+          });
+        }
       }
       
-      // Store USD amount with original paymentCurrency and exchangeRate as metadata
+      // Store USD amount with central exchange rate (never trust client rates)
       // Use concurrency protection to prevent race conditions  
       const entry = await storage.createCapitalEntryWithConcurrencyProtection({
         ...entryData,
         amount: amountInUsd.toFixed(2), // Store normalized USD amount for accurate balance calculation
+        exchangeRate: centralExchangeRate, // Use centrally enforced rate
       });
       res.json(entry);
     } catch (error) {

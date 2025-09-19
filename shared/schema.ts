@@ -42,6 +42,11 @@ export const approvalOperationTypeEnum = pgEnum('approval_operation_type', [
   'monitoring_check', 'hourly_stats', 'notification_configuration'
 ]);
 
+// Capital entry types enum for Stage 1 Working Capital
+export const capitalEntryTypeEnum = pgEnum('capital_entry_type', [
+  'CapitalIn', 'CapitalOut', 'Reverse', 'Reclass'
+]);
+
 // Revenue entry types enum for Stage 7 Revenue Management
 export const revenueEntryTypeEnum = pgEnum('revenue_entry_type', [
   'customer_receipt', 'customer_refund', 'withdrawal', 'reinvest_out', 'transfer_fee', 'reclass', 'reverse'
@@ -177,7 +182,7 @@ export const capitalEntries = pgTable("capital_entries", {
   entryId: varchar("entry_id").notNull().unique(),
   date: timestamp("date").notNull().defaultNow(),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-  type: varchar("type").notNull(), // CapitalIn, CapitalOut, Reclass, Reverse
+  type: capitalEntryTypeEnum("type").notNull(),
   reference: varchar("reference"), // order_id, purchase_id, etc.
   description: text("description"),
   paymentCurrency: varchar("payment_currency").notNull().default('USD'),
