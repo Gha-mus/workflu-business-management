@@ -74,11 +74,7 @@ export function Sidebar() {
         variant="ghost"
         size="icon"
         className="md:hidden fixed top-4 left-4 z-50 bg-background shadow-lg"
-        onClick={() => {
-          console.log('Mobile menu toggle clicked. Current state:', isMobileOpen);
-          setIsMobileOpen(!isMobileOpen);
-          console.log('Set mobile open to:', !isMobileOpen);
-        }}
+        onClick={() => setIsMobileOpen(!isMobileOpen)}
         data-testid="mobile-menu-toggle"
       >
         {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -160,11 +156,7 @@ export function Sidebar() {
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
-                  onClick={(e) => {
-                    console.log('Navigation button clicked:', item.name, 'Mobile open:', isMobileOpen);
-                    setIsMobileOpen(false);
-                    console.log('Set mobile open to false');
-                  }}
+                  onClick={() => setIsMobileOpen(false)}
                   data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <Icon className="w-4 h-4" />
