@@ -26,6 +26,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql } from "drizzle-orm";
+import Decimal from "decimal.js";
 
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
@@ -61,6 +62,7 @@ export interface IStorage {
   getPurchases(): Promise<Purchase[]>;
   getPurchase(id: string): Promise<Purchase | undefined>;
   createPurchase(purchase: InsertPurchase): Promise<Purchase>;
+  createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string): Promise<Purchase>;
   updatePurchase(id: string, purchase: Partial<InsertPurchase>): Promise<Purchase>;
   
   // Warehouse operations
@@ -230,8 +232,151 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPurchase(purchase: InsertPurchase): Promise<Purchase> {
-    const [result] = await db.insert(purchases).values(purchase).returning();
+    // Generate next purchase number with retry logic to handle race conditions
+    const purchaseNumber = await this.generateNextPurchaseNumber();
+    
+    const [result] = await db.insert(purchases).values({
+      ...purchase,
+      purchaseNumber,
+    }).returning();
     return result;
+  }
+
+  async createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string): Promise<Purchase> {
+    // Use database transaction to ensure atomicity
+    return await db.transaction(async (tx) => {
+      // Generate next purchase number with retry logic
+      const purchaseNumber = await this.generateNextPurchaseNumberInTransaction(tx);
+      
+      // Create the purchase record
+      const [purchase] = await tx.insert(purchases).values({
+        ...purchaseData,
+        purchaseNumber,
+      }).returning();
+
+      // If funded from capital and amount paid > 0, create capital entry
+      if (purchaseData.fundingSource === 'capital' && parseFloat(purchaseData.amountPaid || '0') > 0) {
+        const amountPaid = new Decimal(purchaseData.amountPaid || '0');
+        
+        // Convert amount to USD for capital tracking normalization
+        let amountInUsd = amountPaid;
+        if (purchaseData.currency === 'ETB' && purchaseData.exchangeRate) {
+          amountInUsd = amountPaid.div(new Decimal(purchaseData.exchangeRate));
+        }
+        
+        // Check for negative balance prevention in transaction
+        const currentBalance = await this.getCapitalBalanceInTransaction(tx);
+        const newBalance = new Decimal(currentBalance).sub(amountInUsd);
+        
+        // Check if negative balance prevention is enabled
+        const [preventNegativeSetting] = await tx.select().from(settings).where(eq(settings.key, 'PREVENT_NEGATIVE_BALANCE'));
+        const preventNegative = preventNegativeSetting?.value === 'true';
+        
+        if (preventNegative && newBalance.lt(0)) {
+          throw new Error(`Cannot fund purchase from capital. Would result in negative balance: ${newBalance.toFixed(2)} USD`);
+        }
+        
+        // Create capital entry
+        await tx.insert(capitalEntries).values({
+          entryId: `PUR-${purchase.id}`,
+          amount: amountInUsd.toFixed(2),
+          type: 'CapitalOut',
+          reference: purchase.id,
+          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${purchaseData.exchangeRate})` : ''}`,
+          paymentCurrency: purchaseData.currency,
+          exchangeRate: purchaseData.exchangeRate || undefined,
+          createdBy: userId,
+        });
+      }
+
+      // Create warehouse stock entry in FIRST warehouse
+      const pricePerKg = new Decimal(purchaseData.pricePerKg);
+      const unitCostCleanUsd = purchaseData.currency === 'USD' 
+        ? purchaseData.pricePerKg 
+        : pricePerKg.div(new Decimal(purchaseData.exchangeRate as string)).toFixed(4);
+
+      await tx.insert(warehouseStock).values({
+        purchaseId: purchase.id,
+        orderId: purchase.orderId,
+        supplierId: purchase.supplierId,
+        warehouse: 'FIRST',
+        status: 'AWAITING_DECISION',
+        qtyKgTotal: purchaseData.weight,
+        qtyKgClean: purchaseData.weight,
+        qtyKgNonClean: '0',
+        unitCostCleanUsd,
+      });
+
+      return purchase;
+    });
+  }
+
+  private async generateNextPurchaseNumber(): Promise<string> {
+    // Use retry logic to handle race conditions
+    const maxRetries = 5;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Get the highest existing purchase number using lexicographic ordering
+        const latestPurchase = await db
+          .select({ purchaseNumber: purchases.purchaseNumber })
+          .from(purchases)
+          .orderBy(sql`${purchases.purchaseNumber} DESC`)
+          .limit(1);
+
+        const nextNumber = this.calculateNextPurchaseNumber(latestPurchase[0]?.purchaseNumber);
+        return nextNumber;
+      } catch (error) {
+        if (attempt === maxRetries - 1) throw error;
+        // Small delay before retry
+        await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)));
+      }
+    }
+    return 'PUR-000001'; // Fallback
+  }
+
+  private async generateNextPurchaseNumberInTransaction(tx: any): Promise<string> {
+    // Get the highest existing purchase number in transaction
+    const latestPurchase = await tx
+      .select({ purchaseNumber: purchases.purchaseNumber })
+      .from(purchases)
+      .orderBy(sql`${purchases.purchaseNumber} DESC`)
+      .limit(1);
+
+    return this.calculateNextPurchaseNumber(latestPurchase[0]?.purchaseNumber);
+  }
+
+  private calculateNextPurchaseNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'PUR-000001';
+    }
+
+    // Extract number from PUR-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastNumber.match(/PUR-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'PUR-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `PUR-${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  private async getCapitalBalanceInTransaction(tx: any): Promise<number> {
+    const result = await tx
+      .select({
+        capitalIn: sum(
+          sql`CASE WHEN ${capitalEntries.type} = 'CapitalIn' THEN ${capitalEntries.amount} ELSE 0 END`
+        ),
+        capitalOut: sum(
+          sql`CASE WHEN ${capitalEntries.type} = 'CapitalOut' THEN ${capitalEntries.amount} ELSE 0 END`
+        ),
+      })
+      .from(capitalEntries);
+
+    const capitalIn = parseFloat(result[0]?.capitalIn || '0');
+    const capitalOut = parseFloat(result[0]?.capitalOut || '0');
+    
+    return capitalIn - capitalOut;
   }
 
   async updatePurchase(id: string, purchase: Partial<InsertPurchase>): Promise<Purchase> {
