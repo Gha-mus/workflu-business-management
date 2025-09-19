@@ -16,6 +16,9 @@ import {
   warehouseFilterOperationSchema,
   warehouseMoveToFinalSchema,
   warehouseStockFilterSchema,
+  dateRangeFilterSchema,
+  periodFilterSchema,
+  exportTypeSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -459,6 +462,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating filter record:", error);
       res.status(500).json({ message: "Failed to create filter record" });
+    }
+  });
+
+
+  // REPORTING ENDPOINTS - All with proper RBAC and USD normalization
+
+  // Financial Summary Endpoint
+  app.get('/api/reports/financial/summary', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const filters = dateRangeFilterSchema.parse(req.query);
+      const summary = await storage.getFinancialSummary(filters);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching financial summary:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to fetch financial summary" });
+    }
+  });
+
+  // Cash Flow Analysis Endpoint
+  app.get('/api/reports/financial/cashflow', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { period } = periodFilterSchema.parse(req.query);
+      const cashFlow = await storage.getCashflowAnalysis(period);
+      res.json(cashFlow);
+    } catch (error) {
+      console.error("Error fetching cash flow analysis:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to fetch cash flow analysis" });
+    }
+  });
+
+  // Inventory Analytics Endpoint
+  app.get('/api/reports/inventory/analytics', requireRole(['admin', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const analytics = await storage.getInventoryAnalytics();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching inventory analytics:", error);
+      res.status(500).json({ message: "Failed to fetch inventory analytics" });
+    }
+  });
+
+  // Supplier Performance Endpoint
+  app.get('/api/reports/suppliers/performance', requireRole(['admin', 'finance', 'purchasing']), async (req, res) => {
+    try {
+      const performance = await storage.getSupplierPerformance();
+      res.json(performance);
+    } catch (error) {
+      console.error("Error fetching supplier performance:", error);
+      res.status(500).json({ message: "Failed to fetch supplier performance" });
+    }
+  });
+
+  // Trading Activity Endpoint
+  app.get('/api/reports/trading/activity', requireRole(['admin', 'finance', 'sales']), async (req, res) => {
+    try {
+      const activity = await storage.getTradingActivity();
+      res.json(activity);
+    } catch (error) {
+      console.error("Error fetching trading activity:", error);
+      res.status(500).json({ message: "Failed to fetch trading activity" });
+    }
+  });
+
+  // Enhanced Export Endpoint with proper USD normalization
+  app.get('/api/reports/export/:type', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { type } = req.params;
+      const { format = 'json' } = exportTypeSchema.parse({ type, format: req.query.format });
+      
+      const data = await storage.exportReportData(type, format);
+      
+      if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=${type}-report.csv`);
+        res.send(data);
+      } else {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=${type}-report.json`);
+        res.json(data);
+      }
+    } catch (error) {
+      console.error("Error exporting report:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      if (error instanceof Error && error.message.includes('Unsupported report type')) {
+        return res.status(400).json({ message: error.message });
+      }
+      
+      res.status(500).json({ message: "Failed to export report" });
     }
   });
 
