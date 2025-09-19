@@ -1079,6 +1079,114 @@ Provide overall assessment and prioritized recommendations for closing gaps.`
       throw new Error('Failed to complete workflow validation');
     }
   }
+
+  /**
+   * Validate shipping workflow implementation against business document
+   */
+  async validateShippingWorkflow(): Promise<{
+    compliance: 'compliant' | 'partial' | 'non-compliant';
+    findings: string[];
+    recommendations: string[];
+    businessAlignment: number; // 0-100 percentage
+  }> {
+    try {
+      console.log('Starting shipping workflow validation...');
+
+      const shippingRequirements = `
+      Based on the WorkFlu business document, the shipping workflow must:
+      
+      1. CAPITAL INTEGRATION:
+         - Shipping costs must be funded from Working Capital (CapitalOut entries)
+         - Support multi-currency (USD/ETB) with automatic conversion
+         - Link shipping costs to shipping_leg_id/arrival_cost_id
+         - Include transfer commission % when paid from capital
+      
+      2. WORKFLOW INTEGRATION:
+         - Connect with warehouse operations (ship from warehouse stock)
+         - Link to purchase orders and track shipments
+         - Support final warehouse updates on delivery
+         - Maintain data integrity with existing business rules
+      
+      3. COST TRACKING:
+         - All costs normalized to USD for reporting
+         - Support freight, insurance, customs, handling costs
+         - Track payment methods (cash, advance, credit)
+         - External funding option (doesn't affect capital)
+      
+      4. OPERATIONAL REQUIREMENTS:
+         - Multiple shipping methods (sea, air, land, courier)
+         - Shipment number generation and tracking
+         - Origin/destination management
+         - Status tracking (pending, in_transit, delivered, etc.)
+         - Carrier management and performance tracking
+      `;
+
+      const currentImplementation = `
+      SHIPPING SYSTEM IMPLEMENTATION:
+      
+      1. DATABASE SCHEMA:
+         - carriers table with contact info and ratings
+         - shipments table with proper relationships
+         - shipmentItems linking warehouse stock to shipments
+         - shippingCosts with multi-currency support and USD normalization
+         - deliveryTracking for status history
+      
+      2. CAPITAL INTEGRATION:
+         - addShippingCost method creates CapitalOut entries when fundingSource='capital'
+         - Multi-currency support with automatic USD conversion
+         - Exchange rate handling from settings
+         - Proper linking to shipment IDs
+      
+      3. WAREHOUSE INTEGRATION:
+         - createShipmentFromWarehouseStock method
+         - Stock reservation/release functionality
+         - Available stock filtering for shipping
+         - Final warehouse updates on delivery
+      
+      4. API ENDPOINTS:
+         - Complete CRUD operations for carriers, shipments, costs, tracking
+         - Role-based access control (admin, warehouse, finance, sales)
+         - Analytics and reporting endpoints
+         - Integration endpoints for warehouse operations
+      
+      5. FRONTEND:
+         - Comprehensive shipping management UI
+         - Carrier management interface
+         - Shipment creation from warehouse stock
+         - Cost tracking with multi-currency support
+         - Analytics dashboard with performance metrics
+      `;
+
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        {
+          role: "system",
+          content: `You are a business workflow compliance validator for WorkFlu trading system. 
+                    Analyze if the shipping implementation aligns with business requirements.
+                    Focus on capital integration, workflow consistency, and operational completeness.
+                    Respond with JSON in this exact format:
+                    {
+                      "compliance": "compliant|partial|non-compliant",
+                      "findings": ["finding1", "finding2"],
+                      "recommendations": ["rec1", "rec2"],
+                      "businessAlignment": 85
+                    }`
+        },
+        {
+          role: "user", 
+          content: `BUSINESS REQUIREMENTS:\n${shippingRequirements}\n\nCURRENT IMPLEMENTATION:\n${currentImplementation}\n\nValidate compliance and provide detailed assessment.`
+        }
+      ];
+
+      const response = await this.createCompletion(messages, true);
+      const validation = JSON.parse(response || '{}');
+      
+      console.log('Shipping workflow validation completed');
+      return validation;
+    } catch (error) {
+      console.error('Error in shipping workflow validation:', error);
+      throw new Error('Failed to validate shipping workflow');
+    }
+  }
 }
 
 // Export singleton instance

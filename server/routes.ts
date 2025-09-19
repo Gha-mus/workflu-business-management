@@ -34,6 +34,17 @@ import {
   aiCapitalOptimizationRequestSchema,
   aiChatRequestSchema,
   aiContextualHelpRequestSchema,
+  insertCarrierSchema,
+  insertShipmentSchema,
+  insertShipmentItemSchema,
+  insertShippingCostSchema,
+  insertDeliveryTrackingSchema,
+  createShipmentFromStockSchema,
+  addShippingCostSchema,
+  addDeliveryTrackingSchema,
+  shipmentStatusUpdateSchema,
+  carrierFilterSchema,
+  shipmentFilterSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1575,6 +1586,430 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching scheduler status:", error);
       res.status(500).json({ message: "Failed to fetch scheduler status" });
+    }
+  });
+
+  // Shipping and Logistics Routes
+  
+  // Carrier management routes
+  app.get('/api/carriers', requireRole(['admin', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const filter = carrierFilterSchema.parse(req.query);
+      const carriers = await storage.getCarriers(filter);
+      res.json(carriers);
+    } catch (error) {
+      console.error("Error fetching carriers:", error);
+      res.status(500).json({ message: "Failed to fetch carriers" });
+    }
+  });
+
+  app.get('/api/carriers/:id', requireRole(['admin', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const carrier = await storage.getCarrier(id);
+      if (!carrier) {
+        return res.status(404).json({ message: "Carrier not found" });
+      }
+      res.json(carrier);
+    } catch (error) {
+      console.error("Error fetching carrier:", error);
+      res.status(500).json({ message: "Failed to fetch carrier" });
+    }
+  });
+
+  app.post('/api/carriers', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const carrierData = insertCarrierSchema.parse(req.body);
+      const carrier = await storage.createCarrier(carrierData);
+      res.status(201).json(carrier);
+    } catch (error) {
+      console.error("Error creating carrier:", error);
+      res.status(500).json({ message: "Failed to create carrier" });
+    }
+  });
+
+  app.patch('/api/carriers/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertCarrierSchema.partial().parse(req.body);
+      const carrier = await storage.updateCarrier(id, updates);
+      res.json(carrier);
+    } catch (error) {
+      console.error("Error updating carrier:", error);
+      res.status(500).json({ message: "Failed to update carrier" });
+    }
+  });
+
+  app.delete('/api/carriers/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteCarrier(id);
+      res.json({ message: "Carrier deactivated successfully" });
+    } catch (error) {
+      console.error("Error deactivating carrier:", error);
+      res.status(500).json({ message: "Failed to deactivate carrier" });
+    }
+  });
+
+  app.patch('/api/carriers/:id/rating', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { rating } = z.object({ rating: z.number().min(0).max(5) }).parse(req.body);
+      const carrier = await storage.updateCarrierRating(id, rating);
+      res.json(carrier);
+    } catch (error) {
+      console.error("Error updating carrier rating:", error);
+      res.status(500).json({ message: "Failed to update carrier rating" });
+    }
+  });
+
+  // Shipment management routes
+  app.get('/api/shipments', requireRole(['admin', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const filter = shipmentFilterSchema.parse(req.query);
+      const shipments = await storage.getShipments(filter);
+      res.json(shipments);
+    } catch (error) {
+      console.error("Error fetching shipments:", error);
+      res.status(500).json({ message: "Failed to fetch shipments" });
+    }
+  });
+
+  app.get('/api/shipments/:id', requireRole(['admin', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const shipment = await storage.getShipmentWithDetails(id);
+      if (!shipment) {
+        return res.status(404).json({ message: "Shipment not found" });
+      }
+      res.json(shipment);
+    } catch (error) {
+      console.error("Error fetching shipment:", error);
+      res.status(500).json({ message: "Failed to fetch shipment" });
+    }
+  });
+
+  app.post('/api/shipments', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const shipmentData = insertShipmentSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const shipment = await storage.createShipment({ ...shipmentData, createdBy: userId });
+      res.status(201).json(shipment);
+    } catch (error) {
+      console.error("Error creating shipment:", error);
+      res.status(500).json({ message: "Failed to create shipment" });
+    }
+  });
+
+  app.post('/api/shipments/from-stock', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const shipmentData = createShipmentFromStockSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const shipment = await storage.createShipmentFromWarehouseStock(shipmentData, userId);
+      res.status(201).json(shipment);
+    } catch (error) {
+      console.error("Error creating shipment from stock:", error);
+      res.status(500).json({ message: "Failed to create shipment from stock" });
+    }
+  });
+
+  app.patch('/api/shipments/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertShipmentSchema.partial().parse(req.body);
+      const shipment = await storage.updateShipment(id, updates);
+      res.json(shipment);
+    } catch (error) {
+      console.error("Error updating shipment:", error);
+      res.status(500).json({ message: "Failed to update shipment" });
+    }
+  });
+
+  app.patch('/api/shipments/:id/status', requireRole(['admin', 'warehouse']), genericPeriodGuard, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status, actualDepartureDate, actualArrivalDate } = shipmentStatusUpdateSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      let actualDate: Date | undefined;
+      if (status === 'in_transit' && actualDepartureDate) {
+        actualDate = new Date(actualDepartureDate);
+      } else if (status === 'delivered' && actualArrivalDate) {
+        actualDate = new Date(actualArrivalDate);
+      }
+      
+      const shipment = await storage.updateShipmentStatus(id, status, userId, actualDate);
+      res.json(shipment);
+    } catch (error) {
+      console.error("Error updating shipment status:", error);
+      res.status(500).json({ message: "Failed to update shipment status" });
+    }
+  });
+
+  app.delete('/api/shipments/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteShipment(id);
+      res.json({ message: "Shipment deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting shipment:", error);
+      res.status(500).json({ message: "Failed to delete shipment" });
+    }
+  });
+
+  // Shipment item routes
+  app.get('/api/shipments/:id/items', requireRole(['admin', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const items = await storage.getShipmentItems(id);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching shipment items:", error);
+      res.status(500).json({ message: "Failed to fetch shipment items" });
+    }
+  });
+
+  app.post('/api/shipments/:id/items', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const itemData = insertShipmentItemSchema.parse({ ...req.body, shipmentId: id });
+      const item = await storage.createShipmentItem(itemData);
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error creating shipment item:", error);
+      res.status(500).json({ message: "Failed to create shipment item" });
+    }
+  });
+
+  app.patch('/api/shipment-items/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertShipmentItemSchema.partial().parse(req.body);
+      const item = await storage.updateShipmentItem(id, updates);
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating shipment item:", error);
+      res.status(500).json({ message: "Failed to update shipment item" });
+    }
+  });
+
+  app.delete('/api/shipment-items/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteShipmentItem(id);
+      res.json({ message: "Shipment item deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting shipment item:", error);
+      res.status(500).json({ message: "Failed to delete shipment item" });
+    }
+  });
+
+  // Shipping cost routes
+  app.get('/api/shipments/:id/costs', requireRole(['admin', 'warehouse', 'finance', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const costs = await storage.getShippingCosts(id);
+      res.json(costs);
+    } catch (error) {
+      console.error("Error fetching shipping costs:", error);
+      res.status(500).json({ message: "Failed to fetch shipping costs" });
+    }
+  });
+
+  app.post('/api/shipping-costs', requireRole(['admin', 'finance']), capitalEntryPeriodGuard, async (req: any, res) => {
+    try {
+      const costData = addShippingCostSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      // Require exchangeRate for non-USD shipping costs (same as capital entries)
+      if (costData.currency !== 'USD' && (!costData.exchangeRate || costData.exchangeRate === '0')) {
+        return res.status(400).json({ 
+          message: "Exchange rate is required for non-USD currencies",
+          field: "exchangeRate"
+        });
+      }
+      
+      const cost = await storage.addShippingCost(costData, userId);
+      res.status(201).json(cost);
+    } catch (error) {
+      console.error("Error adding shipping cost:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to add shipping cost" });
+    }
+  });
+
+  app.patch('/api/shipping-costs/:id', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertShippingCostSchema.partial().parse(req.body);
+      const cost = await storage.updateShippingCost(id, updates);
+      res.json(cost);
+    } catch (error) {
+      console.error("Error updating shipping cost:", error);
+      res.status(500).json({ message: "Failed to update shipping cost" });
+    }
+  });
+
+  app.delete('/api/shipping-costs/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteShippingCost(id);
+      res.json({ message: "Shipping cost deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting shipping cost:", error);
+      res.status(500).json({ message: "Failed to delete shipping cost" });
+    }
+  });
+
+  // Delivery tracking routes
+  app.get('/api/shipments/:id/tracking', requireRole(['admin', 'warehouse', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const tracking = await storage.getDeliveryTracking(id);
+      res.json(tracking);
+    } catch (error) {
+      console.error("Error fetching delivery tracking:", error);
+      res.status(500).json({ message: "Failed to fetch delivery tracking" });
+    }
+  });
+
+  app.post('/api/delivery-tracking', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const trackingData = addDeliveryTrackingSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const tracking = await storage.addDeliveryTracking(trackingData, userId);
+      res.status(201).json(tracking);
+    } catch (error) {
+      console.error("Error adding delivery tracking:", error);
+      res.status(500).json({ message: "Failed to add delivery tracking" });
+    }
+  });
+
+  app.patch('/api/delivery-tracking/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertDeliveryTrackingSchema.partial().parse(req.body);
+      const tracking = await storage.updateDeliveryTracking(id, updates);
+      res.json(tracking);
+    } catch (error) {
+      console.error("Error updating delivery tracking:", error);
+      res.status(500).json({ message: "Failed to update delivery tracking" });
+    }
+  });
+
+  app.patch('/api/delivery-tracking/:id/notify', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const tracking = await storage.markCustomerNotified(id, userId);
+      res.json(tracking);
+    } catch (error) {
+      console.error("Error marking customer notified:", error);
+      res.status(500).json({ message: "Failed to mark customer notified" });
+    }
+  });
+
+  // Shipping analytics and reporting routes
+  app.get('/api/shipping/analytics', requireRole(['admin', 'warehouse', 'finance', 'sales']), async (req, res) => {
+    try {
+      const filters = dateRangeFilterSchema.parse(req.query);
+      const analytics = await storage.getShippingAnalytics(filters);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching shipping analytics:", error);
+      res.status(500).json({ message: "Failed to fetch shipping analytics" });
+    }
+  });
+
+  app.get('/api/shipping/carrier-performance', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const report = await storage.getCarrierPerformanceReport();
+      res.json(report);
+    } catch (error) {
+      console.error("Error fetching carrier performance report:", error);
+      res.status(500).json({ message: "Failed to fetch carrier performance report" });
+    }
+  });
+
+  app.get('/api/shipping/cost-analysis', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const filters = dateRangeFilterSchema.parse(req.query);
+      const analysis = await storage.getShippingCostAnalysis(filters);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching shipping cost analysis:", error);
+      res.status(500).json({ message: "Failed to fetch shipping cost analysis" });
+    }
+  });
+
+  app.get('/api/shipping/delivery-time-analysis', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const filters = dateRangeFilterSchema.parse(req.query);
+      const analysis = await storage.getDeliveryTimeAnalysis(filters);
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching delivery time analysis:", error);
+      res.status(500).json({ message: "Failed to fetch delivery time analysis" });
+    }
+  });
+
+  // Integration routes
+  app.get('/api/warehouse/stock/available-for-shipping', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const stock = await storage.getAvailableWarehouseStockForShipping();
+      res.json(stock);
+    } catch (error) {
+      console.error("Error fetching available stock for shipping:", error);
+      res.status(500).json({ message: "Failed to fetch available stock for shipping" });
+    }
+  });
+
+  app.post('/api/warehouse/stock/:id/reserve', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { quantity, shipmentId } = z.object({
+        quantity: z.number().positive(),
+        shipmentId: z.string().min(1)
+      }).parse(req.body);
+      
+      const stock = await storage.reserveStockForShipment(id, quantity, shipmentId);
+      res.json(stock);
+    } catch (error) {
+      console.error("Error reserving stock for shipment:", error);
+      res.status(500).json({ message: "Failed to reserve stock for shipment" });
+    }
+  });
+
+  app.post('/api/warehouse/stock/:id/release', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { quantity } = z.object({
+        quantity: z.number().positive()
+      }).parse(req.body);
+      
+      const stock = await storage.releaseReservedStock(id, quantity);
+      res.json(stock);
+    } catch (error) {
+      console.error("Error releasing reserved stock:", error);
+      res.status(500).json({ message: "Failed to release reserved stock" });
+    }
+  });
+
+  // Shipping workflow validation endpoint
+  app.post('/api/shipping/validate-workflow', requireRole(['admin']), async (req, res) => {
+    try {
+      const validation = await aiService.validateShippingWorkflow();
+      res.json(validation);
+    } catch (error) {
+      console.error("Error validating shipping workflow:", error);
+      res.status(500).json({ message: "Failed to validate shipping workflow" });
     }
   });
 
