@@ -5440,6 +5440,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const filter = { ...req.query, userId } as any;
+      
+      // Map frontend "unread" status to "pending" for database compatibility
+      if (filter.status === 'unread') {
+        filter.status = 'pending';
+      }
+      
       const notifications = await storage.getUserNotifications(userId, filter);
       res.json(notifications);
     } catch (error) {
