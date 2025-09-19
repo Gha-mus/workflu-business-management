@@ -31,6 +31,9 @@ export interface IStorage {
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  countAdminUsers(): Promise<number>;
+  updateUserRole(id: string, role: User['role']): Promise<User>;
   
   // Settings operations
   getSetting(key: string): Promise<Setting | undefined>;
@@ -89,6 +92,27 @@ export class DatabaseStorage implements IStorage {
           updatedAt: new Date(),
         },
       })
+      .returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async countAdminUsers(): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(and(eq(users.role, 'admin'), eq(users.isActive, true)));
+    return Number(result[0]?.count || 0);
+  }
+
+  async updateUserRole(id: string, role: User['role']): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(users.id, id))
       .returning();
     return user;
   }

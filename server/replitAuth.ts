@@ -58,13 +58,31 @@ function updateUserSession(
 async function upsertUser(
   claims: any,
 ) {
-  await storage.upsertUser({
+  const userData = {
     id: claims["sub"],
     email: claims["email"],
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
-  });
+  };
+
+  // Check if this is a new user or existing user
+  const existingUser = await storage.getUser(claims["sub"]);
+  
+  // If user doesn't exist, check admin bootstrap logic
+  if (!existingUser) {
+    const adminCount = await storage.countAdminUsers();
+    
+    // Admin Bootstrap: If no admins exist, make this user an admin
+    if (adminCount === 0) {
+      console.log(`Admin bootstrap: Promoting user ${userData.email} to admin (first user)`);
+      await storage.upsertUser({ ...userData, role: 'admin' });
+      return;
+    }
+  }
+
+  // Regular user creation/update
+  await storage.upsertUser(userData);
 }
 
 export async function setupAuth(app: Express) {
