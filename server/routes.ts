@@ -2,8 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole } from "./replitAuth";
+import { aiService } from "./aiService";
 import { z } from "zod";
 import Decimal from "decimal.js";
+import crypto from "crypto";
 import { 
   insertSupplierSchema,
   insertOrderSchema,
@@ -19,6 +21,11 @@ import {
   dateRangeFilterSchema,
   periodFilterSchema,
   exportTypeSchema,
+  aiPurchaseRecommendationRequestSchema,
+  aiSupplierRecommendationRequestSchema,
+  aiCapitalOptimizationRequestSchema,
+  aiChatRequestSchema,
+  aiContextualHelpRequestSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -573,6 +580,528 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.status(500).json({ message: "Failed to export report" });
+    }
+  });
+
+  // AI Routes - Business Process Automation
+  app.post('/api/ai/purchase-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+    try {
+      const requestData = aiPurchaseRecommendationRequestSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      // Create cache key
+      const cacheKey = `purchase_recommendations_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
+      
+      // Check cache first
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      // Fetch business data
+      const purchases = await storage.getPurchases();
+      const capitalBalance = await storage.getCapitalBalance();
+      
+      // Generate AI recommendations
+      const result = await aiService.getPurchaseRecommendations(
+        purchases,
+        requestData.marketConditions || {},
+        capitalBalance
+      );
+      
+      // Cache result for 1 hour
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 1);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'purchase_recommendations',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ purchases, capitalBalance })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating purchase recommendations:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate purchase recommendations" 
+      });
+    }
+  });
+
+  app.post('/api/ai/supplier-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+    try {
+      const requestData = aiSupplierRecommendationRequestSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = `supplier_recommendations_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      const suppliers = await storage.getSuppliers();
+      const supplierPerformance = await storage.getSupplierPerformance();
+      
+      const result = await aiService.getSupplierRecommendations(
+        suppliers,
+        supplierPerformance,
+        requestData
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 2);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'supplier_recommendations',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ suppliers, supplierPerformance })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating supplier recommendations:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate supplier recommendations" 
+      });
+    }
+  });
+
+  app.post('/api/ai/capital-optimization', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const requestData = aiCapitalOptimizationRequestSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = `capital_optimization_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      const capitalEntries = await storage.getCapitalEntries();
+      const financialSummary = await storage.getFinancialSummary();
+      const purchases = await storage.getPurchases();
+      
+      // Get upcoming payments (outstanding balances)
+      const upcomingPayments = purchases
+        .filter(p => parseFloat(p.remaining) > 0)
+        .map(p => ({
+          id: p.id,
+          amount: parseFloat(p.remaining),
+          supplier: p.supplierId,
+          dueDate: p.date
+        }));
+      
+      const result = await aiService.getCapitalOptimizationSuggestions(
+        capitalEntries,
+        financialSummary,
+        upcomingPayments
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 4);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'capital_optimization',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ capitalEntries, financialSummary })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating capital optimization:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate capital optimization suggestions" 
+      });
+    }
+  });
+
+  app.get('/api/ai/inventory-recommendations', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = 'inventory_recommendations_current';
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      const warehouseStock = await storage.getWarehouseStock();
+      const filterRecords = await storage.getFilterRecords();
+      const inventoryAnalytics = await storage.getInventoryAnalytics();
+      
+      const result = await aiService.getInventoryRecommendations(
+        warehouseStock,
+        filterRecords,
+        inventoryAnalytics
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setMinutes(expiresAt.getMinutes() + 30); // 30 minutes cache
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'inventory_recommendations',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ warehouseStock, inventoryAnalytics })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating inventory recommendations:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate inventory recommendations" 
+      });
+    }
+  });
+
+  // AI Routes - Financial Insights
+  app.get('/api/ai/financial-trends', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = 'financial_trends_analysis';
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      const financialSummary = await storage.getFinancialSummary();
+      const cashFlow = await storage.getCashflowAnalysis('last-90-days');
+      const purchases = await storage.getPurchases();
+      
+      // Prepare historical data
+      const historicalData = {
+        cashFlow,
+        purchases: purchases.slice(-20), // Last 20 purchases
+        capitalEntries: await storage.getCapitalEntries()
+      };
+      
+      const result = await aiService.getFinancialTrendAnalysis(
+        financialSummary,
+        [historicalData]
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 6);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'financial_trends',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ financialSummary, historicalData })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating financial trend analysis:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate financial trend analysis" 
+      });
+    }
+  });
+
+  // AI Routes - Trading Decision Support
+  app.get('/api/ai/market-timing', requireRole(['admin', 'purchasing', 'sales']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = 'market_timing_analysis';
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      const purchases = await storage.getPurchases();
+      const warehouseStock = await storage.getWarehouseStock();
+      
+      // Calculate current inventory level
+      const currentInventory = warehouseStock.reduce((total, stock) => {
+        return total + parseFloat(stock.qtyKgTotal);
+      }, 0);
+      
+      // Prepare market data from historical purchases
+      const marketData = {
+        averagePrice: purchases.reduce((sum, p) => sum + parseFloat(p.pricePerKg), 0) / purchases.length,
+        recentTrend: purchases.slice(-10).map(p => ({
+          date: p.date,
+          price: parseFloat(p.pricePerKg),
+          volume: parseFloat(p.weight)
+        }))
+      };
+      
+      const historicalPrices = purchases.map(p => ({
+        date: p.date,
+        pricePerKg: parseFloat(p.pricePerKg),
+        currency: p.currency
+      }));
+      
+      const result = await aiService.getMarketTimingAnalysis(
+        marketData,
+        historicalPrices,
+        currentInventory
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 2);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'market_timing',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ marketData, historicalPrices })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating market timing analysis:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate market timing analysis" 
+      });
+    }
+  });
+
+  // AI Routes - Intelligent Reporting
+  app.get('/api/ai/executive-summary', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = 'executive_summary_current';
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      const [financialSummary, tradingActivity, inventoryAnalytics, supplierPerformance] = await Promise.all([
+        storage.getFinancialSummary(),
+        storage.getTradingActivity(),
+        storage.getInventoryAnalytics(),
+        storage.getSupplierPerformance()
+      ]);
+      
+      const result = await aiService.generateExecutiveSummary(
+        financialSummary,
+        tradingActivity,
+        inventoryAnalytics,
+        supplierPerformance
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 12);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'executive_summary',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({
+          financialSummary, tradingActivity, inventoryAnalytics, supplierPerformance
+        })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating executive summary:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to generate executive summary" 
+      });
+    }
+  });
+
+  app.get('/api/ai/anomaly-detection', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const cacheKey = 'anomaly_detection_current';
+      const cachedResult = await storage.getAiInsightsCache(cacheKey);
+      if (cachedResult) {
+        return res.json(cachedResult.result);
+      }
+      
+      // Get recent data (last 30 days) vs historical baseline (last 6 months)
+      const allPurchases = await storage.getPurchases();
+      const allCapitalEntries = await storage.getCapitalEntries();
+      
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      
+      const recentData = {
+        purchases: allPurchases.filter(p => new Date(p.date) >= thirtyDaysAgo),
+        capitalEntries: allCapitalEntries.filter(c => new Date(c.date) >= thirtyDaysAgo)
+      };
+      
+      const historicalBaseline = {
+        purchases: allPurchases.filter(p => new Date(p.date) >= sixMonthsAgo && new Date(p.date) < thirtyDaysAgo),
+        capitalEntries: allCapitalEntries.filter(c => new Date(c.date) >= sixMonthsAgo && new Date(c.date) < thirtyDaysAgo)
+      };
+      
+      const result = await aiService.detectAnomalies(
+        [recentData],
+        [historicalBaseline]
+      );
+      
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 4);
+      
+      await storage.setAiInsightsCache({
+        cacheKey,
+        insightType: 'anomaly_detection',
+        userId,
+        dataHash: crypto.createHash('md5').update(JSON.stringify({ recentData, historicalBaseline })).digest('hex'),
+        result,
+        expiresAt,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error detecting anomalies:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to detect anomalies" 
+      });
+    }
+  });
+
+  // AI Chat Assistant
+  app.post('/api/ai/chat', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestData = aiChatRequestSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      // Generate session ID if not provided
+      const sessionId = requestData.conversationId || `session_${userId}_${Date.now()}`;
+      
+      // Get conversation history
+      let conversation = await storage.getAiConversation(sessionId, userId);
+      const conversationHistory = conversation?.messages as Array<{ role: 'user' | 'assistant'; content: string }> || [];
+      
+      // Prepare business context
+      const businessContext = {
+        userRole: user?.role,
+        recentActivity: {
+          purchases: (await storage.getPurchases()).slice(-5),
+          capitalBalance: await storage.getCapitalBalance(),
+          warehouseStock: (await storage.getWarehouseStock()).slice(0, 10)
+        },
+        ...requestData.context
+      };
+      
+      // Get AI response
+      const result = await aiService.chatAssistant(
+        requestData.message,
+        conversationHistory,
+        businessContext
+      );
+      
+      // Update conversation history
+      const updatedMessages = [
+        ...conversationHistory,
+        { role: 'user' as const, content: requestData.message },
+        { role: 'assistant' as const, content: result.response }
+      ];
+      
+      // Save conversation (keep last 20 messages)
+      await storage.createOrUpdateAiConversation({
+        sessionId,
+        userId,
+        messages: updatedMessages.slice(-20),
+        context: businessContext
+      });
+      
+      res.json({
+        ...result,
+        conversationId: sessionId
+      });
+    } catch (error) {
+      console.error("Error in AI chat:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to process chat request" 
+      });
+    }
+  });
+
+  // Contextual Help
+  app.post('/api/ai/contextual-help', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestData = aiContextualHelpRequestSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      const result = await aiService.getContextualHelp(
+        requestData.currentPage,
+        user?.role || 'worker',
+        requestData.currentData || {}
+      );
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting contextual help:", error);
+      res.status(500).json({ 
+        message: error.message.includes('OpenAI API key') 
+          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
+          : "Failed to get contextual help" 
+      });
+    }
+  });
+
+  // AI conversation history
+  app.get('/api/ai/conversations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const conversations = await storage.getRecentAiConversations(userId, limit);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching AI conversations:", error);
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  // Clean up expired AI cache (can be called periodically)
+  app.post('/api/ai/cleanup-cache', requireRole(['admin']), async (req, res) => {
+    try {
+      await storage.deleteExpiredInsightsCache();
+      res.json({ message: "Cache cleanup completed" });
+    } catch (error) {
+      console.error("Error cleaning up AI cache:", error);
+      res.status(500).json({ message: "Failed to cleanup cache" });
     }
   });
 

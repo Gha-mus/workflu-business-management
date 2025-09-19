@@ -519,3 +519,203 @@ export type TradingActivityResponse = z.infer<typeof tradingActivityResponseSche
 export type DateRangeFilter = z.infer<typeof dateRangeFilterSchema>;
 export type PeriodFilter = z.infer<typeof periodFilterSchema>;
 export type ExportType = z.infer<typeof exportTypeSchema>;
+
+// AI-related tables and schemas
+
+// AI Insights Cache table
+export const aiInsightsCache = pgTable("ai_insights_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cacheKey: varchar("cache_key").notNull().unique(),
+  insightType: varchar("insight_type").notNull(), // purchase_recommendations, supplier_analysis, etc.
+  userId: varchar("user_id").references(() => users.id),
+  dataHash: varchar("data_hash").notNull(), // Hash of input data for cache invalidation
+  result: jsonb("result").notNull(),
+  metadata: jsonb("metadata"), // Additional context like confidence scores, timestamps
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// AI Conversations table
+export const aiConversations = pgTable("ai_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  sessionId: varchar("session_id").notNull(),
+  messages: jsonb("messages").notNull(), // Array of conversation messages
+  context: jsonb("context"), // Business context at conversation time
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// AI-related insert schemas
+export const insertAiInsightsCacheSchema = createInsertSchema(aiInsightsCache).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAiConversationSchema = createInsertSchema(aiConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// AI-related types
+export type AiInsightsCache = typeof aiInsightsCache.$inferSelect;
+export type InsertAiInsightsCache = z.infer<typeof insertAiInsightsCacheSchema>;
+
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type InsertAiConversation = z.infer<typeof insertAiConversationSchema>;
+
+// AI Response Types
+
+export interface PurchaseRecommendationResponse {
+  recommendations: Array<{
+    supplierId: string;
+    suggestedQuantity: number;
+    suggestedPriceRange: { min: number; max: number };
+    reasoning: string;
+    confidence: number;
+    timing: 'immediate' | 'within_week' | 'within_month';
+  }>;
+  marketInsights: string;
+  riskAssessment: string;
+}
+
+export interface SupplierRecommendationResponse {
+  rankedSuppliers: Array<{
+    supplierId: string;
+    supplierName: string;
+    score: number;
+    strengths: string[];
+    weaknesses: string[];
+    recommendation: string;
+  }>;
+  insights: string;
+}
+
+export interface CapitalOptimizationResponse {
+  optimizations: Array<{
+    type: 'cash_flow' | 'capital_allocation' | 'payment_timing' | 'risk_management';
+    suggestion: string;
+    impact: string;
+    priority: 'high' | 'medium' | 'low';
+    timeframe: string;
+  }>;
+  cashFlowForecast: string;
+  riskAlerts: string[];
+}
+
+export interface InventoryRecommendationResponse {
+  actions: Array<{
+    stockId: string;
+    action: 'filter' | 'move_to_final' | 'process' | 'hold' | 'sell';
+    reasoning: string;
+    urgency: 'high' | 'medium' | 'low';
+    expectedBenefit: string;
+  }>;
+  insights: string;
+  qualityAlerts: string[];
+}
+
+export interface FinancialTrendAnalysisResponse {
+  trends: Array<{
+    metric: string;
+    trend: 'increasing' | 'decreasing' | 'stable' | 'volatile';
+    confidence: number;
+    prediction: string;
+    recommendation: string;
+  }>;
+  predictions: {
+    nextQuarter: any;
+    risks: string[];
+    opportunities: string[];
+  };
+  insights: string;
+}
+
+export interface MarketTimingAnalysisResponse {
+  recommendation: 'buy_now' | 'wait' | 'sell_first' | 'hold_position';
+  confidence: number;
+  reasoning: string;
+  priceTargets: {
+    buyBelow: number;
+    sellAbove: number;
+  };
+  marketOutlook: string;
+  riskFactors: string[];
+}
+
+export interface ExecutiveSummaryResponse {
+  summary: string;
+  keyMetrics: Array<{
+    metric: string;
+    value: string;
+    trend: 'up' | 'down' | 'stable';
+    significance: 'high' | 'medium' | 'low';
+  }>;
+  priorities: string[];
+  recommendations: string[];
+}
+
+export interface AnomalyDetectionResponse {
+  anomalies: Array<{
+    type: 'financial' | 'operational' | 'inventory' | 'supplier';
+    description: string;
+    severity: 'critical' | 'warning' | 'info';
+    impact: string;
+    recommendation: string;
+  }>;
+  patterns: string[];
+  alerts: string[];
+}
+
+export interface ContextualHelpResponse {
+  help: string;
+  suggestions: string[];
+  quickActions: Array<{
+    action: string;
+    description: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+}
+
+export interface ChatAssistantResponse {
+  response: string;
+  suggestions: string[];
+  actionItems?: string[];
+}
+
+// AI Request schemas
+export const aiPurchaseRecommendationRequestSchema = z.object({
+  marketConditions: z.record(z.any()).optional(),
+  timeframe: z.enum(['immediate', 'short_term', 'long_term']).optional(),
+});
+
+export const aiSupplierRecommendationRequestSchema = z.object({
+  quantity: z.number().positive(),
+  quality: z.string(),
+  budget: z.number().positive(),
+});
+
+export const aiCapitalOptimizationRequestSchema = z.object({
+  timeHorizon: z.enum(['weekly', 'monthly', 'quarterly']).optional(),
+  includeForecasting: z.boolean().optional().default(true),
+});
+
+export const aiChatRequestSchema = z.object({
+  message: z.string().min(1),
+  conversationId: z.string().optional(),
+  context: z.record(z.any()).optional(),
+});
+
+export const aiContextualHelpRequestSchema = z.object({
+  currentPage: z.string(),
+  userRole: z.string(),
+  currentData: z.record(z.any()).optional(),
+});
+
+// AI Request types
+export type AiPurchaseRecommendationRequest = z.infer<typeof aiPurchaseRecommendationRequestSchema>;
+export type AiSupplierRecommendationRequest = z.infer<typeof aiSupplierRecommendationRequestSchema>;
+export type AiCapitalOptimizationRequest = z.infer<typeof aiCapitalOptimizationRequestSchema>;
+export type AiChatRequest = z.infer<typeof aiChatRequestSchema>;
+export type AiContextualHelpRequest = z.infer<typeof aiContextualHelpRequestSchema>;

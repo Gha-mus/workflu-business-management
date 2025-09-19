@@ -7,6 +7,8 @@ import {
   warehouseStock,
   filterRecords,
   settings,
+  aiInsightsCache,
+  aiConversations,
   type User,
   type UpsertUser,
   type Supplier,
@@ -23,6 +25,10 @@ import {
   type InsertFilterRecord,
   type Setting,
   type InsertSetting,
+  type AiInsightsCache,
+  type InsertAiInsightsCache,
+  type AiConversation,
+  type InsertAiConversation,
   type FinancialSummaryResponse,
   type CashFlowResponse,
   type InventoryAnalyticsResponse,
@@ -94,6 +100,14 @@ export interface IStorage {
   getSupplierPerformance(): Promise<SupplierPerformanceResponse>;
   getTradingActivity(): Promise<TradingActivityResponse>;
   exportReportData(type: string, format: string): Promise<any>;
+  
+  // AI operations
+  getAiInsightsCache(cacheKey: string): Promise<AiInsightsCache | undefined>;
+  setAiInsightsCache(cache: InsertAiInsightsCache): Promise<AiInsightsCache>;
+  deleteExpiredInsightsCache(): Promise<void>;
+  getAiConversation(sessionId: string, userId: string): Promise<AiConversation | undefined>;
+  createOrUpdateAiConversation(conversation: InsertAiConversation): Promise<AiConversation>;
+  getRecentAiConversations(userId: string, limit: number): Promise<AiConversation[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1220,6 +1234,77 @@ export class DatabaseStorage implements IStorage {
     }
     // Ensure positive number for PostgreSQL advisory locks
     return Math.abs(hash);
+  }
+
+  // AI operations
+  async getAiInsightsCache(cacheKey: string): Promise<AiInsightsCache | undefined> {
+    const [cache] = await db
+      .select()
+      .from(aiInsightsCache)
+      .where(and(
+        eq(aiInsightsCache.cacheKey, cacheKey),
+        sql`${aiInsightsCache.expiresAt} > NOW()`
+      ));
+    return cache;
+  }
+
+  async setAiInsightsCache(cache: InsertAiInsightsCache): Promise<AiInsightsCache> {
+    const [result] = await db
+      .insert(aiInsightsCache)
+      .values(cache)
+      .onConflictDoUpdate({
+        target: aiInsightsCache.cacheKey,
+        set: {
+          result: cache.result,
+          metadata: cache.metadata,
+          dataHash: cache.dataHash,
+          expiresAt: cache.expiresAt,
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async deleteExpiredInsightsCache(): Promise<void> {
+    await db
+      .delete(aiInsightsCache)
+      .where(sql`${aiInsightsCache.expiresAt} <= NOW()`);
+  }
+
+  async getAiConversation(sessionId: string, userId: string): Promise<AiConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(aiConversations)
+      .where(and(
+        eq(aiConversations.sessionId, sessionId),
+        eq(aiConversations.userId, userId)
+      ));
+    return conversation;
+  }
+
+  async createOrUpdateAiConversation(conversation: InsertAiConversation): Promise<AiConversation> {
+    const [result] = await db
+      .insert(aiConversations)
+      .values(conversation)
+      .onConflictDoUpdate({
+        target: [aiConversations.sessionId, aiConversations.userId],
+        set: {
+          messages: conversation.messages,
+          context: conversation.context,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async getRecentAiConversations(userId: string, limit: number = 10): Promise<AiConversation[]> {
+    return await db
+      .select()
+      .from(aiConversations)
+      .where(eq(aiConversations.userId, userId))
+      .orderBy(desc(aiConversations.updatedAt))
+      .limit(limit);
   }
 }
 
