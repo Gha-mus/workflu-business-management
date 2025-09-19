@@ -312,3 +312,45 @@ export type OrdersResponse = Order[];
 export type PurchasesResponse = Purchase[];
 export type WarehouseStockResponse = WarehouseStock[];
 export type FilterRecordsResponse = FilterRecord[];
+
+// Additional Zod schemas for warehouse operations
+export const warehouseStatusUpdateSchema = z.object({
+  status: z.enum(['AWAITING_DECISION', 'READY_TO_SHIP', 'AWAITING_FILTER', 'NON_CLEAN', 'READY_FOR_SALE']),
+});
+
+export const warehouseFilterOperationSchema = z.object({
+  purchaseId: z.string().min(1, "Purchase ID is required"),
+  outputCleanKg: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, "Output clean weight must be a valid positive number"),
+  outputNonCleanKg: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, "Output non-clean weight must be a valid positive number"),
+}).refine((data) => {
+  // Ensure at least one output is greater than 0
+  const cleanKg = parseFloat(data.outputCleanKg);
+  const nonCleanKg = parseFloat(data.outputNonCleanKg);
+  return cleanKg > 0 || nonCleanKg > 0;
+}, {
+  message: "At least one output (clean or non-clean) must be greater than 0",
+  path: ["outputCleanKg"],
+});
+
+export const warehouseMoveToFinalSchema = z.object({
+  stockId: z.string().min(1, "Stock ID is required"),
+});
+
+export const warehouseStockFilterSchema = z.object({
+  status: z.enum(['AWAITING_DECISION', 'READY_TO_SHIP', 'AWAITING_FILTER', 'NON_CLEAN', 'READY_FOR_SALE']).optional(),
+  warehouse: z.enum(['FIRST', 'FINAL']).optional(),
+  supplierId: z.string().optional(),
+  orderId: z.string().optional(),
+});
+
+// Type exports for the new schemas
+export type WarehouseStatusUpdate = z.infer<typeof warehouseStatusUpdateSchema>;
+export type WarehouseFilterOperation = z.infer<typeof warehouseFilterOperationSchema>;
+export type WarehouseMoveToFinal = z.infer<typeof warehouseMoveToFinalSchema>;
+export type WarehouseStockFilter = z.infer<typeof warehouseStockFilterSchema>;
