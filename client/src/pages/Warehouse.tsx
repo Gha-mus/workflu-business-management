@@ -3,7 +3,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { WarehouseStockResponse, SuppliersResponse } from "@shared/schema";
+import type { 
+  WarehouseStockResponse, 
+  SuppliersResponse,
+  QualityStandard,
+  WarehouseBatch,
+  QualityInspection,
+  InventoryConsumption,
+  ProcessingOperation,
+  StockTransfer,
+  InventoryAdjustment 
+} from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,15 +23,71 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Filter, ArrowRight, Warehouse as WarehouseIcon } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { 
+  Package, 
+  Filter, 
+  ArrowRight, 
+  Warehouse as WarehouseIcon,
+  Star,
+  ClipboardCheck,
+  Zap,
+  BarChart3,
+  ArrowLeftRight,
+  Settings,
+  Search,
+  Calendar,
+  TrendingUp
+} from "lucide-react";
 
 export default function Warehouse() {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, userRole, hasAnyRole } = useAuth();
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [filterData, setFilterData] = useState({ cleanKg: '', nonCleanKg: '' });
+  
+  // Advanced warehouse operations state
+  const [qualityGradingDialogOpen, setQualityGradingDialogOpen] = useState(false);
+  const [inspectionDialogOpen, setInspectionDialogOpen] = useState(false);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [consumptionDialogOpen, setConsumptionDialogOpen] = useState(false);
+  const [processingDialogOpen, setProcessingDialogOpen] = useState(false);
+  const [traceabilityDialogOpen, setTraceabilityDialogOpen] = useState(false);
+  
+  const [selectedBatch, setSelectedBatch] = useState<any>(null);
+  const [selectedInspection, setSelectedInspection] = useState<any>(null);
+  const [selectedOperation, setSelectedOperation] = useState<any>(null);
+  
+  const [qualityGradeData, setQualityGradeData] = useState({ grade: '', score: '', notes: '' });
+  const [inspectionData, setInspectionData] = useState({
+    inspectionType: 'incoming',
+    moistureContent: '',
+    defectCount: '',
+    cupQuality: '',
+    notes: ''
+  });
+  const [batchData, setBatchData] = useState({
+    batchNumber: '',
+    supplierId: '',
+    qualityGrade: '',
+    totalQuantityKg: '',
+    notes: ''
+  });
+  const [consumptionData, setConsumptionData] = useState({
+    consumptionType: 'sale',
+    quantity: '',
+    allocatedTo: '',
+    notes: ''
+  });
+  const [processingData, setProcessingData] = useState({
+    operationType: 'washing',
+    inputQuantityKg: '',
+    expectedOutputKg: '',
+    processingCostUsd: '',
+    notes: ''
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -37,12 +103,85 @@ export default function Warehouse() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: warehouseStock, isLoading: stockLoading, refetch } = useQuery<WarehouseStockResponse>({
+  // Query declarations - must be before useEffects that reference error variables
+  const { data: warehouseStock, isLoading: stockLoading, refetch, error: stockError } = useQuery<WarehouseStockResponse>({
     queryKey: ['/api/warehouse/stock'],
+    retry: (failureCount, error: any) => {
+      // Don't retry on 403 errors
+      if (error?.message?.includes('403')) return false;
+      return failureCount < 3;
+    },
   });
 
-  const { data: suppliers } = useQuery<SuppliersResponse>({
+  const { data: suppliers, error: suppliersError } = useQuery<SuppliersResponse>({
     queryKey: ['/api/suppliers'],
+    retry: (failureCount, error: any) => {
+      // Don't retry on 403 errors
+      if (error?.message?.includes('403')) return false;
+      return failureCount < 3;
+    },
+  });
+
+  // Handle 403 errors for data access
+  useEffect(() => {
+    if (stockError?.message?.includes('403')) {
+      toast({
+        title: "Access Restricted",
+        description: `Warehouse stock access requires warehouse role. Current role: ${userRole || 'unknown'}`,
+        variant: "destructive",
+      });
+    }
+  }, [stockError, userRole, toast]);
+
+  useEffect(() => {
+    if (suppliersError?.message?.includes('403')) {
+      toast({
+        title: "Access Restricted", 
+        description: `Supplier access requires warehouse role. Current role: ${userRole || 'unknown'}`,
+        variant: "destructive",
+      });
+    }
+  }, [suppliersError, userRole, toast]);
+
+  // Advanced warehouse operations queries
+  const { data: qualityStandards } = useQuery<QualityStandard[]>({
+    queryKey: ['/api/warehouse/quality-standards'],
+  });
+
+  const { data: warehouseBatches } = useQuery<WarehouseBatch[]>({
+    queryKey: ['/api/warehouse/batches'],
+  });
+
+  const { data: qualityInspections } = useQuery<QualityInspection[]>({
+    queryKey: ['/api/warehouse/quality-inspections'],
+  });
+
+  const { data: inventoryConsumption } = useQuery<InventoryConsumption[]>({
+    queryKey: ['/api/warehouse/inventory-consumption'],
+  });
+
+  const { data: processingOperations } = useQuery<ProcessingOperation[]>({
+    queryKey: ['/api/warehouse/processing-operations'],
+  });
+
+  const { data: stockTransfers } = useQuery<StockTransfer[]>({
+    queryKey: ['/api/warehouse/stock-transfers'],
+  });
+
+  const { data: inventoryAdjustments } = useQuery<InventoryAdjustment[]>({
+    queryKey: ['/api/warehouse/inventory-adjustments'],
+  });
+
+  const { data: consumptionAnalytics } = useQuery({
+    queryKey: ['/api/warehouse/consumption-analytics'],
+  });
+
+  const { data: stockAging } = useQuery({
+    queryKey: ['/api/warehouse/stock-aging'],
+  });
+
+  const { data: advancedAnalytics } = useQuery({
+    queryKey: ['/api/warehouse/analytics/advanced'],
   });
 
   const getSupplierName = (supplierId: string) => {
@@ -159,6 +298,149 @@ export default function Warehouse() {
     }
   });
 
+  // Advanced warehouse mutations
+  const qualityGradingMutation = useMutation({
+    mutationFn: async ({ stockId, qualityGrade, qualityScore }: { stockId: string; qualityGrade: string; qualityScore?: string }) => {
+      return apiRequest(`/api/warehouse/stock/${stockId}/assign-quality-grade`, {
+        method: 'PATCH',
+        body: JSON.stringify({ qualityGrade, qualityScore }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Quality grade assigned successfully" });
+      setQualityGradingDialogOpen(false);
+      setQualityGradeData({ grade: '', score: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/warehouse/stock'] });
+      refetch();
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to assign quality grade",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const inspectionMutation = useMutation({
+    mutationFn: async (inspectionData: any) => {
+      return apiRequest('/api/warehouse/quality-inspections', {
+        method: 'POST',
+        body: JSON.stringify(inspectionData),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Quality inspection created successfully" });
+      setInspectionDialogOpen(false);
+      setInspectionData({ inspectionType: 'incoming', moistureContent: '', defectCount: '', cupQuality: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/warehouse/quality-inspections'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to create quality inspection",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: async (batchData: any) => {
+      return apiRequest('/api/warehouse/batches', {
+        method: 'POST',
+        body: JSON.stringify(batchData),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Warehouse batch created successfully" });
+      setBatchDialogOpen(false);
+      setBatchData({ batchNumber: '', supplierId: '', qualityGrade: '', totalQuantityKg: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/warehouse/batches'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to create warehouse batch",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const consumptionMutation = useMutation({
+    mutationFn: async ({ warehouseStockId, quantity, consumptionType, allocatedTo }: { 
+      warehouseStockId: string; 
+      quantity: string; 
+      consumptionType: string; 
+      allocatedTo?: string 
+    }) => {
+      return apiRequest('/api/warehouse/inventory-consumption/fifo', {
+        method: 'POST',
+        body: JSON.stringify({ warehouseStockId, quantity, consumptionType, allocatedTo }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Inventory consumption recorded successfully" });
+      setConsumptionDialogOpen(false);
+      setConsumptionData({ consumptionType: 'sale', quantity: '', allocatedTo: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/warehouse/inventory-consumption'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/warehouse/stock'] });
+      refetch();
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to record inventory consumption",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const processingMutation = useMutation({
+    mutationFn: async (operationData: any) => {
+      return apiRequest('/api/warehouse/processing-operations', {
+        method: 'POST',
+        body: JSON.stringify(operationData),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Processing operation created successfully" });
+      setProcessingDialogOpen(false);
+      setProcessingData({ operationType: 'washing', inputQuantityKg: '', expectedOutputKg: '', processingCostUsd: '', notes: '' });
+      queryClient.invalidateQueries({ queryKey: ['/api/warehouse/processing-operations'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to create processing operation",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const traceabilityMutation = useMutation({
+    mutationFn: async ({ stockId }: { stockId: string }) => {
+      return apiRequest(`/api/warehouse/trace/stock/${stockId}/origin`, {
+        method: 'GET'
+      });
+    },
+    onSuccess: (data) => {
+      // Handle traceability data display
+      console.log('Traceability data:', data);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to trace stock origin",
+        variant: "destructive" 
+      });
+    }
+  });
+
   const handleStatusChange = (stockId: string, status: string) => {
     statusUpdateMutation.mutate({ stockId, status });
   };
@@ -228,9 +510,13 @@ export default function Warehouse() {
         {/* Content */}
         <div className="flex-1 overflow-auto bg-background p-6">
           <Tabs defaultValue="first-warehouse" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="first-warehouse">First Warehouse</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="first-warehouse">Inventory</TabsTrigger>
               <TabsTrigger value="final-warehouse">Final Warehouse</TabsTrigger>
+              <TabsTrigger value="quality-control">Quality Control</TabsTrigger>
+              <TabsTrigger value="batch-management">Batches</TabsTrigger>
+              <TabsTrigger value="consumption-tracking">Consumption</TabsTrigger>
+              <TabsTrigger value="processing-operations">Processing</TabsTrigger>
             </TabsList>
             
             <TabsContent value="first-warehouse" className="space-y-6">
@@ -461,6 +747,22 @@ export default function Warehouse() {
                                       </DialogContent>
                                     </Dialog>
                                   )}
+                                  
+                                  {/* Traceability Button - Available for all stock items */}
+                                  <Button 
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSelectedStock(stock);
+                                      setTraceabilityDialogOpen(true);
+                                      traceabilityMutation.mutate({ stockId: stock.id });
+                                    }}
+                                    data-testid={`button-trace-${stock.id}`}
+                                    className="mt-1"
+                                  >
+                                    <Search className="h-3 w-3 mr-1" />
+                                    Trace Origin
+                                  </Button>
                                 </td>
                               </tr>
                             ))
@@ -469,6 +771,1099 @@ export default function Warehouse() {
                       </table>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="quality-control" className="space-y-6">
+              {/* Quality Control Dashboard */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Pending Inspections</div>
+                        <div className="text-2xl font-bold">
+                          {qualityInspections?.filter((i: any) => i.status === 'pending').length || 0}
+                        </div>
+                      </div>
+                      <ClipboardCheck className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Approved Quality</div>
+                        <div className="text-2xl font-bold">
+                          {qualityInspections?.filter((i: any) => i.status === 'approved').length || 0}
+                        </div>
+                      </div>
+                      <Star className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Quality Standards</div>
+                        <div className="text-2xl font-bold">
+                          {qualityStandards?.filter((s: any) => s.isActive).length || 0}
+                        </div>
+                      </div>
+                      <Settings className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Quality Actions */}
+              <div className="flex flex-wrap gap-3">
+                <Dialog open={qualityGradingDialogOpen} onOpenChange={setQualityGradingDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="button-assign-quality-grade">
+                      <Star className="h-4 w-4 mr-2" />
+                      Assign Quality Grade
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Assign Quality Grade</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="stock-select">Select Stock Item</Label>
+                        <Select onValueChange={(value) => setSelectedStock(warehouseStock?.find((s: any) => s.id === value))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose stock item" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {warehouseStock?.map((stock: any) => (
+                              <SelectItem key={stock.id} value={stock.id}>
+                                {getSupplierName(stock.supplierId)} - {stock.qtyKgClean}kg
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="quality-grade">Quality Grade</Label>
+                        <Select onValueChange={(value) => setQualityGradeData(prev => ({ ...prev, grade: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select quality grade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="AA">AA Grade (Premium)</SelectItem>
+                            <SelectItem value="AB">AB Grade (High Quality)</SelectItem>
+                            <SelectItem value="B">B Grade (Good Quality)</SelectItem>
+                            <SelectItem value="C">C Grade (Standard)</SelectItem>
+                            <SelectItem value="PB">PB Grade (Peaberry)</SelectItem>
+                            <SelectItem value="TT">TT Grade (Screen 15)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="quality-score">Quality Score (0-100)</Label>
+                        <Input
+                          id="quality-score"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={qualityGradeData.score}
+                          onChange={(e) => setQualityGradeData(prev => ({ ...prev, score: e.target.value }))}
+                          placeholder="Enter quality score"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="quality-notes">Quality Notes</Label>
+                        <Textarea
+                          id="quality-notes"
+                          value={qualityGradeData.notes}
+                          onChange={(e) => setQualityGradeData(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Add quality assessment notes"
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          if (!selectedStock || !qualityGradeData.grade) {
+                            toast({ title: "Error", description: "Please select stock and quality grade", variant: "destructive" });
+                            return;
+                          }
+                          qualityGradingMutation.mutate({
+                            stockId: selectedStock.id,
+                            qualityGrade: qualityGradeData.grade,
+                            qualityScore: qualityGradeData.score
+                          });
+                        }}
+                        disabled={qualityGradingMutation.isPending}
+                        className="w-full"
+                      >
+                        {qualityGradingMutation.isPending ? 'Assigning...' : 'Assign Quality Grade'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={inspectionDialogOpen} onOpenChange={setInspectionDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" data-testid="button-create-inspection">
+                      <ClipboardCheck className="h-4 w-4 mr-2" />
+                      Create Inspection
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create Quality Inspection</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="inspection-type">Inspection Type</Label>
+                        <Select onValueChange={(value) => setInspectionData(prev => ({ ...prev, inspectionType: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select inspection type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="incoming">Incoming Goods Inspection</SelectItem>
+                            <SelectItem value="processing">Processing Quality Check</SelectItem>
+                            <SelectItem value="storage">Storage Condition Check</SelectItem>
+                            <SelectItem value="pre_shipment">Pre-Shipment Inspection</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="moisture-content">Moisture Content (%)</Label>
+                          <Input
+                            id="moisture-content"
+                            type="number"
+                            step="0.1"
+                            value={inspectionData.moistureContent}
+                            onChange={(e) => setInspectionData(prev => ({ ...prev, moistureContent: e.target.value }))}
+                            placeholder="12.5"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="defect-count">Defect Count</Label>
+                          <Input
+                            id="defect-count"
+                            type="number"
+                            value={inspectionData.defectCount}
+                            onChange={(e) => setInspectionData(prev => ({ ...prev, defectCount: e.target.value }))}
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="cup-quality">Cup Quality Score (0-100)</Label>
+                        <Input
+                          id="cup-quality"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={inspectionData.cupQuality}
+                          onChange={(e) => setInspectionData(prev => ({ ...prev, cupQuality: e.target.value }))}
+                          placeholder="85"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="inspection-notes">Inspection Notes</Label>
+                        <Textarea
+                          id="inspection-notes"
+                          value={inspectionData.notes}
+                          onChange={(e) => setInspectionData(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Add detailed inspection notes"
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          if (!selectedStock) {
+                            toast({ title: "Error", description: "Please select a stock item first", variant: "destructive" });
+                            return;
+                          }
+                          inspectionMutation.mutate({
+                            ...inspectionData,
+                            warehouseStockId: selectedStock.id,
+                            testResults: {
+                              moistureContent: inspectionData.moistureContent,
+                              defectCount: inspectionData.defectCount,
+                              cupQuality: inspectionData.cupQuality
+                            }
+                          });
+                        }}
+                        disabled={inspectionMutation.isPending}
+                        className="w-full"
+                      >
+                        {inspectionMutation.isPending ? 'Creating...' : 'Create Inspection'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {/* Quality Inspections Table */}
+              <Card>
+                <CardHeader>
+                  <h3 className="text-lg font-semibold">Quality Inspections</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Type
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Status
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Quality Grade
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Overall Score
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Inspector
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Date
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {qualityInspections?.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                              No quality inspections found
+                            </td>
+                          </tr>
+                        ) : (
+                          qualityInspections?.map((inspection: any) => (
+                            <tr key={inspection.id} className="hover:bg-muted/50">
+                              <td className="px-4 py-4 text-sm">
+                                {inspection.inspectionType?.replace('_', ' ')}
+                              </td>
+                              <td className="px-4 py-4">
+                                <Badge 
+                                  className={
+                                    inspection.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                    inspection.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }
+                                >
+                                  {inspection.status}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {inspection.qualityGrade || 'Not graded'}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {inspection.overallScore ? `${inspection.overallScore}/100` : 'Not scored'}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                Inspector {inspection.inspectorId?.slice(-4)}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {new Date(inspection.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {inspection.status === 'pending' && (
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="outline">
+                                      Complete
+                                    </Button>
+                                    <Button size="sm">
+                                      Approve
+                                    </Button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="batch-management" className="space-y-6">
+              {/* Batch Management Dashboard */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Active Batches</div>
+                        <div className="text-2xl font-bold">
+                          {warehouseBatches?.filter((b: any) => b.isActive).length || 0}
+                        </div>
+                      </div>
+                      <Package className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Total Quantity (kg)</div>
+                        <div className="text-2xl font-bold">
+                          {warehouseBatches?.reduce((sum: number, b: any) => sum + parseFloat(b.totalQuantityKg || '0'), 0).toFixed(0) || 0}
+                        </div>
+                      </div>
+                      <TrendingUp className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Premium Grade</div>
+                        <div className="text-2xl font-bold">
+                          {warehouseBatches?.filter((b: any) => ['AA', 'AB'].includes(b.qualityGrade)).length || 0}
+                        </div>
+                      </div>
+                      <Star className="h-8 w-8 text-yellow-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Average Quality</div>
+                        <div className="text-2xl font-bold">
+                          {warehouseBatches?.length ? 
+                            (warehouseBatches.filter((b: any) => b.qualityScore).reduce((sum: number, b: any) => sum + parseFloat(b.qualityScore || '0'), 0) / 
+                            warehouseBatches.filter((b: any) => b.qualityScore).length).toFixed(1) : '0'
+                          }
+                        </div>
+                      </div>
+                      <BarChart3 className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Batch Actions */}
+              <div className="flex flex-wrap gap-3">
+                <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="button-create-batch">
+                      <Package className="h-4 w-4 mr-2" />
+                      Create New Batch
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create Warehouse Batch</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="batch-number">Batch Number</Label>
+                        <Input
+                          id="batch-number"
+                          value={batchData.batchNumber}
+                          onChange={(e) => setBatchData(prev => ({ ...prev, batchNumber: e.target.value }))}
+                          placeholder="Enter batch number (e.g., BT-2024-001)"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="batch-supplier">Supplier</Label>
+                        <Select onValueChange={(value) => setBatchData(prev => ({ ...prev, supplierId: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select supplier" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {suppliers?.map((supplier: any) => (
+                              <SelectItem key={supplier.id} value={supplier.id}>
+                                {supplier.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="batch-grade">Quality Grade</Label>
+                          <Select onValueChange={(value) => setBatchData(prev => ({ ...prev, qualityGrade: value }))}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Grade" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="AA">AA Grade</SelectItem>
+                              <SelectItem value="AB">AB Grade</SelectItem>
+                              <SelectItem value="B">B Grade</SelectItem>
+                              <SelectItem value="C">C Grade</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="batch-quantity">Total Quantity (kg)</Label>
+                          <Input
+                            id="batch-quantity"
+                            type="number"
+                            value={batchData.totalQuantityKg}
+                            onChange={(e) => setBatchData(prev => ({ ...prev, totalQuantityKg: e.target.value }))}
+                            placeholder="1000"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="batch-notes">Batch Notes</Label>
+                        <Textarea
+                          id="batch-notes"
+                          value={batchData.notes}
+                          onChange={(e) => setBatchData(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Add batch notes and origin information"
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          if (!batchData.batchNumber || !batchData.supplierId) {
+                            toast({ title: "Error", description: "Please fill required fields", variant: "destructive" });
+                            return;
+                          }
+                          batchMutation.mutate(batchData);
+                        }}
+                        disabled={batchMutation.isPending}
+                        className="w-full"
+                      >
+                        {batchMutation.isPending ? 'Creating...' : 'Create Batch'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Button variant="outline" data-testid="button-split-batch">
+                  <ArrowLeftRight className="h-4 w-4 mr-2" />
+                  Split Batch
+                </Button>
+              </div>
+
+              {/* Batches Table */}
+              <Card>
+                <CardHeader>
+                  <h3 className="text-lg font-semibold">Warehouse Batches</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Batch Number
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Supplier
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Quality Grade
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Total Quantity (kg)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Remaining (kg)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Status
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {warehouseBatches?.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                              No warehouse batches found
+                            </td>
+                          </tr>
+                        ) : (
+                          warehouseBatches?.map((batch: any) => (
+                            <tr key={batch.id} className="hover:bg-muted/50">
+                              <td className="px-4 py-4 text-sm font-mono">
+                                {batch.batchNumber}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {getSupplierName(batch.supplierId)}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                <Badge className={
+                                  ['AA', 'AB'].includes(batch.qualityGrade) ? 'bg-green-100 text-green-800' :
+                                  batch.qualityGrade === 'B' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }>
+                                  {batch.qualityGrade}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {parseFloat(batch.totalQuantityKg).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {parseFloat(batch.remainingQuantityKg || batch.totalQuantityKg).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-4">
+                                <Badge className={batch.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                  {batch.isActive ? 'Active' : 'Inactive'}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-4 text-sm space-x-2">
+                                <Button size="sm" variant="outline">
+                                  View Details
+                                </Button>
+                                <Button size="sm" variant="outline">
+                                  Split
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="consumption-tracking" className="space-y-6">
+              {/* Consumption Dashboard */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Today's Consumption</div>
+                        <div className="text-2xl font-bold">
+                          {consumptionAnalytics?.totalConsumed?.toFixed(0) || 0} kg
+                        </div>
+                      </div>
+                      <TrendingUp className="h-8 w-8 text-red-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Avg Cost/kg (USD)</div>
+                        <div className="text-2xl font-bold">
+                          ${consumptionAnalytics?.averageCostPerKg?.toFixed(2) || '0.00'}
+                        </div>
+                      </div>
+                      <BarChart3 className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">FIFO Compliance</div>
+                        <div className="text-2xl font-bold">
+                          {consumptionAnalytics?.fifoCompliance?.toFixed(1) || 100}%
+                        </div>
+                      </div>
+                      <ClipboardCheck className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Stock Aging Days</div>
+                        <div className="text-2xl font-bold">
+                          {stockAging?.length ? 
+                            (stockAging.reduce((sum: number, item: any) => sum + item.daysInStock, 0) / stockAging.length).toFixed(0) : 0
+                          }
+                        </div>
+                      </div>
+                      <Calendar className="h-8 w-8 text-orange-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Consumption Actions */}
+              <div className="flex flex-wrap gap-3">
+                <Dialog open={consumptionDialogOpen} onOpenChange={setConsumptionDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="button-record-consumption">
+                      <Zap className="h-4 w-4 mr-2" />
+                      Record Consumption
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Record Inventory Consumption (FIFO)</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="stock-for-consumption">Select Stock Item</Label>
+                        <Select onValueChange={(value) => setSelectedStock(warehouseStock?.find((s: any) => s.id === value))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose stock for consumption" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {warehouseStock?.map((stock: any) => (
+                              <SelectItem key={stock.id} value={stock.id}>
+                                {getSupplierName(stock.supplierId)} - {stock.qtyKgClean}kg (${stock.unitCostCleanUsd})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="consumption-type">Consumption Type</Label>
+                          <Select onValueChange={(value) => setConsumptionData(prev => ({ ...prev, consumptionType: value }))}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="sale">Sale/Order</SelectItem>
+                              <SelectItem value="processing">Processing</SelectItem>
+                              <SelectItem value="sampling">Sampling</SelectItem>
+                              <SelectItem value="loss">Loss/Waste</SelectItem>
+                              <SelectItem value="transfer">Transfer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="consumption-quantity">Quantity (kg)</Label>
+                          <Input
+                            id="consumption-quantity"
+                            type="number"
+                            step="0.1"
+                            value={consumptionData.quantity}
+                            onChange={(e) => setConsumptionData(prev => ({ ...prev, quantity: e.target.value }))}
+                            placeholder="Enter quantity"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="allocated-to">Allocated To</Label>
+                        <Input
+                          id="allocated-to"
+                          value={consumptionData.allocatedTo}
+                          onChange={(e) => setConsumptionData(prev => ({ ...prev, allocatedTo: e.target.value }))}
+                          placeholder="Order ID, Customer, or Department"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="consumption-notes">Consumption Notes</Label>
+                        <Textarea
+                          id="consumption-notes"
+                          value={consumptionData.notes}
+                          onChange={(e) => setConsumptionData(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Add consumption details and reasons"
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          if (!selectedStock || !consumptionData.quantity || !consumptionData.consumptionType) {
+                            toast({ title: "Error", description: "Please fill required fields", variant: "destructive" });
+                            return;
+                          }
+                          consumptionMutation.mutate({
+                            warehouseStockId: selectedStock.id,
+                            quantity: consumptionData.quantity,
+                            consumptionType: consumptionData.consumptionType,
+                            allocatedTo: consumptionData.allocatedTo
+                          });
+                        }}
+                        disabled={consumptionMutation.isPending}
+                        className="w-full"
+                      >
+                        {consumptionMutation.isPending ? 'Recording...' : 'Record Consumption'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Button variant="outline" data-testid="button-view-aging">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Stock Aging Report
+                </Button>
+
+                <Button variant="outline" data-testid="button-fifo-analysis">
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  FIFO Analysis
+                </Button>
+              </div>
+
+              {/* Recent Consumption Table */}
+              <Card>
+                <CardHeader>
+                  <h3 className="text-lg font-semibold">Recent Inventory Consumption</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Date
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Type
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Quantity (kg)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Cost (USD)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Allocated To
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            FIFO Compliant
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {inventoryConsumption?.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                              No inventory consumption records found
+                            </td>
+                          </tr>
+                        ) : (
+                          inventoryConsumption?.slice(0, 10).map((consumption: any) => (
+                            <tr key={consumption.id} className="hover:bg-muted/50">
+                              <td className="px-4 py-4 text-sm">
+                                {new Date(consumption.consumedAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                <Badge className={
+                                  consumption.consumptionType === 'sale' ? 'bg-green-100 text-green-800' :
+                                  consumption.consumptionType === 'processing' ? 'bg-blue-100 text-blue-800' :
+                                  consumption.consumptionType === 'loss' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }>
+                                  {consumption.consumptionType}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {parseFloat(consumption.quantityKg).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                ${parseFloat(consumption.totalCostUsd || '0').toFixed(2)}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {consumption.allocatedTo || 'Not specified'}
+                              </td>
+                              <td className="px-4 py-4">
+                                <Badge className={consumption.isFifoCompliant ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                  {consumption.isFifoCompliant ? 'Yes' : 'No'}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                <Button size="sm" variant="outline">
+                                  View Details
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="processing-operations" className="space-y-6">
+              {/* Processing Operations Dashboard */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Active Operations</div>
+                        <div className="text-2xl font-bold">
+                          {processingOperations?.filter((op: any) => op.status === 'in_progress').length || 0}
+                        </div>
+                      </div>
+                      <Zap className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Processing Volume</div>
+                        <div className="text-2xl font-bold">
+                          {processingOperations?.reduce((sum: number, op: any) => sum + parseFloat(op.inputQuantityKg || '0'), 0).toFixed(0) || 0} kg
+                        </div>
+                      </div>
+                      <TrendingUp className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Avg Yield Rate</div>
+                        <div className="text-2xl font-bold">
+                          {processingOperations?.length ? 
+                            (processingOperations.filter((op: any) => op.yieldPercentage)
+                              .reduce((sum: number, op: any) => sum + parseFloat(op.yieldPercentage || '0'), 0) / 
+                              processingOperations.filter((op: any) => op.yieldPercentage).length).toFixed(1) : '0'
+                          }%
+                        </div>
+                      </div>
+                      <BarChart3 className="h-8 w-8 text-orange-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Processing Cost</div>
+                        <div className="text-2xl font-bold">
+                          ${processingOperations?.reduce((sum: number, op: any) => sum + parseFloat(op.processingCostUsd || '0'), 0).toFixed(0) || 0}
+                        </div>
+                      </div>
+                      <Settings className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Processing Actions */}
+              <div className="flex flex-wrap gap-3">
+                <Dialog open={processingDialogOpen} onOpenChange={setProcessingDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="button-create-processing-operation">
+                      <Zap className="h-4 w-4 mr-2" />
+                      Create Processing Operation
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create Processing Operation</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="operation-type">Operation Type</Label>
+                        <Select onValueChange={(value) => setProcessingData(prev => ({ ...prev, operationType: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select operation type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="washing">Washing</SelectItem>
+                            <SelectItem value="drying">Drying</SelectItem>
+                            <SelectItem value="hulling">Hulling</SelectItem>
+                            <SelectItem value="grading">Grading</SelectItem>
+                            <SelectItem value="sorting">Sorting</SelectItem>
+                            <SelectItem value="roasting">Roasting</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="processing-batch">Select Batch</Label>
+                        <Select onValueChange={(value) => setSelectedBatch(warehouseBatches?.find((b: any) => b.id === value))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose batch for processing" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {warehouseBatches?.filter((b: any) => b.isActive).map((batch: any) => (
+                              <SelectItem key={batch.id} value={batch.id}>
+                                {batch.batchNumber} - {batch.totalQuantityKg}kg ({batch.qualityGrade})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="input-quantity">Input Quantity (kg)</Label>
+                          <Input
+                            id="input-quantity"
+                            type="number"
+                            step="0.1"
+                            value={processingData.inputQuantityKg}
+                            onChange={(e) => setProcessingData(prev => ({ ...prev, inputQuantityKg: e.target.value }))}
+                            placeholder="1000"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="expected-output">Expected Output (kg)</Label>
+                          <Input
+                            id="expected-output"
+                            type="number"
+                            step="0.1"
+                            value={processingData.expectedOutputKg}
+                            onChange={(e) => setProcessingData(prev => ({ ...prev, expectedOutputKg: e.target.value }))}
+                            placeholder="850"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="processing-cost">Processing Cost (USD)</Label>
+                        <Input
+                          id="processing-cost"
+                          type="number"
+                          step="0.01"
+                          value={processingData.processingCostUsd}
+                          onChange={(e) => setProcessingData(prev => ({ ...prev, processingCostUsd: e.target.value }))}
+                          placeholder="150.00"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="processing-notes">Processing Notes</Label>
+                        <Textarea
+                          id="processing-notes"
+                          value={processingData.notes}
+                          onChange={(e) => setProcessingData(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Add processing details, parameters, and quality expectations"
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          if (!selectedBatch || !processingData.operationType || !processingData.inputQuantityKg) {
+                            toast({ title: "Error", description: "Please fill required fields", variant: "destructive" });
+                            return;
+                          }
+                          processingMutation.mutate({
+                            ...processingData,
+                            batchId: selectedBatch.id
+                          });
+                        }}
+                        disabled={processingMutation.isPending}
+                        className="w-full"
+                      >
+                        {processingMutation.isPending ? 'Creating...' : 'Create Processing Operation'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Button variant="outline" data-testid="button-processing-analytics">
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Processing Analytics
+                </Button>
+
+                <Button variant="outline" data-testid="button-yield-optimization">
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Yield Optimization
+                </Button>
+              </div>
+
+              {/* Processing Operations Table */}
+              <Card>
+                <CardHeader>
+                  <h3 className="text-lg font-semibold">Processing Operations</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Operation Type
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Batch
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Status
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Input (kg)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Output (kg)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Yield %
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Cost (USD)
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {processingOperations?.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                              No processing operations found
+                            </td>
+                          </tr>
+                        ) : (
+                          processingOperations?.map((operation: any) => (
+                            <tr key={operation.id} className="hover:bg-muted/50">
+                              <td className="px-4 py-4 text-sm">
+                                {operation.operationType}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {operation.batchNumber || 'N/A'}
+                              </td>
+                              <td className="px-4 py-4">
+                                <Badge className={
+                                  operation.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  operation.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                  operation.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                  'bg-yellow-100 text-yellow-800'
+                                }>
+                                  {operation.status.replace('_', ' ')}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {parseFloat(operation.inputQuantityKg).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {operation.outputQuantityKg ? parseFloat(operation.outputQuantityKg).toLocaleString() : 'TBD'}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                {operation.yieldPercentage ? `${operation.yieldPercentage}%` : 'TBD'}
+                              </td>
+                              <td className="px-4 py-4 text-sm">
+                                ${parseFloat(operation.processingCostUsd || '0').toFixed(2)}
+                              </td>
+                              <td className="px-4 py-4 text-sm space-x-2">
+                                {operation.status === 'planned' && (
+                                  <Button size="sm" variant="outline">
+                                    Start
+                                  </Button>
+                                )}
+                                {operation.status === 'in_progress' && (
+                                  <Button size="sm">
+                                    Complete
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="outline">
+                                  View Details
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -548,6 +1943,319 @@ export default function Warehouse() {
               </Card>
             </TabsContent>
           </Tabs>
+
+          {/* Comprehensive Traceability Dialog */}
+          <Dialog open={traceabilityDialogOpen} onOpenChange={setTraceabilityDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Stock Traceability & Origin Tracking
+                </DialogTitle>
+              </DialogHeader>
+              
+              {traceabilityMutation.isPending ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mr-3"></div>
+                  <span>Loading traceability data...</span>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Stock Overview */}
+                  {selectedStock && (
+                    <Card>
+                      <CardHeader>
+                        <h3 className="text-lg font-semibold">Stock Overview</h3>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <div className="text-sm text-muted-foreground">Stock ID</div>
+                            <div className="font-mono">{selectedStock.id.slice(0, 8)}...</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-muted-foreground">Supplier</div>
+                            <div>{getSupplierName(selectedStock.supplierId)}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-muted-foreground">Clean Weight</div>
+                            <div>{selectedStock.qtyKgClean} kg</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-muted-foreground">Current Status</div>
+                            <Badge className={getStatusColor(selectedStock.status)}>
+                              {selectedStock.status.replace(/_/g, ' ')}
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Purchase Origin */}
+                  <Card>
+                    <CardHeader>
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Package className="h-5 w-5" />
+                        Purchase Origin
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          <div>
+                            <div className="text-sm text-muted-foreground">Purchase Date</div>
+                            <div>{selectedStock?.createdAt ? new Date(selectedStock.createdAt).toLocaleDateString() : 'N/A'}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-muted-foreground">Unit Cost (Clean)</div>
+                            <div>${selectedStock?.unitCostCleanUsd || '0.00'}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-muted-foreground">Total Value</div>
+                            <div>${selectedStock ? (parseFloat(selectedStock.qtyKgClean) * parseFloat(selectedStock.unitCostCleanUsd)).toFixed(2) : '0.00'}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Purchase Notes</div>
+                          <div className="mt-1 p-2 bg-muted rounded text-sm">
+                            Original purchase from {getSupplierName(selectedStock?.supplierId || '')} - Quality assessed and received into first warehouse
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Quality History */}
+                  <Card>
+                    <CardHeader>
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Star className="h-5 w-5" />
+                        Quality Assessment History
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {qualityInspections?.filter((inspection: any) => inspection.warehouseStockId === selectedStock?.id)
+                          .map((inspection: any) => (
+                            <div key={inspection.id} className="border-l-4 border-blue-200 pl-4">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="font-medium">{inspection.inspectionType?.replace('_', ' ').toUpperCase()}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {new Date(inspection.createdAt).toLocaleDateString()} - Inspector {inspection.inspectorId?.slice(-4)}
+                                  </div>
+                                </div>
+                                <Badge className={
+                                  inspection.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                  inspection.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                  'bg-yellow-100 text-yellow-800'
+                                }>
+                                  {inspection.status}
+                                </Badge>
+                              </div>
+                              {inspection.testResults && (
+                                <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Moisture:</span> {inspection.testResults.moistureContent}%
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Defects:</span> {inspection.testResults.defectCount}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Cup Quality:</span> {inspection.testResults.cupQuality}/100
+                                  </div>
+                                </div>
+                              )}
+                              {inspection.qualityGrade && (
+                                <div className="mt-2">
+                                  <span className="text-sm text-muted-foreground">Quality Grade:</span>
+                                  <Badge className="ml-2">{inspection.qualityGrade}</Badge>
+                                </div>
+                              )}
+                            </div>
+                          )) || (
+                          <div className="text-center text-muted-foreground py-4">
+                            No quality inspections recorded for this stock item
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Warehouse Operations Timeline */}
+                  <Card>
+                    <CardHeader>
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <WarehouseIcon className="h-5 w-5" />
+                        Warehouse Operations Timeline
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="border-l-4 border-green-200 pl-4">
+                          <div className="font-medium">INITIAL RECEIPT</div>
+                          <div className="text-sm text-muted-foreground">
+                            {selectedStock?.createdAt ? new Date(selectedStock.createdAt).toLocaleDateString() : 'N/A'} - Received into first warehouse
+                          </div>
+                          <div className="text-sm mt-1">
+                            Quantity: {selectedStock?.qtyKgClean} kg clean, {selectedStock?.qtyKgNonClean} kg non-clean
+                          </div>
+                        </div>
+
+                        {selectedStock?.status === 'FILTERED' && (
+                          <div className="border-l-4 border-blue-200 pl-4">
+                            <div className="font-medium">FILTERING COMPLETED</div>
+                            <div className="text-sm text-muted-foreground">
+                              Filtering operation completed - Stock processed and graded
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedStock?.status === 'READY_TO_SHIP' && (
+                          <div className="border-l-4 border-purple-200 pl-4">
+                            <div className="font-medium">READY FOR SHIPPING</div>
+                            <div className="text-sm text-muted-foreground">
+                              Stock prepared and ready for final warehouse transfer
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Processing Operations */}
+                        {processingOperations?.filter((op: any) => op.warehouseStockId === selectedStock?.id)
+                          .map((operation: any) => (
+                            <div key={operation.id} className="border-l-4 border-orange-200 pl-4">
+                              <div className="font-medium">{operation.operationType.toUpperCase()} OPERATION</div>
+                              <div className="text-sm text-muted-foreground">
+                                {new Date(operation.createdAt).toLocaleDateString()} - {operation.status}
+                              </div>
+                              <div className="text-sm mt-1">
+                                Input: {operation.inputQuantityKg} kg → Output: {operation.outputQuantityKg || 'In Progress'} kg
+                              </div>
+                            </div>
+                          )) || null}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Consumption & Allocation */}
+                  <Card>
+                    <CardHeader>
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5" />
+                        Consumption & Allocation History
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {inventoryConsumption?.filter((consumption: any) => consumption.warehouseStockId === selectedStock?.id)
+                          .map((consumption: any) => (
+                            <div key={consumption.id} className="border-l-4 border-red-200 pl-4">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="font-medium">{consumption.consumptionType.toUpperCase()}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {new Date(consumption.consumedAt).toLocaleDateString()} - {consumption.quantityKg} kg consumed
+                                  </div>
+                                </div>
+                                <Badge className={consumption.isFifoCompliant ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                  {consumption.isFifoCompliant ? 'FIFO Compliant' : 'Non-FIFO'}
+                                </Badge>
+                              </div>
+                              {consumption.allocatedTo && (
+                                <div className="text-sm mt-1">
+                                  <span className="text-muted-foreground">Allocated to:</span> {consumption.allocatedTo}
+                                </div>
+                              )}
+                              <div className="text-sm mt-1">
+                                <span className="text-muted-foreground">Cost:</span> ${consumption.totalCostUsd || '0.00'}
+                              </div>
+                            </div>
+                          )) || (
+                          <div className="text-center text-muted-foreground py-4">
+                            No consumption records found for this stock item
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Batch Information */}
+                  {warehouseBatches?.find((batch: any) => batch.warehouseStockId === selectedStock?.id) && (
+                    <Card>
+                      <CardHeader>
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                          <Package className="h-5 w-5" />
+                          Batch Information
+                        </h3>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          const batch = warehouseBatches?.find((b: any) => b.warehouseStockId === selectedStock?.id);
+                          return batch ? (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-sm text-muted-foreground">Batch Number</div>
+                                <div className="font-mono">{batch.batchNumber}</div>
+                              </div>
+                              <div>
+                                <div className="text-sm text-muted-foreground">Quality Grade</div>
+                                <Badge>{batch.qualityGrade}</Badge>
+                              </div>
+                              <div>
+                                <div className="text-sm text-muted-foreground">Total Quantity</div>
+                                <div>{batch.totalQuantityKg} kg</div>
+                              </div>
+                              <div>
+                                <div className="text-sm text-muted-foreground">Batch Status</div>
+                                <Badge className={batch.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                                  {batch.isActive ? 'Active' : 'Inactive'}
+                                </Badge>
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Complete Audit Trail */}
+                  <Card>
+                    <CardHeader>
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <ClipboardCheck className="h-5 w-5" />
+                        Complete Audit Trail
+                      </h3>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-sm space-y-2">
+                        <div className="flex justify-between p-2 bg-muted/30 rounded">
+                          <span>Stock Creation</span>
+                          <span>{selectedStock?.createdAt ? new Date(selectedStock.createdAt).toLocaleString() : 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between p-2 bg-muted/30 rounded">
+                          <span>Last Status Update</span>
+                          <span>{selectedStock?.updatedAt ? new Date(selectedStock.updatedAt).toLocaleString() : 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between p-2 bg-muted/30 rounded">
+                          <span>Quality Inspections</span>
+                          <span>{qualityInspections?.filter((i: any) => i.warehouseStockId === selectedStock?.id).length || 0} completed</span>
+                        </div>
+                        <div className="flex justify-between p-2 bg-muted/30 rounded">
+                          <span>Processing Operations</span>
+                          <span>{processingOperations?.filter((o: any) => o.warehouseStockId === selectedStock?.id).length || 0} performed</span>
+                        </div>
+                        <div className="flex justify-between p-2 bg-muted/30 rounded">
+                          <span>Consumption Events</span>
+                          <span>{inventoryConsumption?.filter((c: any) => c.warehouseStockId === selectedStock?.id).length || 0} recorded</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       </main>
     </div>

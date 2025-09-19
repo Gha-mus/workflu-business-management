@@ -109,24 +109,33 @@ export const purchases = pgTable("purchases", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Warehouse stock table
+// Warehouse stock table (enhanced with quality and batch tracking)
 export const warehouseStock = pgTable("warehouse_stock", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseId: varchar("purchase_id").notNull().references(() => purchases.id),
   orderId: varchar("order_id").notNull().references(() => orders.id),
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
+  batchId: varchar("batch_id").references(() => warehouseBatches.id), // Link to batch for traceability
   warehouse: varchar("warehouse").notNull(), // FIRST, FINAL
   status: varchar("status").notNull().default('AWAITING_DECISION'),
+  qualityGrade: qualityGradeEnum("quality_grade").default('ungraded'),
+  qualityScore: decimal("quality_score", { precision: 5, scale: 2 }),
+  lastInspectionId: varchar("last_inspection_id").references(() => qualityInspections.id),
   qtyKgTotal: decimal("qty_kg_total", { precision: 10, scale: 2 }).notNull(),
   qtyKgClean: decimal("qty_kg_clean", { precision: 10, scale: 2 }).notNull(),
   qtyKgNonClean: decimal("qty_kg_non_clean", { precision: 10, scale: 2 }).notNull().default('0'),
   qtyKgReserved: decimal("qty_kg_reserved", { precision: 10, scale: 2 }).notNull().default('0'),
+  qtyKgConsumed: decimal("qty_kg_consumed", { precision: 10, scale: 2 }).notNull().default('0'), // Track total consumption
   cartonsCount: integer("cartons_count").default(0),
   unitCostCleanUsd: decimal("unit_cost_clean_usd", { precision: 10, scale: 4 }),
+  lastActivityAt: timestamp("last_activity_at"), // Track aging for rotation management
+  fifoSequence: integer("fifo_sequence"), // For FIFO tracking
   createdAt: timestamp("created_at").defaultNow(),
   statusChangedAt: timestamp("status_changed_at"),
   filteredAt: timestamp("filtered_at"),
   packedAt: timestamp("packed_at"),
+  gradedAt: timestamp("graded_at"), // When quality grade was assigned
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Filter records table
@@ -233,6 +242,167 @@ export const deliveryTracking = pgTable("delivery_tracking", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Advanced Warehouse Operations Tables
+
+// Quality grades enum for coffee grading
+export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']);
+
+// Quality standards table
+export const qualityStandards = pgTable("quality_standards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  grade: qualityGradeEnum("grade").notNull().unique(),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  criteriaJson: jsonb("criteria_json").notNull(), // Grading criteria with scoring
+  minScore: decimal("min_score", { precision: 5, scale: 2 }),
+  maxScore: decimal("max_score", { precision: 5, scale: 2 }),
+  priceMultiplier: decimal("price_multiplier", { precision: 5, scale: 4 }).notNull().default('1.0000'),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Warehouse batches table for lot tracking
+export const warehouseBatches = pgTable("warehouse_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchNumber: varchar("batch_number").notNull().unique(),
+  purchaseId: varchar("purchase_id").notNull().references(() => purchases.id),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
+  qualityGrade: qualityGradeEnum("quality_grade").default('ungraded'),
+  originCountry: varchar("origin_country"),
+  processingDate: timestamp("processing_date"),
+  harvestDate: timestamp("harvest_date"),
+  traceabilityInfo: jsonb("traceability_info"), // Farm details, certifications, etc.
+  totalQuantityKg: decimal("total_quantity_kg", { precision: 10, scale: 2 }).notNull(),
+  remainingQuantityKg: decimal("remaining_quantity_kg", { precision: 10, scale: 2 }).notNull(),
+  avgMoistureContent: decimal("avg_moisture_content", { precision: 5, scale: 2 }),
+  avgDefectRate: decimal("avg_defect_rate", { precision: 5, scale: 2 }),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Quality inspections table
+export const qualityInspections = pgTable("quality_inspections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inspectionNumber: varchar("inspection_number").notNull().unique(),
+  batchId: varchar("batch_id").references(() => warehouseBatches.id),
+  purchaseId: varchar("purchase_id").references(() => purchases.id),
+  warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
+  inspectionType: varchar("inspection_type").notNull(), // incoming, processing, outgoing, quality_control
+  status: varchar("status").notNull().default('pending'), // pending, in_progress, completed, failed, approved, rejected
+  qualityGrade: qualityGradeEnum("quality_grade"),
+  overallScore: decimal("overall_score", { precision: 5, scale: 2 }),
+  moistureContent: decimal("moisture_content", { precision: 5, scale: 2 }),
+  defectRate: decimal("defect_rate", { precision: 5, scale: 2 }),
+  screenSize: varchar("screen_size"),
+  cupQualityScore: decimal("cup_quality_score", { precision: 5, scale: 2 }),
+  visualInspection: jsonb("visual_inspection"), // Color, appearance, etc.
+  testResults: jsonb("test_results"), // Detailed test results
+  defectsFound: jsonb("defects_found"), // Array of defects with quantities
+  recommendations: text("recommendations"),
+  rejectionReason: text("rejection_reason"),
+  inspectedBy: varchar("inspected_by").notNull().references(() => users.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  inspectionDate: timestamp("inspection_date").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Inventory consumption table for tracking stock usage
+export const inventoryConsumption = pgTable("inventory_consumption", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  consumptionNumber: varchar("consumption_number").notNull().unique(),
+  warehouseStockId: varchar("warehouse_stock_id").notNull().references(() => warehouseStock.id),
+  batchId: varchar("batch_id").references(() => warehouseBatches.id),
+  orderId: varchar("order_id").references(() => orders.id),
+  consumptionType: varchar("consumption_type").notNull(), // sale, transfer, processing, adjustment, loss
+  quantityKg: decimal("quantity_kg", { precision: 10, scale: 2 }).notNull(),
+  unitCostUsd: decimal("unit_cost_usd", { precision: 10, scale: 4 }).notNull(),
+  totalCostUsd: decimal("total_cost_usd", { precision: 12, scale: 2 }).notNull(),
+  fifoSequence: integer("fifo_sequence").notNull(), // For FIFO tracking
+  allocatedTo: varchar("allocated_to"), // customer_id, order_id, process_id
+  reason: text("reason"),
+  documentReference: varchar("document_reference"), // Invoice, transfer doc, etc.
+  consumedBy: varchar("consumed_by").notNull().references(() => users.id),
+  consumedAt: timestamp("consumed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Processing operations table
+export const processingOperations = pgTable("processing_operations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  operationNumber: varchar("operation_number").notNull().unique(),
+  operationType: varchar("operation_type").notNull(), // washing, drying, hulling, sorting, milling
+  status: varchar("status").notNull().default('planned'), // planned, in_progress, completed, cancelled
+  batchId: varchar("batch_id").notNull().references(() => warehouseBatches.id),
+  inputQuantityKg: decimal("input_quantity_kg", { precision: 10, scale: 2 }).notNull(),
+  outputQuantityKg: decimal("output_quantity_kg", { precision: 10, scale: 2 }),
+  yieldPercentage: decimal("yield_percentage", { precision: 5, scale: 2 }),
+  lossQuantityKg: decimal("loss_quantity_kg", { precision: 10, scale: 2 }),
+  qualityBefore: qualityGradeEnum("quality_before"),
+  qualityAfter: qualityGradeEnum("quality_after"),
+  processingCostUsd: decimal("processing_cost_usd", { precision: 10, scale: 2 }),
+  laborCostUsd: decimal("labor_cost_usd", { precision: 10, scale: 2 }),
+  equipmentCostUsd: decimal("equipment_cost_usd", { precision: 10, scale: 2 }),
+  totalCostUsd: decimal("total_cost_usd", { precision: 12, scale: 2 }),
+  processingParameters: jsonb("processing_parameters"), // Temperature, humidity, duration, etc.
+  qualityImpact: jsonb("quality_impact"), // How processing affected quality metrics
+  operatorId: varchar("operator_id").notNull().references(() => users.id),
+  supervisorId: varchar("supervisor_id").references(() => users.id),
+  notes: text("notes"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Stock transfers table
+export const stockTransfers = pgTable("stock_transfers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transferNumber: varchar("transfer_number").notNull().unique(),
+  transferType: varchar("transfer_type").notNull(), // warehouse_to_warehouse, location_to_location, batch_split, batch_merge
+  status: varchar("status").notNull().default('pending'), // pending, in_transit, completed, cancelled
+  fromWarehouseStockId: varchar("from_warehouse_stock_id").references(() => warehouseStock.id),
+  toWarehouseStockId: varchar("to_warehouse_stock_id").references(() => warehouseStock.id),
+  fromBatchId: varchar("from_batch_id").references(() => warehouseBatches.id),
+  toBatchId: varchar("to_batch_id").references(() => warehouseBatches.id),
+  quantityKg: decimal("quantity_kg", { precision: 10, scale: 2 }).notNull(),
+  unitCostUsd: decimal("unit_cost_usd", { precision: 10, scale: 4 }),
+  reason: text("reason").notNull(),
+  authorizedBy: varchar("authorized_by").notNull().references(() => users.id),
+  executedBy: varchar("executed_by").references(() => users.id),
+  transferredAt: timestamp("transferred_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Inventory adjustments table
+export const inventoryAdjustments = pgTable("inventory_adjustments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adjustmentNumber: varchar("adjustment_number").notNull().unique(),
+  adjustmentType: varchar("adjustment_type").notNull(), // cycle_count, reconciliation, correction, write_off
+  status: varchar("status").notNull().default('pending'), // pending, approved, rejected
+  warehouseStockId: varchar("warehouse_stock_id").notNull().references(() => warehouseStock.id),
+  batchId: varchar("batch_id").references(() => warehouseBatches.id),
+  quantityBefore: decimal("quantity_before", { precision: 10, scale: 2 }).notNull(),
+  quantityAfter: decimal("quantity_after", { precision: 10, scale: 2 }).notNull(),
+  adjustmentQuantity: decimal("adjustment_quantity", { precision: 10, scale: 2 }).notNull(),
+  unitCostUsd: decimal("unit_cost_usd", { precision: 10, scale: 4 }),
+  adjustmentValueUsd: decimal("adjustment_value_usd", { precision: 12, scale: 2 }),
+  reason: text("reason").notNull(),
+  justification: text("justification"),
+  supportingDocuments: text("supporting_documents").array(),
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  adjustmentDate: timestamp("adjustment_date").notNull().defaultNow(),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   capitalEntries: many(capitalEntries),
@@ -281,7 +451,23 @@ export const warehouseStockRelations = relations(warehouseStock, ({ one, many })
     fields: [warehouseStock.supplierId],
     references: [suppliers.id],
   }),
+  batch: one(warehouseBatches, {
+    fields: [warehouseStock.batchId],
+    references: [warehouseBatches.id],
+  }),
+  lastInspection: one(qualityInspections, {
+    fields: [warehouseStock.lastInspectionId],
+    references: [qualityInspections.id],
+  }),
   shipmentItems: many(shipmentItems),
+  consumptions: many(inventoryConsumption),
+  adjustments: many(inventoryAdjustments),
+  transfersFrom: many(stockTransfers, {
+    relationName: "transfersFrom"
+  }),
+  transfersTo: many(stockTransfers, {
+    relationName: "transfersTo"
+  }),
 }));
 
 export const filterRecordsRelations = relations(filterRecords, ({ one }) => ({
@@ -354,6 +540,147 @@ export const deliveryTrackingRelations = relations(deliveryTracking, ({ one }) =
   }),
   createdBy: one(users, {
     fields: [deliveryTracking.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// Advanced warehouse relations
+export const warehouseBatchesRelations = relations(warehouseBatches, ({ one, many }) => ({
+  purchase: one(purchases, {
+    fields: [warehouseBatches.purchaseId],
+    references: [purchases.id],
+  }),
+  order: one(orders, {
+    fields: [warehouseBatches.orderId],
+    references: [orders.id],
+  }),
+  supplier: one(suppliers, {
+    fields: [warehouseBatches.supplierId],
+    references: [suppliers.id],
+  }),
+  createdBy: one(users, {
+    fields: [warehouseBatches.createdBy],
+    references: [users.id],
+  }),
+  warehouseStock: many(warehouseStock),
+  qualityInspections: many(qualityInspections),
+  inventoryConsumption: many(inventoryConsumption),
+  processingOperations: many(processingOperations),
+  transfersFrom: many(stockTransfers, {
+    relationName: "batchTransfersFrom"
+  }),
+  transfersTo: many(stockTransfers, {
+    relationName: "batchTransfersTo"
+  }),
+  inventoryAdjustments: many(inventoryAdjustments),
+}));
+
+export const qualityInspectionsRelations = relations(qualityInspections, ({ one, many }) => ({
+  batch: one(warehouseBatches, {
+    fields: [qualityInspections.batchId],
+    references: [warehouseBatches.id],
+  }),
+  purchase: one(purchases, {
+    fields: [qualityInspections.purchaseId],
+    references: [purchases.id],
+  }),
+  warehouseStock: one(warehouseStock, {
+    fields: [qualityInspections.warehouseStockId],
+    references: [warehouseStock.id],
+  }),
+  inspectedBy: one(users, {
+    fields: [qualityInspections.inspectedBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [qualityInspections.approvedBy],
+    references: [users.id],
+  }),
+  warehouseStockInspections: many(warehouseStock, {
+    relationName: "lastInspectionRelation"
+  }),
+}));
+
+export const inventoryConsumptionRelations = relations(inventoryConsumption, ({ one }) => ({
+  warehouseStock: one(warehouseStock, {
+    fields: [inventoryConsumption.warehouseStockId],
+    references: [warehouseStock.id],
+  }),
+  batch: one(warehouseBatches, {
+    fields: [inventoryConsumption.batchId],
+    references: [warehouseBatches.id],
+  }),
+  order: one(orders, {
+    fields: [inventoryConsumption.orderId],
+    references: [orders.id],
+  }),
+  consumedBy: one(users, {
+    fields: [inventoryConsumption.consumedBy],
+    references: [users.id],
+  }),
+}));
+
+export const processingOperationsRelations = relations(processingOperations, ({ one }) => ({
+  batch: one(warehouseBatches, {
+    fields: [processingOperations.batchId],
+    references: [warehouseBatches.id],
+  }),
+  operator: one(users, {
+    fields: [processingOperations.operatorId],
+    references: [users.id],
+  }),
+  supervisor: one(users, {
+    fields: [processingOperations.supervisorId],
+    references: [users.id],
+  }),
+}));
+
+export const stockTransfersRelations = relations(stockTransfers, ({ one }) => ({
+  fromWarehouseStock: one(warehouseStock, {
+    fields: [stockTransfers.fromWarehouseStockId],
+    references: [warehouseStock.id],
+    relationName: "transfersFrom"
+  }),
+  toWarehouseStock: one(warehouseStock, {
+    fields: [stockTransfers.toWarehouseStockId],
+    references: [warehouseStock.id],
+    relationName: "transfersTo"
+  }),
+  fromBatch: one(warehouseBatches, {
+    fields: [stockTransfers.fromBatchId],
+    references: [warehouseBatches.id],
+    relationName: "batchTransfersFrom"
+  }),
+  toBatch: one(warehouseBatches, {
+    fields: [stockTransfers.toBatchId],
+    references: [warehouseBatches.id],
+    relationName: "batchTransfersTo"
+  }),
+  authorizedBy: one(users, {
+    fields: [stockTransfers.authorizedBy],
+    references: [users.id],
+  }),
+  executedBy: one(users, {
+    fields: [stockTransfers.executedBy],
+    references: [users.id],
+  }),
+}));
+
+export const inventoryAdjustmentsRelations = relations(inventoryAdjustments, ({ one }) => ({
+  warehouseStock: one(warehouseStock, {
+    fields: [inventoryAdjustments.warehouseStockId],
+    references: [warehouseStock.id],
+  }),
+  batch: one(warehouseBatches, {
+    fields: [inventoryAdjustments.batchId],
+    references: [warehouseBatches.id],
+  }),
+  createdBy: one(users, {
+    fields: [inventoryAdjustments.createdBy],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    fields: [inventoryAdjustments.approvedBy],
     references: [users.id],
   }),
 }));
@@ -456,6 +783,57 @@ export const insertDeliveryTrackingSchema = createInsertSchema(deliveryTracking)
   createdAt: true,
 });
 
+// Advanced warehouse insert schemas
+export const insertQualityStandardSchema = createInsertSchema(qualityStandards).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWarehouseBatchSchema = createInsertSchema(warehouseBatches).omit({
+  id: true,
+  batchNumber: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertQualityInspectionSchema = createInsertSchema(qualityInspections).omit({
+  id: true,
+  inspectionNumber: true,
+  completedAt: true,
+  approvedAt: true,
+  createdAt: true,
+});
+
+export const insertInventoryConsumptionSchema = createInsertSchema(inventoryConsumption).omit({
+  id: true,
+  consumptionNumber: true,
+  createdAt: true,
+});
+
+export const insertProcessingOperationSchema = createInsertSchema(processingOperations).omit({
+  id: true,
+  operationNumber: true,
+  createdAt: true,
+  updatedAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export const insertStockTransferSchema = createInsertSchema(stockTransfers).omit({
+  id: true,
+  transferNumber: true,
+  transferredAt: true,
+  createdAt: true,
+});
+
+export const insertInventoryAdjustmentSchema = createInsertSchema(inventoryAdjustments).omit({
+  id: true,
+  adjustmentNumber: true,
+  approvedAt: true,
+  createdAt: true,
+});
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -497,6 +875,28 @@ export type InsertShippingCost = z.infer<typeof insertShippingCostSchema>;
 
 export type DeliveryTracking = typeof deliveryTracking.$inferSelect;
 export type InsertDeliveryTracking = z.infer<typeof insertDeliveryTrackingSchema>;
+
+// Advanced warehouse types
+export type QualityStandard = typeof qualityStandards.$inferSelect;
+export type InsertQualityStandard = z.infer<typeof insertQualityStandardSchema>;
+
+export type WarehouseBatch = typeof warehouseBatches.$inferSelect;
+export type InsertWarehouseBatch = z.infer<typeof insertWarehouseBatchSchema>;
+
+export type QualityInspection = typeof qualityInspections.$inferSelect;
+export type InsertQualityInspection = z.infer<typeof insertQualityInspectionSchema>;
+
+export type InventoryConsumption = typeof inventoryConsumption.$inferSelect;
+export type InsertInventoryConsumption = z.infer<typeof insertInventoryConsumptionSchema>;
+
+export type ProcessingOperation = typeof processingOperations.$inferSelect;
+export type InsertProcessingOperation = z.infer<typeof insertProcessingOperationSchema>;
+
+export type StockTransfer = typeof stockTransfers.$inferSelect;
+export type InsertStockTransfer = z.infer<typeof insertStockTransferSchema>;
+
+export type InventoryAdjustment = typeof inventoryAdjustments.$inferSelect;
+export type InsertInventoryAdjustment = z.infer<typeof insertInventoryAdjustmentSchema>;
 
 // API Response Types
 export interface AuthUserResponse {

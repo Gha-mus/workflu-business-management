@@ -11,5 +11,8 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated: !!user,
+    userRole: user?.role,
+    hasRole: (role: string) => user?.role === role,
+    hasAnyRole: (roles: string[]) => roles.includes(user?.role || ''),
   };
 }

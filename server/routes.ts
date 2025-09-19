@@ -45,6 +45,13 @@ import {
   shipmentStatusUpdateSchema,
   carrierFilterSchema,
   shipmentFilterSchema,
+  insertQualityStandardSchema,
+  insertWarehouseBatchSchema,
+  insertQualityInspectionSchema,
+  insertInventoryConsumptionSchema,
+  insertProcessingOperationSchema,
+  insertStockTransferSchema,
+  insertInventoryAdjustmentSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -184,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Supplier routes
-  app.get('/api/suppliers', requireRole(['admin', 'purchasing']), async (req, res) => {
+  app.get('/api/suppliers', requireRole(['admin', 'purchasing', 'warehouse']), async (req, res) => {
     try {
       const suppliers = await storage.getSuppliers();
       res.json(suppliers);
@@ -1223,7 +1230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get latest workflow validation results
-  app.get('/api/ai/validation/latest', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.get('/api/ai/validation/latest', requireRole(['admin', 'finance', 'warehouse']), async (req: any, res) => {
     try {
       const userId = req.query.global === 'true' ? undefined : req.user.claims.sub;
       const validation = await storage.getLatestWorkflowValidation(userId);
@@ -1251,7 +1258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get validation history
-  app.get('/api/ai/validation/history', requireRole(['admin']), async (req: any, res) => {
+  app.get('/api/ai/validation/history', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const userId = req.query.userId as string;
       const limit = parseInt(req.query.limit as string) || 10;
@@ -2010,6 +2017,431 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error validating shipping workflow:", error);
       res.status(500).json({ message: "Failed to validate shipping workflow" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Quality Standards
+  app.get('/api/warehouse/quality-standards', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const isActive = req.query.active === 'true' ? true : req.query.active === 'false' ? false : undefined;
+      const standards = await storage.getQualityStandards(isActive);
+      res.json(standards);
+    } catch (error) {
+      console.error("Error fetching quality standards:", error);
+      res.status(500).json({ message: "Failed to fetch quality standards" });
+    }
+  });
+
+  app.post('/api/warehouse/quality-standards', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const standard = insertQualityStandardSchema.parse(req.body);
+      const result = await storage.createQualityStandard(standard);
+      res.json(result);
+    } catch (error) {
+      console.error("Error creating quality standard:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create quality standard" });
+    }
+  });
+
+  app.patch('/api/warehouse/quality-standards/:id', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const standard = await storage.updateQualityStandard(id, req.body);
+      res.json(standard);
+    } catch (error) {
+      console.error("Error updating quality standard:", error);
+      res.status(500).json({ message: "Failed to update quality standard" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Warehouse Batches
+  app.get('/api/warehouse/batches', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const filter = {
+        supplierId: req.query.supplierId as string,
+        qualityGrade: req.query.qualityGrade as string,
+        isActive: req.query.active === 'true' ? true : req.query.active === 'false' ? false : undefined
+      };
+      const batches = await storage.getWarehouseBatches(filter);
+      res.json(batches);
+    } catch (error) {
+      console.error("Error fetching warehouse batches:", error);
+      res.status(500).json({ message: "Failed to fetch warehouse batches" });
+    }
+  });
+
+  app.post('/api/warehouse/batches', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const batchData = {
+        ...insertWarehouseBatchSchema.parse(req.body),
+        createdById: req.user.claims.sub
+      };
+      const batch = await storage.createWarehouseBatch(batchData);
+      res.json(batch);
+    } catch (error) {
+      console.error("Error creating warehouse batch:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create warehouse batch" });
+    }
+  });
+
+  app.post('/api/warehouse/batches/:id/split', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { splitQuantity } = z.object({
+        splitQuantity: z.string()
+      }).parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      const result = await storage.splitWarehouseBatch(id, splitQuantity, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error splitting warehouse batch:", error);
+      res.status(500).json({ message: "Failed to split warehouse batch" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Quality Inspections
+  app.get('/api/warehouse/quality-inspections', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const filter = {
+        status: req.query.status as string,
+        inspectionType: req.query.inspectionType as string,
+        batchId: req.query.batchId as string
+      };
+      const inspections = await storage.getQualityInspections(filter);
+      res.json(inspections);
+    } catch (error) {
+      console.error("Error fetching quality inspections:", error);
+      res.status(500).json({ message: "Failed to fetch quality inspections" });
+    }
+  });
+
+  app.post('/api/warehouse/quality-inspections', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const inspectionData = {
+        ...insertQualityInspectionSchema.parse(req.body),
+        inspectorId: req.user.claims.sub,
+        createdById: req.user.claims.sub
+      };
+      const inspection = await storage.createQualityInspection(inspectionData);
+      res.json(inspection);
+    } catch (error) {
+      console.error("Error creating quality inspection:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create quality inspection" });
+    }
+  });
+
+  app.patch('/api/warehouse/quality-inspections/:id/complete', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const results = {
+        ...req.body,
+        userId: req.user.claims.sub
+      };
+      const inspection = await storage.completeQualityInspection(id, results);
+      res.json(inspection);
+    } catch (error) {
+      console.error("Error completing quality inspection:", error);
+      res.status(500).json({ message: "Failed to complete quality inspection" });
+    }
+  });
+
+  app.patch('/api/warehouse/quality-inspections/:id/approve', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const inspection = await storage.approveQualityInspection(id, userId);
+      res.json(inspection);
+    } catch (error) {
+      console.error("Error approving quality inspection:", error);
+      res.status(500).json({ message: "Failed to approve quality inspection" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Inventory Consumption
+  app.get('/api/warehouse/inventory-consumption', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const filter = {
+        warehouseStockId: req.query.stockId as string,
+        consumptionType: req.query.type as string,
+        orderId: req.query.orderId as string
+      };
+      const consumption = await storage.getInventoryConsumption(filter);
+      res.json(consumption);
+    } catch (error) {
+      console.error("Error fetching inventory consumption:", error);
+      res.status(500).json({ message: "Failed to fetch inventory consumption" });
+    }
+  });
+
+  app.post('/api/warehouse/inventory-consumption/fifo', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const { warehouseStockId, quantity, consumptionType, allocatedTo } = z.object({
+        warehouseStockId: z.string(),
+        quantity: z.string(),
+        consumptionType: z.string(),
+        allocatedTo: z.string().optional()
+      }).parse(req.body);
+      const userId = req.user.claims.sub;
+      
+      const consumptions = await storage.consumeInventoryFIFO(warehouseStockId, quantity, consumptionType, userId, allocatedTo);
+      res.json(consumptions);
+    } catch (error) {
+      console.error("Error consuming inventory FIFO:", error);
+      res.status(500).json({ message: "Failed to consume inventory FIFO" });
+    }
+  });
+
+  app.get('/api/warehouse/stock-aging', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const aging = await storage.getStockAging();
+      res.json(aging);
+    } catch (error) {
+      console.error("Error fetching stock aging:", error);
+      res.status(500).json({ message: "Failed to fetch stock aging" });
+    }
+  });
+
+  app.get('/api/warehouse/consumption-analytics', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const dateRange = req.query.startDate && req.query.endDate ? {
+        startDate: req.query.startDate as string,
+        endDate: req.query.endDate as string
+      } : undefined;
+      const analytics = await storage.getConsumptionAnalytics(dateRange);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching consumption analytics:", error);
+      res.status(500).json({ message: "Failed to fetch consumption analytics" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Processing Operations
+  app.get('/api/warehouse/processing-operations', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const filter = {
+        status: req.query.status as string,
+        operationType: req.query.operationType as string,
+        batchId: req.query.batchId as string
+      };
+      const operations = await storage.getProcessingOperations(filter);
+      res.json(operations);
+    } catch (error) {
+      console.error("Error fetching processing operations:", error);
+      res.status(500).json({ message: "Failed to fetch processing operations" });
+    }
+  });
+
+  app.post('/api/warehouse/processing-operations', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const operationData = {
+        ...insertProcessingOperationSchema.parse(req.body),
+        createdById: req.user.claims.sub
+      };
+      const operation = await storage.createProcessingOperation(operationData);
+      res.json(operation);
+    } catch (error) {
+      console.error("Error creating processing operation:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create processing operation" });
+    }
+  });
+
+  app.patch('/api/warehouse/processing-operations/:id/complete', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const results = {
+        ...req.body,
+        userId: req.user.claims.sub
+      };
+      const operation = await storage.completeProcessingOperation(id, results);
+      res.json(operation);
+    } catch (error) {
+      console.error("Error completing processing operation:", error);
+      res.status(500).json({ message: "Failed to complete processing operation" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Stock Transfers
+  app.get('/api/warehouse/stock-transfers', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const filter = {
+        status: req.query.status as string,
+        transferType: req.query.transferType as string
+      };
+      const transfers = await storage.getStockTransfers(filter);
+      res.json(transfers);
+    } catch (error) {
+      console.error("Error fetching stock transfers:", error);
+      res.status(500).json({ message: "Failed to fetch stock transfers" });
+    }
+  });
+
+  app.post('/api/warehouse/stock-transfers', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const transferData = {
+        ...insertStockTransferSchema.parse(req.body),
+        createdById: req.user.claims.sub
+      };
+      const transfer = await storage.createStockTransfer(transferData);
+      res.json(transfer);
+    } catch (error) {
+      console.error("Error creating stock transfer:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create stock transfer" });
+    }
+  });
+
+  app.patch('/api/warehouse/stock-transfers/:id/execute', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const transfer = await storage.executeStockTransfer(id, userId);
+      res.json(transfer);
+    } catch (error) {
+      console.error("Error executing stock transfer:", error);
+      res.status(500).json({ message: "Failed to execute stock transfer" });
+    }
+  });
+
+  // Advanced Warehouse Operations - Inventory Adjustments
+  app.get('/api/warehouse/inventory-adjustments', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const filter = {
+        status: req.query.status as string,
+        adjustmentType: req.query.adjustmentType as string,
+        warehouseStockId: req.query.stockId as string
+      };
+      const adjustments = await storage.getInventoryAdjustments(filter);
+      res.json(adjustments);
+    } catch (error) {
+      console.error("Error fetching inventory adjustments:", error);
+      res.status(500).json({ message: "Failed to fetch inventory adjustments" });
+    }
+  });
+
+  app.post('/api/warehouse/inventory-adjustments', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const adjustmentData = {
+        ...insertInventoryAdjustmentSchema.parse(req.body),
+        createdById: req.user.claims.sub
+      };
+      const adjustment = await storage.createInventoryAdjustment(adjustmentData);
+      res.json(adjustment);
+    } catch (error) {
+      console.error("Error creating inventory adjustment:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create inventory adjustment" });
+    }
+  });
+
+  app.patch('/api/warehouse/inventory-adjustments/:id/approve', requireRole(['admin']), warehousePeriodGuard, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const adjustment = await storage.approveInventoryAdjustment(id, userId);
+      res.json(adjustment);
+    } catch (error) {
+      console.error("Error approving inventory adjustment:", error);
+      res.status(500).json({ message: "Failed to approve inventory adjustment" });
+    }
+  });
+
+  // Enhanced Warehouse Operations - Quality & Batch Management
+  app.patch('/api/warehouse/stock/:id/assign-quality-grade', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { qualityGrade, qualityScore } = req.body;
+      const userId = req.user.claims.sub;
+      const stock = await storage.assignQualityGradeToStock(id, qualityGrade, qualityScore, userId);
+      res.json(stock);
+    } catch (error) {
+      console.error("Error assigning quality grade to stock:", error);
+      res.status(500).json({ message: "Failed to assign quality grade to stock" });
+    }
+  });
+
+  app.patch('/api/warehouse/stock/:id/assign-batch', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { batchId } = req.body;
+      const userId = req.user.claims.sub;
+      const stock = await storage.assignBatchToStock(id, batchId, userId);
+      res.json(stock);
+    } catch (error) {
+      console.error("Error assigning batch to stock:", error);
+      res.status(500).json({ message: "Failed to assign batch to stock" });
+    }
+  });
+
+  app.get('/api/warehouse/stock/:id/quality-history', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const history = await storage.getStockWithQualityHistory(id);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching stock quality history:", error);
+      res.status(500).json({ message: "Failed to fetch stock quality history" });
+    }
+  });
+
+  // Advanced Warehouse Analytics
+  app.get('/api/warehouse/analytics/advanced', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const analytics = await storage.getWarehouseAnalyticsAdvanced();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching advanced warehouse analytics:", error);
+      res.status(500).json({ message: "Failed to fetch advanced warehouse analytics" });
+    }
+  });
+
+  // Traceability Operations
+  app.get('/api/warehouse/trace/stock/:id/origin', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const origin = await storage.traceStockOrigin(id);
+      res.json(origin);
+    } catch (error) {
+      console.error("Error tracing stock origin:", error);
+      res.status(500).json({ message: "Failed to trace stock origin" });
+    }
+  });
+
+  app.get('/api/warehouse/trace/consumption/:id/chain', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const chain = await storage.traceConsumptionChain(id);
+      res.json(chain);
+    } catch (error) {
+      console.error("Error tracing consumption chain:", error);
+      res.status(500).json({ message: "Failed to trace consumption chain" });
+    }
+  });
+
+  // Advanced Warehouse Workflow Validation
+  app.post('/api/warehouse/validate-workflow', requireRole(['admin']), async (req, res) => {
+    try {
+      const validation = await aiService.validateWarehouseWorkflow();
+      res.json(validation);
+    } catch (error) {
+      console.error("Error validating warehouse workflow:", error);
+      res.status(500).json({ message: "Failed to validate warehouse workflow" });
     }
   });
 
