@@ -5,6 +5,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { DashboardStats } from "@/components/DashboardStats";
 import { RecentTransactions } from "@/components/RecentTransactions";
 import { QuickActions } from "@/components/QuickActions";
+import { AiChatInterface, ContextualHelp } from "@/components/AiChatInterface";
+import { DashboardAiInsights } from "@/components/AiInsightsPanels";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
   Select,
@@ -84,12 +86,27 @@ export default function Dashboard() {
         <div className="flex-1 overflow-auto bg-background p-6">
           <DashboardStats />
           
+          {/* AI Insights Section */}
+          <div className="my-8">
+            <DashboardAiInsights />
+          </div>
+          
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <RecentTransactions />
-            <QuickActions />
+            <div className="space-y-6">
+              <QuickActions />
+              <ContextualHelp 
+                currentPage="dashboard" 
+                userRole="admin" 
+                className="lg:block hidden"
+              />
+            </div>
           </div>
         </div>
       </main>
+      
+      {/* AI Chat Interface */}
+      <AiChatInterface page="dashboard" />
     </div>
   );
 }

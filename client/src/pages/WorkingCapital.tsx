@@ -6,6 +6,8 @@ import type { CapitalBalanceResponse, CapitalEntriesResponse, SettingsResponse }
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { Sidebar } from "@/components/Sidebar";
+import { AiChatInterface, ContextualHelp } from "@/components/AiChatInterface";
+import { WorkingCapitalAiInsights } from "@/components/AiInsightsPanels";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -358,8 +360,16 @@ export default function WorkingCapital() {
               )}
             </CardContent>
           </Card>
+
+          {/* AI Insights Section */}
+          <div className="mt-8">
+            <WorkingCapitalAiInsights />
+          </div>
         </div>
       </main>
+      
+      {/* AI Chat Interface */}
+      <AiChatInterface page="working-capital" />
     </div>
   );
 }
