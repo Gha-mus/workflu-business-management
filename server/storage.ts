@@ -1798,6 +1798,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  // Stage 8: Warehouse scoping support
+  async getUserWarehouseScopes(userId: string): Promise<typeof userWarehouseScopes.$inferSelect[]> {
+    return await db.select().from(userWarehouseScopes).where(eq(userWarehouseScopes.userId, userId));
+  }
+
   async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
