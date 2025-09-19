@@ -79,23 +79,24 @@ export function RecentTransactions() {
         </div>
       </CardHeader>
       
-      <div className="overflow-x-auto">
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-muted/50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Date
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Type
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Description
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Amount
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Status
               </th>
             </tr>
@@ -103,17 +104,17 @@ export function RecentTransactions() {
           <tbody className="divide-y divide-border">
             {transactions.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 lg:px-6 py-8 text-center text-muted-foreground">
                   No transactions found
                 </td>
               </tr>
             ) : (
               transactions.map((transaction) => (
                 <tr key={transaction.id} className="hover:bg-muted/50" data-testid={`transaction-${transaction.id}`}>
-                  <td className="px-6 py-4 text-sm text-foreground">
+                  <td className="px-4 lg:px-6 py-4 text-sm text-foreground">
                     {new Date(transaction.date).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 lg:px-6 py-4">
                     <Badge 
                       variant="secondary" 
                       className={getTypeColor(transaction.type, transaction.category)}
@@ -121,15 +122,15 @@ export function RecentTransactions() {
                       {transaction.type}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4 text-sm text-foreground">
+                  <td className="px-4 lg:px-6 py-4 text-sm text-foreground">
                     {transaction.description}
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium">
+                  <td className="px-4 lg:px-6 py-4 text-sm font-medium">
                     <span className={transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}>
                       ${Math.abs(transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 lg:px-6 py-4">
                     <Badge variant="outline" className="bg-green-100 text-green-800">
                       {transaction.status}
                     </Badge>
@@ -139,6 +140,50 @@ export function RecentTransactions() {
             )}
           </tbody>
         </table>
+      </div>
+      
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-3">
+        {transactions.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">
+            No transactions found
+          </div>
+        ) : (
+          transactions.map((transaction) => (
+            <div 
+              key={transaction.id} 
+              className="border border-border rounded-lg p-4 bg-card"
+              data-testid={`transaction-card-${transaction.id}`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <Badge 
+                    variant="secondary" 
+                    className={getTypeColor(transaction.type, transaction.category)}
+                  >
+                    {transaction.type}
+                  </Badge>
+                  <Badge variant="outline" className="bg-green-100 text-green-800">
+                    {transaction.status}
+                  </Badge>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(transaction.date).toLocaleDateString()}
+                </span>
+              </div>
+              <div className="mb-2">
+                <p className="text-sm text-foreground font-medium">
+                  {transaction.description}
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <span className={`text-lg font-bold ${transaction.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  ${Math.abs(transaction.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </Card>
   );
