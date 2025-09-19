@@ -45,18 +45,18 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="h-full flex" data-testid="dashboard">
+    <div className="min-h-screen flex bg-background" data-testid="dashboard">
       <Sidebar />
       
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden md:ml-0">
         {/* Header */}
-        <header className="bg-card border-b border-border px-6 py-4" data-testid="dashboard-header">
-          <div className="flex items-center justify-between">
+        <header className="bg-card border-b border-border px-4 sm:px-6 py-4 pt-16 md:pt-4" data-testid="dashboard-header">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
             <div>
-              <h2 className="text-2xl font-bold text-foreground">Dashboard</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-foreground">Dashboard</h2>
               <p className="text-sm text-muted-foreground">Overview of your business operations</p>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Currency Toggle */}
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-muted-foreground">Currency:</span>
@@ -83,22 +83,24 @@ export default function Dashboard() {
         </header>
 
         {/* Dashboard Content */}
-        <div className="flex-1 overflow-auto bg-background p-6">
+        <div className="flex-1 overflow-auto bg-background p-4 sm:p-6">
           <DashboardStats />
           
           {/* AI Insights Section */}
-          <div className="my-8">
+          <div className="my-6 sm:my-8">
             <DashboardAiInsights />
           </div>
           
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <RecentTransactions />
-            <div className="space-y-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+            <div className="xl:col-span-2">
+              <RecentTransactions />
+            </div>
+            <div className="space-y-4 sm:space-y-6">
               <QuickActions />
               <ContextualHelp 
                 currentPage="dashboard" 
                 userRole="admin" 
-                className="lg:block hidden"
+                className="block"
               />
             </div>
           </div>
