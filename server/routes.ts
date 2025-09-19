@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./replitAuth";
 import { aiService } from "./aiService";
 import { exportService } from "./exportService";
+import { configurationService } from "./configurationService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
 import { approvalStartupValidator } from "./approvalStartupValidator";
 import { auditService } from "./auditService";
@@ -1204,31 +1205,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Settings routes
+  // ===== STAGE 10: ENHANCED CONFIGURATION MANAGEMENT =====
+  
+  // Get comprehensive settings with all categories
   app.get('/api/settings', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req, res) => {
     try {
-      const exchangeRate = await storage.getExchangeRate();
-      const preventNegativeSetting = await storage.getSetting('PREVENT_NEGATIVE_BALANCE');
-      const preventNegativeBalance = preventNegativeSetting?.value === 'true';
+      const enhancedSettings = await configurationService.getEnhancedSettings();
+      res.json(enhancedSettings);
+    } catch (error) {
+      console.error("Error fetching enhanced settings:", error);
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  // Get legacy settings format for backward compatibility
+  app.get('/api/settings/legacy', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req, res) => {
+    try {
+      const exchangeRate = await configurationService.getCentralExchangeRate();
+      const preventNegativeBalance = !(await configurationService.isNegativeBalanceAllowed());
       
       res.json({ 
         exchangeRate,
         preventNegativeBalance 
       });
     } catch (error) {
-      console.error("Error fetching settings:", error);
+      console.error("Error fetching legacy settings:", error);
       res.status(500).json({ message: "Failed to fetch settings" });
     }
   });
 
+  // Update single setting with enhanced validation and approval workflow
   app.post('/api/settings', requireRole(['admin']), async (req, res) => {
     try {
-      const setting = insertSettingSchema.parse(req.body);
-      const result = await storage.setSetting(setting);
+      const settingData = req.body;
+      const userId = req.user?.claims?.sub || 'unknown';
+      
+      const result = await configurationService.updateSystemSetting(
+        settingData.key,
+        settingData.value,
+        {
+          userId,
+          category: settingData.category || 'general',
+          description: settingData.description,
+          requiresApproval: settingData.requiresApproval,
+          changeReason: settingData.changeReason,
+          isAdmin: true // Admin users can bypass approval workflow
+        }
+      );
+      
       res.json(result);
     } catch (error) {
       console.error("Error updating setting:", error);
       res.status(500).json({ message: "Failed to update setting" });
+    }
+  });
+
+  // Generate entity number using configuration service
+  app.post('/api/settings/numbering/generate', requireRole(['admin', 'finance', 'purchasing', 'warehouse']), async (req, res) => {
+    try {
+      const { entityType, prefix, suffix } = req.body;
+      
+      if (!entityType) {
+        return res.status(400).json({ message: "Entity type is required" });
+      }
+      
+      const generatedNumber = await configurationService.generateEntityNumber(entityType, { prefix, suffix });
+      res.json({ entityNumber: generatedNumber });
+    } catch (error) {
+      console.error("Error generating entity number:", error);
+      res.status(500).json({ message: "Failed to generate entity number" });
+    }
+  });
+
+  // Central FX conversion endpoint for all stages to use
+  app.post('/api/settings/fx/convert', requireRole(['admin', 'finance', 'purchasing', 'warehouse']), async (req, res) => {
+    try {
+      const { amountETB } = req.body;
+      
+      if (!amountETB || isNaN(parseFloat(amountETB))) {
+        return res.status(400).json({ message: "Valid ETB amount is required" });
+      }
+      
+      const conversion = await configurationService.convertETBToUSD(parseFloat(amountETB));
+      res.json(conversion);
+    } catch (error) {
+      console.error("Error converting currency:", error);
+      res.status(500).json({ message: "Failed to convert currency" });
+    }
+  });
+
+  // Create configuration snapshot
+  app.post('/api/settings/snapshots', requireRole(['admin']), async (req, res) => {
+    try {
+      const { name, description } = req.body;
+      const userId = req.user?.claims?.sub || 'unknown';
+      
+      const snapshotId = await configurationService.createConfigurationSnapshot({
+        name,
+        description,
+        snapshotType: 'manual',
+        snapshotData: { placeholder: true }, // Will be filled by the service
+        createdBy: userId
+      });
+      
+      res.json({ snapshotId, message: 'Configuration snapshot created successfully' });
+    } catch (error) {
+      console.error("Error creating configuration snapshot:", error);
+      res.status(500).json({ message: "Failed to create configuration snapshot" });
     }
   });
 
