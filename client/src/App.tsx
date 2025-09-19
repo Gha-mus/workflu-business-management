@@ -10,6 +10,7 @@ import Dashboard from "@/pages/Dashboard";
 import WorkingCapital from "@/pages/WorkingCapital";
 import Purchases from "@/pages/Purchases";
 import Warehouse from "@/pages/Warehouse";
+import Shipping from "@/pages/Shipping";
 import Orders from "@/pages/Orders";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
@@ -27,6 +28,7 @@ function Router() {
           <Route path="/capital" component={WorkingCapital} />
           <Route path="/purchases" component={Purchases} />
           <Route path="/warehouse" component={Warehouse} />
+          <Route path="/shipping" component={Shipping} />
           <Route path="/orders" component={Orders} />
           <Route path="/reports" component={Reports} />
           <Route path="/settings" component={Settings} />

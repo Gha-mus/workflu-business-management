@@ -5,6 +5,7 @@ import {
   DollarSign, 
   ShoppingCart, 
   Warehouse, 
+  Truck,
   Package,
   BarChart3,
   Users,
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Working Capital', href: '/capital', icon: DollarSign },
   { name: 'Purchases', href: '/purchases', icon: ShoppingCart },
   { name: 'Warehouse', href: '/warehouse', icon: Warehouse },
+  { name: 'Shipping', href: '/shipping', icon: Truck },
   { name: 'Orders', href: '/orders', icon: Package },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
 ];

@@ -141,6 +141,98 @@ export const filterRecords = pgTable("filter_records", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Shipping and Logistics Tables
+
+// Shipment status enum
+export const shipmentStatusEnum = pgEnum('shipment_status', ['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']);
+
+// Shipment method enum
+export const shipmentMethodEnum = pgEnum('shipment_method', ['sea_freight', 'air_freight', 'land_transport', 'courier']);
+
+// Carriers table
+export const carriers = pgTable("carriers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  contactPerson: varchar("contact_person"),
+  email: varchar("email"),
+  phone: varchar("phone"),
+  address: text("address"),
+  serviceTypes: text("service_types").array(), // Types of shipping services offered
+  rating: decimal("rating", { precision: 3, scale: 2 }), // Performance rating out of 5
+  isPreferred: boolean("is_preferred").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Shipments table
+export const shipments = pgTable("shipments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentNumber: varchar("shipment_number").notNull().unique(),
+  orderId: varchar("order_id").notNull().references(() => orders.id),
+  carrierId: varchar("carrier_id").notNull().references(() => carriers.id),
+  method: shipmentMethodEnum("method").notNull(),
+  status: shipmentStatusEnum("status").notNull().default('pending'),
+  originAddress: text("origin_address").notNull(),
+  destinationAddress: text("destination_address").notNull(),
+  estimatedDepartureDate: timestamp("estimated_departure_date"),
+  actualDepartureDate: timestamp("actual_departure_date"),
+  estimatedArrivalDate: timestamp("estimated_arrival_date"),
+  actualArrivalDate: timestamp("actual_arrival_date"),
+  trackingNumber: varchar("tracking_number"),
+  totalWeight: decimal("total_weight", { precision: 10, scale: 2 }).notNull(),
+  totalVolume: decimal("total_volume", { precision: 10, scale: 2 }),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Shipment items table (links shipments to warehouse stock)
+export const shipmentItems = pgTable("shipment_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  warehouseStockId: varchar("warehouse_stock_id").notNull().references(() => warehouseStock.id),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
+  packingDetails: text("packing_details"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Shipping costs table
+export const shippingCosts = pgTable("shipping_costs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  costType: varchar("cost_type").notNull(), // freight, insurance, customs, handling, other
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  description: text("description"),
+  paymentMethod: varchar("payment_method"), // cash, advance, credit
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
+  remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
+  fundingSource: varchar("funding_source").notNull(), // capital, external
+  paidDate: timestamp("paid_date"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Delivery tracking table
+export const deliveryTracking = pgTable("delivery_tracking", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  status: varchar("status").notNull(),
+  location: varchar("location"),
+  description: text("description"),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  isCustomerNotified: boolean("is_customer_notified").notNull().default(false),
+  proofOfDelivery: text("proof_of_delivery"), // URL or reference to delivery proof
+  exceptionDetails: text("exception_details"), // Details if delivery exception
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   capitalEntries: many(capitalEntries),
@@ -156,6 +248,7 @@ export const suppliersRelations = relations(suppliers, ({ many }) => ({
 export const ordersRelations = relations(orders, ({ many }) => ({
   purchases: many(purchases),
   warehouseStock: many(warehouseStock),
+  shipments: many(shipments),
 }));
 
 export const purchasesRelations = relations(purchases, ({ one, many }) => ({
@@ -175,7 +268,7 @@ export const purchasesRelations = relations(purchases, ({ one, many }) => ({
   filterRecords: many(filterRecords),
 }));
 
-export const warehouseStockRelations = relations(warehouseStock, ({ one }) => ({
+export const warehouseStockRelations = relations(warehouseStock, ({ one, many }) => ({
   purchase: one(purchases, {
     fields: [warehouseStock.purchaseId],
     references: [purchases.id],
@@ -188,6 +281,7 @@ export const warehouseStockRelations = relations(warehouseStock, ({ one }) => ({
     fields: [warehouseStock.supplierId],
     references: [suppliers.id],
   }),
+  shipmentItems: many(shipmentItems),
 }));
 
 export const filterRecordsRelations = relations(filterRecords, ({ one }) => ({
@@ -204,6 +298,62 @@ export const filterRecordsRelations = relations(filterRecords, ({ one }) => ({
 export const capitalEntriesRelations = relations(capitalEntries, ({ one }) => ({
   createdBy: one(users, {
     fields: [capitalEntries.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// Shipping relations
+export const carriersRelations = relations(carriers, ({ many }) => ({
+  shipments: many(shipments),
+}));
+
+export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
+  order: one(orders, {
+    fields: [shipments.orderId],
+    references: [orders.id],
+  }),
+  carrier: one(carriers, {
+    fields: [shipments.carrierId],
+    references: [carriers.id],
+  }),
+  createdBy: one(users, {
+    fields: [shipments.createdBy],
+    references: [users.id],
+  }),
+  shipmentItems: many(shipmentItems),
+  shippingCosts: many(shippingCosts),
+  deliveryTracking: many(deliveryTracking),
+}));
+
+export const shipmentItemsRelations = relations(shipmentItems, ({ one }) => ({
+  shipment: one(shipments, {
+    fields: [shipmentItems.shipmentId],
+    references: [shipments.id],
+  }),
+  warehouseStock: one(warehouseStock, {
+    fields: [shipmentItems.warehouseStockId],
+    references: [warehouseStock.id],
+  }),
+}));
+
+export const shippingCostsRelations = relations(shippingCosts, ({ one }) => ({
+  shipment: one(shipments, {
+    fields: [shippingCosts.shipmentId],
+    references: [shipments.id],
+  }),
+  createdBy: one(users, {
+    fields: [shippingCosts.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const deliveryTrackingRelations = relations(deliveryTracking, ({ one }) => ({
+  shipment: one(shipments, {
+    fields: [deliveryTracking.shipmentId],
+    references: [shipments.id],
+  }),
+  createdBy: one(users, {
+    fields: [deliveryTracking.createdBy],
     references: [users.id],
   }),
 }));
@@ -268,6 +418,44 @@ export const insertSettingSchema = createInsertSchema(settings).omit({
   updatedAt: true,
 });
 
+// Shipping insert schemas
+export const insertCarrierSchema = createInsertSchema(carriers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertShipmentSchema = createInsertSchema(shipments).omit({
+  id: true,
+  shipmentNumber: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertShipmentItemSchema = createInsertSchema(shipmentItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertShippingCostSchema = createInsertSchema(shippingCosts).omit({
+  id: true,
+  createdAt: true,
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
+export const insertDeliveryTrackingSchema = createInsertSchema(deliveryTracking).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -294,6 +482,22 @@ export type InsertFilterRecord = z.infer<typeof insertFilterRecordSchema>;
 export type Setting = typeof settings.$inferSelect;
 export type InsertSetting = z.infer<typeof insertSettingSchema>;
 
+// Shipping types
+export type Carrier = typeof carriers.$inferSelect;
+export type InsertCarrier = z.infer<typeof insertCarrierSchema>;
+
+export type Shipment = typeof shipments.$inferSelect;
+export type InsertShipment = z.infer<typeof insertShipmentSchema>;
+
+export type ShipmentItem = typeof shipmentItems.$inferSelect;
+export type InsertShipmentItem = z.infer<typeof insertShipmentItemSchema>;
+
+export type ShippingCost = typeof shippingCosts.$inferSelect;
+export type InsertShippingCost = z.infer<typeof insertShippingCostSchema>;
+
+export type DeliveryTracking = typeof deliveryTracking.$inferSelect;
+export type InsertDeliveryTracking = z.infer<typeof insertDeliveryTrackingSchema>;
+
 // API Response Types
 export interface AuthUserResponse {
   user: User | null;
@@ -314,6 +518,50 @@ export type OrdersResponse = Order[];
 export type PurchasesResponse = Purchase[];
 export type WarehouseStockResponse = WarehouseStock[];
 export type FilterRecordsResponse = FilterRecord[];
+
+// Shipping API Response Types
+export type CarriersResponse = Carrier[];
+export type ShipmentsResponse = Shipment[];
+export type ShipmentItemsResponse = ShipmentItem[];
+export type ShippingCostsResponse = ShippingCost[];
+export type DeliveryTrackingResponse = DeliveryTracking[];
+
+export interface ShipmentWithDetailsResponse extends Shipment {
+  carrier: Carrier;
+  items: (ShipmentItem & { warehouseStock: WarehouseStock })[];
+  costs: ShippingCost[];
+  tracking: DeliveryTracking[];
+}
+
+export interface ShippingAnalyticsResponse {
+  summary: {
+    totalShipments: number;
+    inTransit: number;
+    delivered: number;
+    totalCostUsd: number;
+    averageCostPerKg: number;
+  };
+  carrierPerformance: Array<{
+    carrierId: string;
+    carrierName: string;
+    totalShipments: number;
+    onTimeDeliveryRate: number;
+    averageCostPerKg: number;
+    rating: number;
+  }>;
+  costBreakdown: Array<{
+    costType: string;
+    totalUsd: number;
+    percentage: number;
+  }>;
+  deliveryTimeAnalysis: {
+    averageDeliveryDays: number;
+    byMethod: Array<{
+      method: string;
+      averageDays: number;
+    }>;
+  };
+}
 
 // Additional Zod schemas for warehouse operations
 export const warehouseStatusUpdateSchema = z.object({
@@ -356,6 +604,90 @@ export type WarehouseStatusUpdate = z.infer<typeof warehouseStatusUpdateSchema>;
 export type WarehouseFilterOperation = z.infer<typeof warehouseFilterOperationSchema>;
 export type WarehouseMoveToFinal = z.infer<typeof warehouseMoveToFinalSchema>;
 export type WarehouseStockFilter = z.infer<typeof warehouseStockFilterSchema>;
+
+// Shipping validation schemas
+export const shipmentStatusUpdateSchema = z.object({
+  status: z.enum(['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']),
+  actualDepartureDate: z.string().optional(),
+  actualArrivalDate: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const createShipmentFromStockSchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+  carrierId: z.string().min(1, "Carrier ID is required"),
+  method: z.enum(['sea_freight', 'air_freight', 'land_transport', 'courier']),
+  originAddress: z.string().min(1, "Origin address is required"),
+  destinationAddress: z.string().min(1, "Destination address is required"),
+  estimatedDepartureDate: z.string().optional(),
+  estimatedArrivalDate: z.string().optional(),
+  warehouseStockItems: z.array(z.object({
+    warehouseStockId: z.string().min(1),
+    quantity: z.string().refine((val) => {
+      const num = parseFloat(val);
+      return !isNaN(num) && num > 0;
+    }, "Quantity must be a positive number"),
+    packingDetails: z.string().optional(),
+  })).min(1, "At least one warehouse stock item is required"),
+  notes: z.string().optional(),
+});
+
+export const addShippingCostSchema = z.object({
+  shipmentId: z.string().min(1, "Shipment ID is required"),
+  costType: z.enum(['freight', 'insurance', 'customs', 'handling', 'other']),
+  amount: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, "Amount must be a valid positive number"),
+  currency: z.enum(['USD', 'ETB']).default('USD'),
+  exchangeRate: z.string().optional(),
+  description: z.string().optional(),
+  paymentMethod: z.enum(['cash', 'advance', 'credit']).optional(),
+  amountPaid: z.string().optional(),
+  fundingSource: z.enum(['capital', 'external']),
+}).refine((data) => {
+  // Require exchangeRate for non-USD currencies
+  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exchange rate is required for non-USD currencies",
+  path: ["exchangeRate"],
+});
+
+export const addDeliveryTrackingSchema = z.object({
+  shipmentId: z.string().min(1, "Shipment ID is required"),
+  status: z.string().min(1, "Status is required"),
+  location: z.string().optional(),
+  description: z.string().optional(),
+  isCustomerNotified: z.boolean().default(false),
+  proofOfDelivery: z.string().optional(),
+  exceptionDetails: z.string().optional(),
+});
+
+export const carrierFilterSchema = z.object({
+  isActive: z.boolean().optional(),
+  isPreferred: z.boolean().optional(),
+  serviceType: z.string().optional(),
+});
+
+export const shipmentFilterSchema = z.object({
+  status: z.enum(['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']).optional(),
+  method: z.enum(['sea_freight', 'air_freight', 'land_transport', 'courier']).optional(),
+  carrierId: z.string().optional(),
+  orderId: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+// Shipping validation types
+export type ShipmentStatusUpdate = z.infer<typeof shipmentStatusUpdateSchema>;
+export type CreateShipmentFromStock = z.infer<typeof createShipmentFromStockSchema>;
+export type AddShippingCost = z.infer<typeof addShippingCostSchema>;
+export type AddDeliveryTracking = z.infer<typeof addDeliveryTrackingSchema>;
+export type CarrierFilter = z.infer<typeof carrierFilterSchema>;
+export type ShipmentFilter = z.infer<typeof shipmentFilterSchema>;
 
 // Reporting Schemas and Types
 

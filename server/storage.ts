@@ -16,6 +16,11 @@ import {
   exportPreferences,
   exportJobs,
   workflowValidations,
+  carriers,
+  shipments,
+  shipmentItems,
+  shippingCosts,
+  deliveryTracking,
   type User,
   type UpsertUser,
   type Supplier,
@@ -50,6 +55,23 @@ import {
   type InsertExportJob,
   type WorkflowValidation,
   type InsertWorkflowValidation,
+  type Carrier,
+  type InsertCarrier,
+  type Shipment,
+  type InsertShipment,
+  type ShipmentItem,
+  type InsertShipmentItem,
+  type ShippingCost,
+  type InsertShippingCost,
+  type DeliveryTracking,
+  type InsertDeliveryTracking,
+  type ShipmentWithDetailsResponse,
+  type ShippingAnalyticsResponse,
+  type CreateShipmentFromStock,
+  type AddShippingCost,
+  type AddDeliveryTracking,
+  type ShipmentFilter,
+  type CarrierFilter,
   type FinancialSummaryResponse,
   type CashFlowResponse,
   type InventoryAnalyticsResponse,
@@ -180,6 +202,57 @@ export interface IStorage {
   exportToPDF(data: any, reportType: string, filename: string): Promise<string>;
   compressFile(filePath: string): Promise<string>;
   sendEmailWithAttachment(recipients: string[], subject: string, body: string, attachmentPath: string): Promise<void>;
+
+  // Shipping and Logistics operations
+  
+  // Carrier operations
+  getCarriers(filter?: CarrierFilter): Promise<Carrier[]>;
+  getCarrier(id: string): Promise<Carrier | undefined>;
+  createCarrier(carrier: InsertCarrier): Promise<Carrier>;
+  updateCarrier(id: string, carrier: Partial<InsertCarrier>): Promise<Carrier>;
+  deleteCarrier(id: string): Promise<void>;
+  updateCarrierRating(carrierId: string, rating: number): Promise<Carrier>;
+  
+  // Shipment operations
+  getShipments(filter?: ShipmentFilter): Promise<Shipment[]>;
+  getShipment(id: string): Promise<Shipment | undefined>;
+  getShipmentWithDetails(id: string): Promise<ShipmentWithDetailsResponse | undefined>;
+  createShipment(shipment: InsertShipment): Promise<Shipment>;
+  createShipmentFromWarehouseStock(shipmentData: CreateShipmentFromStock, userId: string): Promise<Shipment>;
+  updateShipment(id: string, shipment: Partial<InsertShipment>): Promise<Shipment>;
+  updateShipmentStatus(id: string, status: string, userId: string, actualDate?: Date): Promise<Shipment>;
+  deleteShipment(id: string): Promise<void>;
+  
+  // Shipment item operations
+  getShipmentItems(shipmentId: string): Promise<ShipmentItem[]>;
+  createShipmentItem(item: InsertShipmentItem): Promise<ShipmentItem>;
+  updateShipmentItem(id: string, item: Partial<InsertShipmentItem>): Promise<ShipmentItem>;
+  deleteShipmentItem(id: string): Promise<void>;
+  
+  // Shipping cost operations
+  getShippingCosts(shipmentId: string): Promise<ShippingCost[]>;
+  getShippingCost(id: string): Promise<ShippingCost | undefined>;
+  addShippingCost(costData: AddShippingCost, userId: string): Promise<ShippingCost>;
+  updateShippingCost(id: string, cost: Partial<InsertShippingCost>): Promise<ShippingCost>;
+  deleteShippingCost(id: string): Promise<void>;
+  
+  // Delivery tracking operations
+  getDeliveryTracking(shipmentId: string): Promise<DeliveryTracking[]>;
+  addDeliveryTracking(trackingData: AddDeliveryTracking, userId: string): Promise<DeliveryTracking>;
+  updateDeliveryTracking(id: string, tracking: Partial<InsertDeliveryTracking>): Promise<DeliveryTracking>;
+  markCustomerNotified(trackingId: string, userId: string): Promise<DeliveryTracking>;
+  
+  // Shipping analytics and reporting
+  getShippingAnalytics(filters?: DateRangeFilter): Promise<ShippingAnalyticsResponse>;
+  getCarrierPerformanceReport(): Promise<any>;
+  getShippingCostAnalysis(filters?: DateRangeFilter): Promise<any>;
+  getDeliveryTimeAnalysis(filters?: DateRangeFilter): Promise<any>;
+  
+  // Integration operations
+  getAvailableWarehouseStockForShipping(): Promise<WarehouseStock[]>;
+  reserveStockForShipment(stockId: string, quantity: number, shipmentId: string): Promise<WarehouseStock>;
+  releaseReservedStock(stockId: string, quantity: number): Promise<WarehouseStock>;
+  updateFinalWarehouseFromDelivery(shipmentId: string, userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1962,6 +2035,671 @@ export class DatabaseStorage implements IStorage {
     };
 
     await transporter.sendMail(mailOptions);
+  }
+
+  // Shipping and Logistics implementations
+  
+  // Carrier operations
+  async getCarriers(filter?: CarrierFilter): Promise<Carrier[]> {
+    let query = db.select().from(carriers);
+    
+    if (filter?.isActive !== undefined) {
+      query = query.where(eq(carriers.isActive, filter.isActive));
+    }
+    
+    if (filter?.isPreferred !== undefined) {
+      query = query.where(eq(carriers.isPreferred, filter.isPreferred));
+    }
+    
+    if (filter?.serviceType) {
+      query = query.where(sql`${carriers.serviceTypes} @> ${[filter.serviceType]}`);
+    }
+    
+    return await query.orderBy(desc(carriers.isPreferred), desc(carriers.rating), carriers.name);
+  }
+
+  async getCarrier(id: string): Promise<Carrier | undefined> {
+    const [carrier] = await db.select().from(carriers).where(eq(carriers.id, id));
+    return carrier;
+  }
+
+  async createCarrier(carrier: InsertCarrier): Promise<Carrier> {
+    const [result] = await db.insert(carriers).values(carrier).returning();
+    return result;
+  }
+
+  async updateCarrier(id: string, carrier: Partial<InsertCarrier>): Promise<Carrier> {
+    const [result] = await db
+      .update(carriers)
+      .set({ ...carrier, updatedAt: new Date() })
+      .where(eq(carriers.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteCarrier(id: string): Promise<void> {
+    await db.update(carriers)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(carriers.id, id));
+  }
+
+  async updateCarrierRating(carrierId: string, rating: number): Promise<Carrier> {
+    const [result] = await db
+      .update(carriers)
+      .set({ rating: rating.toString(), updatedAt: new Date() })
+      .where(eq(carriers.id, carrierId))
+      .returning();
+    return result;
+  }
+
+  // Shipment operations
+  async getShipments(filter?: ShipmentFilter): Promise<Shipment[]> {
+    let query = db.select().from(shipments);
+    const conditions = [];
+
+    if (filter?.status) {
+      conditions.push(eq(shipments.status, filter.status));
+    }
+
+    if (filter?.method) {
+      conditions.push(eq(shipments.method, filter.method));
+    }
+
+    if (filter?.carrierId) {
+      conditions.push(eq(shipments.carrierId, filter.carrierId));
+    }
+
+    if (filter?.orderId) {
+      conditions.push(eq(shipments.orderId, filter.orderId));
+    }
+
+    if (filter?.startDate) {
+      conditions.push(gte(shipments.createdAt, new Date(filter.startDate)));
+    }
+
+    if (filter?.endDate) {
+      conditions.push(lte(shipments.createdAt, new Date(filter.endDate)));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    return await query.orderBy(desc(shipments.createdAt));
+  }
+
+  async getShipment(id: string): Promise<Shipment | undefined> {
+    const [shipment] = await db.select().from(shipments).where(eq(shipments.id, id));
+    return shipment;
+  }
+
+  async getShipmentWithDetails(id: string): Promise<ShipmentWithDetailsResponse | undefined> {
+    const shipment = await this.getShipment(id);
+    if (!shipment) return undefined;
+
+    const [carrier, items, costs, tracking] = await Promise.all([
+      this.getCarrier(shipment.carrierId),
+      this.getShipmentItemsWithStock(id),
+      this.getShippingCosts(id),
+      this.getDeliveryTracking(id)
+    ]);
+
+    return {
+      ...shipment,
+      carrier: carrier!,
+      items,
+      costs,
+      tracking
+    };
+  }
+
+  private async getShipmentItemsWithStock(shipmentId: string): Promise<(ShipmentItem & { warehouseStock: WarehouseStock })[]> {
+    const result = await db
+      .select({
+        shipmentItem: shipmentItems,
+        warehouseStock: warehouseStock,
+      })
+      .from(shipmentItems)
+      .leftJoin(warehouseStock, eq(shipmentItems.warehouseStockId, warehouseStock.id))
+      .where(eq(shipmentItems.shipmentId, shipmentId));
+
+    return result.map(row => ({
+      ...row.shipmentItem,
+      warehouseStock: row.warehouseStock!
+    }));
+  }
+
+  async createShipment(shipment: InsertShipment): Promise<Shipment> {
+    const shipmentNumber = await this.generateNextShipmentNumber();
+    
+    const [result] = await db.insert(shipments).values({
+      ...shipment,
+      shipmentNumber,
+    }).returning();
+    return result;
+  }
+
+  async createShipmentFromWarehouseStock(shipmentData: CreateShipmentFromStock, userId: string): Promise<Shipment> {
+    return await db.transaction(async (tx) => {
+      // Generate shipment number
+      const shipmentNumber = await this.generateNextShipmentNumberInTransaction(tx);
+      
+      // Calculate total weight
+      const totalWeight = shipmentData.warehouseStockItems.reduce((sum, item) => 
+        sum + parseFloat(item.quantity), 0
+      );
+
+      // Create the shipment
+      const [shipment] = await tx.insert(shipments).values({
+        shipmentNumber,
+        orderId: shipmentData.orderId,
+        carrierId: shipmentData.carrierId,
+        method: shipmentData.method,
+        status: 'pending',
+        originAddress: shipmentData.originAddress,
+        destinationAddress: shipmentData.destinationAddress,
+        estimatedDepartureDate: shipmentData.estimatedDepartureDate ? new Date(shipmentData.estimatedDepartureDate) : undefined,
+        estimatedArrivalDate: shipmentData.estimatedArrivalDate ? new Date(shipmentData.estimatedArrivalDate) : undefined,
+        totalWeight: totalWeight.toString(),
+        notes: shipmentData.notes,
+        createdBy: userId,
+      }).returning();
+
+      // Create shipment items and reserve stock
+      for (const item of shipmentData.warehouseStockItems) {
+        await tx.insert(shipmentItems).values({
+          shipmentId: shipment.id,
+          warehouseStockId: item.warehouseStockId,
+          quantity: item.quantity,
+          packingDetails: item.packingDetails,
+        });
+
+        // Reserve the stock
+        await this.reserveStockInTransaction(tx, item.warehouseStockId, parseFloat(item.quantity), shipment.id);
+      }
+
+      return shipment;
+    });
+  }
+
+  private async generateNextShipmentNumber(): Promise<string> {
+    const latestShipment = await db
+      .select({ shipmentNumber: shipments.shipmentNumber })
+      .from(shipments)
+      .orderBy(sql`${shipments.shipmentNumber} DESC`)
+      .limit(1);
+
+    return this.calculateNextShipmentNumber(latestShipment[0]?.shipmentNumber);
+  }
+
+  private async generateNextShipmentNumberInTransaction(tx: any): Promise<string> {
+    const lockId = 1234567891; // Different lock for shipments
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockId})`);
+    
+    const latestShipment = await tx
+      .select({ shipmentNumber: shipments.shipmentNumber })
+      .from(shipments)
+      .orderBy(sql`${shipments.shipmentNumber} DESC`)
+      .limit(1)
+      .for('update');
+
+    return this.calculateNextShipmentNumber(latestShipment[0]?.shipmentNumber);
+  }
+
+  private calculateNextShipmentNumber(lastNumber?: string): string {
+    if (!lastNumber) {
+      return 'SHP-000001';
+    }
+
+    const numberMatch = lastNumber.match(/SHP-(\d+)/);
+    if (!numberMatch) {
+      return 'SHP-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `SHP-${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  async updateShipment(id: string, shipment: Partial<InsertShipment>): Promise<Shipment> {
+    const [result] = await db
+      .update(shipments)
+      .set({ ...shipment, updatedAt: new Date() })
+      .where(eq(shipments.id, id))
+      .returning();
+    return result;
+  }
+
+  async updateShipmentStatus(id: string, status: string, userId: string, actualDate?: Date): Promise<Shipment> {
+    const updateData: any = { status, updatedAt: new Date() };
+    
+    if (status === 'in_transit' && actualDate) {
+      updateData.actualDepartureDate = actualDate;
+    }
+    
+    if (status === 'delivered' && actualDate) {
+      updateData.actualArrivalDate = actualDate;
+    }
+
+    const [result] = await db
+      .update(shipments)
+      .set(updateData)
+      .where(eq(shipments.id, id))
+      .returning();
+
+    // If delivered, update final warehouse stock
+    if (status === 'delivered') {
+      await this.updateFinalWarehouseFromDelivery(id, userId);
+    }
+
+    return result;
+  }
+
+  async deleteShipment(id: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Release reserved stock first
+      const items = await tx.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, id));
+      
+      for (const item of items) {
+        await this.releaseReservedStockInTransaction(tx, item.warehouseStockId, parseFloat(item.quantity));
+      }
+
+      // Delete related records
+      await tx.delete(deliveryTracking).where(eq(deliveryTracking.shipmentId, id));
+      await tx.delete(shippingCosts).where(eq(shippingCosts.shipmentId, id));
+      await tx.delete(shipmentItems).where(eq(shipmentItems.shipmentId, id));
+      await tx.delete(shipments).where(eq(shipments.id, id));
+    });
+  }
+
+  // Shipment item operations
+  async getShipmentItems(shipmentId: string): Promise<ShipmentItem[]> {
+    return await db.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId));
+  }
+
+  async createShipmentItem(item: InsertShipmentItem): Promise<ShipmentItem> {
+    const [result] = await db.insert(shipmentItems).values(item).returning();
+    return result;
+  }
+
+  async updateShipmentItem(id: string, item: Partial<InsertShipmentItem>): Promise<ShipmentItem> {
+    const [result] = await db
+      .update(shipmentItems)
+      .set(item)
+      .where(eq(shipmentItems.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteShipmentItem(id: string): Promise<void> {
+    await db.delete(shipmentItems).where(eq(shipmentItems.id, id));
+  }
+
+  // Shipping cost operations
+  async getShippingCosts(shipmentId: string): Promise<ShippingCost[]> {
+    return await db.select().from(shippingCosts).where(eq(shippingCosts.shipmentId, shipmentId));
+  }
+
+  async getShippingCost(id: string): Promise<ShippingCost | undefined> {
+    const [cost] = await db.select().from(shippingCosts).where(eq(shippingCosts.id, id));
+    return cost;
+  }
+
+  async addShippingCost(costData: AddShippingCost, userId: string): Promise<ShippingCost> {
+    const amount = new Decimal(costData.amount);
+    let amountUsd = amount;
+    
+    // Convert to USD if needed
+    if (costData.currency === 'ETB' && costData.exchangeRate) {
+      amountUsd = amount.div(new Decimal(costData.exchangeRate));
+    }
+
+    const remaining = costData.amountPaid ? 
+      amount.sub(new Decimal(costData.amountPaid)).toString() : 
+      amount.toString();
+
+    const [result] = await db.insert(shippingCosts).values({
+      shipmentId: costData.shipmentId,
+      costType: costData.costType,
+      amount: costData.amount,
+      currency: costData.currency,
+      exchangeRate: costData.exchangeRate,
+      amountUsd: amountUsd.toFixed(2),
+      description: costData.description,
+      paymentMethod: costData.paymentMethod,
+      amountPaid: costData.amountPaid || '0',
+      remaining,
+      fundingSource: costData.fundingSource,
+      createdBy: userId,
+    }).returning();
+
+    // If paid from capital, create capital entry
+    if (costData.fundingSource === 'capital' && costData.amountPaid && parseFloat(costData.amountPaid) > 0) {
+      await this.createCapitalEntryWithConcurrencyProtection({
+        entryId: `SHP-${result.id}`,
+        amount: amountUsd.toFixed(2),
+        type: 'CapitalOut',
+        reference: result.shipmentId,
+        description: `Shipping cost - ${costData.costType} ${costData.currency === 'ETB' ? `(${costData.amountPaid} ETB @ ${costData.exchangeRate})` : ''}`,
+        paymentCurrency: costData.currency,
+        exchangeRate: costData.exchangeRate,
+        createdBy: userId,
+      });
+    }
+
+    return result;
+  }
+
+  async updateShippingCost(id: string, cost: Partial<InsertShippingCost>): Promise<ShippingCost> {
+    const [result] = await db
+      .update(shippingCosts)
+      .set(cost)
+      .where(eq(shippingCosts.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteShippingCost(id: string): Promise<void> {
+    await db.delete(shippingCosts).where(eq(shippingCosts.id, id));
+  }
+
+  // Delivery tracking operations
+  async getDeliveryTracking(shipmentId: string): Promise<DeliveryTracking[]> {
+    return await db.select().from(deliveryTracking)
+      .where(eq(deliveryTracking.shipmentId, shipmentId))
+      .orderBy(desc(deliveryTracking.timestamp));
+  }
+
+  async addDeliveryTracking(trackingData: AddDeliveryTracking, userId: string): Promise<DeliveryTracking> {
+    const [result] = await db.insert(deliveryTracking).values({
+      shipmentId: trackingData.shipmentId,
+      status: trackingData.status,
+      location: trackingData.location,
+      description: trackingData.description,
+      isCustomerNotified: trackingData.isCustomerNotified,
+      proofOfDelivery: trackingData.proofOfDelivery,
+      exceptionDetails: trackingData.exceptionDetails,
+      createdBy: userId,
+    }).returning();
+
+    return result;
+  }
+
+  async updateDeliveryTracking(id: string, tracking: Partial<InsertDeliveryTracking>): Promise<DeliveryTracking> {
+    const [result] = await db
+      .update(deliveryTracking)
+      .set(tracking)
+      .where(eq(deliveryTracking.id, id))
+      .returning();
+    return result;
+  }
+
+  async markCustomerNotified(trackingId: string, userId: string): Promise<DeliveryTracking> {
+    const [result] = await db
+      .update(deliveryTracking)
+      .set({ isCustomerNotified: true })
+      .where(eq(deliveryTracking.id, trackingId))
+      .returning();
+    return result;
+  }
+
+  // Shipping analytics and reporting
+  async getShippingAnalytics(filters?: DateRangeFilter): Promise<ShippingAnalyticsResponse> {
+    let dateConditions = [];
+    
+    if (filters?.startDate) {
+      dateConditions.push(gte(shipments.createdAt, new Date(filters.startDate)));
+    }
+    
+    if (filters?.endDate) {
+      dateConditions.push(lte(shipments.createdAt, new Date(filters.endDate)));
+    }
+
+    const whereClause = dateConditions.length > 0 ? and(...dateConditions) : undefined;
+
+    // Summary stats
+    const summaryResult = await db
+      .select({
+        totalShipments: count(),
+        inTransit: sum(sql`CASE WHEN ${shipments.status} = 'in_transit' THEN 1 ELSE 0 END`),
+        delivered: sum(sql`CASE WHEN ${shipments.status} = 'delivered' THEN 1 ELSE 0 END`),
+      })
+      .from(shipments)
+      .where(whereClause);
+
+    // Cost summary
+    const costResult = await db
+      .select({
+        totalCostUsd: sum(shippingCosts.amountUsd),
+        totalWeight: sum(shipments.totalWeight),
+      })
+      .from(shipments)
+      .leftJoin(shippingCosts, eq(shipments.id, shippingCosts.shipmentId))
+      .where(whereClause);
+
+    const summary = summaryResult[0];
+    const costs = costResult[0];
+    const totalCostUsd = parseFloat(costs?.totalCostUsd || '0');
+    const totalWeight = parseFloat(costs?.totalWeight || '0');
+
+    // Carrier performance
+    const carrierPerformance = await this.getCarrierPerformanceData(whereClause);
+    
+    // Cost breakdown
+    const costBreakdown = await this.getShippingCostBreakdown(whereClause);
+    
+    // Delivery time analysis
+    const deliveryTimeAnalysis = await this.getDeliveryTimeAnalysis(whereClause);
+
+    return {
+      summary: {
+        totalShipments: Number(summary.totalShipments || 0),
+        inTransit: Number(summary.inTransit || 0),
+        delivered: Number(summary.delivered || 0),
+        totalCostUsd,
+        averageCostPerKg: totalWeight > 0 ? totalCostUsd / totalWeight : 0,
+      },
+      carrierPerformance,
+      costBreakdown,
+      deliveryTimeAnalysis,
+    };
+  }
+
+  private async getCarrierPerformanceData(whereClause: any): Promise<any[]> {
+    const result = await db
+      .select({
+        carrierId: carriers.id,
+        carrierName: carriers.name,
+        totalShipments: count(shipments.id),
+        onTimeDeliveries: sum(sql`CASE WHEN ${shipments.actualArrivalDate} <= ${shipments.estimatedArrivalDate} THEN 1 ELSE 0 END`),
+        averageCostPerKg: avg(sql`${shippingCosts.amountUsd} / ${shipments.totalWeight}`),
+        rating: carriers.rating,
+      })
+      .from(carriers)
+      .leftJoin(shipments, eq(carriers.id, shipments.carrierId))
+      .leftJoin(shippingCosts, eq(shipments.id, shippingCosts.shipmentId))
+      .where(whereClause)
+      .groupBy(carriers.id, carriers.name, carriers.rating);
+
+    return result.map(row => ({
+      carrierId: row.carrierId,
+      carrierName: row.carrierName,
+      totalShipments: Number(row.totalShipments || 0),
+      onTimeDeliveryRate: row.totalShipments ? (Number(row.onTimeDeliveries || 0) / Number(row.totalShipments)) * 100 : 0,
+      averageCostPerKg: Number(row.averageCostPerKg || 0),
+      rating: Number(row.rating || 0),
+    }));
+  }
+
+  private async getShippingCostBreakdown(whereClause: any): Promise<any[]> {
+    const result = await db
+      .select({
+        costType: shippingCosts.costType,
+        totalUsd: sum(shippingCosts.amountUsd),
+      })
+      .from(shippingCosts)
+      .leftJoin(shipments, eq(shippingCosts.shipmentId, shipments.id))
+      .where(whereClause)
+      .groupBy(shippingCosts.costType);
+
+    const totalCost = result.reduce((sum, row) => sum + parseFloat(row.totalUsd || '0'), 0);
+
+    return result.map(row => ({
+      costType: row.costType,
+      totalUsd: parseFloat(row.totalUsd || '0'),
+      percentage: totalCost > 0 ? (parseFloat(row.totalUsd || '0') / totalCost) * 100 : 0,
+    }));
+  }
+
+  private async getDeliveryTimeAnalysis(whereClause: any): Promise<any> {
+    const result = await db
+      .select({
+        method: shipments.method,
+        averageDays: avg(sql`EXTRACT(epoch FROM (${shipments.actualArrivalDate} - ${shipments.actualDepartureDate})) / 86400`),
+      })
+      .from(shipments)
+      .where(and(whereClause, sql`${shipments.actualArrivalDate} IS NOT NULL AND ${shipments.actualDepartureDate} IS NOT NULL`))
+      .groupBy(shipments.method);
+
+    const overallAverage = result.reduce((sum, row) => sum + Number(row.averageDays || 0), 0) / result.length || 0;
+
+    return {
+      averageDeliveryDays: overallAverage,
+      byMethod: result.map(row => ({
+        method: row.method,
+        averageDays: Number(row.averageDays || 0),
+      })),
+    };
+  }
+
+  async getCarrierPerformanceReport(): Promise<any> {
+    return await this.getCarrierPerformanceData(undefined);
+  }
+
+  async getShippingCostAnalysis(filters?: DateRangeFilter): Promise<any> {
+    let whereClause = undefined;
+    if (filters?.startDate || filters?.endDate) {
+      const conditions = [];
+      if (filters.startDate) conditions.push(gte(shipments.createdAt, new Date(filters.startDate)));
+      if (filters.endDate) conditions.push(lte(shipments.createdAt, new Date(filters.endDate)));
+      whereClause = and(...conditions);
+    }
+    
+    return await this.getShippingCostBreakdown(whereClause);
+  }
+
+  async getDeliveryTimeAnalysis(filters?: DateRangeFilter): Promise<any> {
+    let whereClause = undefined;
+    if (filters?.startDate || filters?.endDate) {
+      const conditions = [];
+      if (filters.startDate) conditions.push(gte(shipments.createdAt, new Date(filters.startDate)));
+      if (filters.endDate) conditions.push(lte(shipments.createdAt, new Date(filters.endDate)));
+      whereClause = and(...conditions);
+    }
+    
+    return await this.getDeliveryTimeAnalysis(whereClause);
+  }
+
+  // Integration operations
+  async getAvailableWarehouseStockForShipping(): Promise<WarehouseStock[]> {
+    return await db.select().from(warehouseStock)
+      .where(and(
+        eq(warehouseStock.status, 'READY_TO_SHIP'),
+        sql`${warehouseStock.qtyKgClean} > ${warehouseStock.qtyKgReserved}`
+      ))
+      .orderBy(desc(warehouseStock.createdAt));
+  }
+
+  async reserveStockForShipment(stockId: string, quantity: number, shipmentId: string): Promise<WarehouseStock> {
+    return await db.transaction(async (tx) => {
+      return await this.reserveStockInTransaction(tx, stockId, quantity, shipmentId);
+    });
+  }
+
+  private async reserveStockInTransaction(tx: any, stockId: string, quantity: number, shipmentId: string): Promise<WarehouseStock> {
+    const [stock] = await tx.select().from(warehouseStock).where(eq(warehouseStock.id, stockId)).for('update');
+    
+    if (!stock) {
+      throw new Error('Warehouse stock not found');
+    }
+
+    const availableQuantity = parseFloat(stock.qtyKgClean) - parseFloat(stock.qtyKgReserved);
+    if (availableQuantity < quantity) {
+      throw new Error(`Insufficient stock. Available: ${availableQuantity}kg, Requested: ${quantity}kg`);
+    }
+
+    const newReserved = parseFloat(stock.qtyKgReserved) + quantity;
+    
+    const [result] = await tx
+      .update(warehouseStock)
+      .set({ qtyKgReserved: newReserved.toString() })
+      .where(eq(warehouseStock.id, stockId))
+      .returning();
+
+    return result;
+  }
+
+  async releaseReservedStock(stockId: string, quantity: number): Promise<WarehouseStock> {
+    return await db.transaction(async (tx) => {
+      return await this.releaseReservedStockInTransaction(tx, stockId, quantity);
+    });
+  }
+
+  private async releaseReservedStockInTransaction(tx: any, stockId: string, quantity: number): Promise<WarehouseStock> {
+    const [stock] = await tx.select().from(warehouseStock).where(eq(warehouseStock.id, stockId)).for('update');
+    
+    if (!stock) {
+      throw new Error('Warehouse stock not found');
+    }
+
+    const newReserved = Math.max(0, parseFloat(stock.qtyKgReserved) - quantity);
+    
+    const [result] = await tx
+      .update(warehouseStock)
+      .set({ qtyKgReserved: newReserved.toString() })
+      .where(eq(warehouseStock.id, stockId))
+      .returning();
+
+    return result;
+  }
+
+  async updateFinalWarehouseFromDelivery(shipmentId: string, userId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Get shipment items
+      const items = await tx.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId));
+      
+      for (const item of items) {
+        const [stock] = await tx.select().from(warehouseStock).where(eq(warehouseStock.id, item.warehouseStockId));
+        
+        if (stock && stock.warehouse === 'FIRST') {
+          // Create new stock entry in FINAL warehouse
+          await tx.insert(warehouseStock).values({
+            purchaseId: stock.purchaseId,
+            orderId: stock.orderId,
+            supplierId: stock.supplierId,
+            warehouse: 'FINAL',
+            status: 'READY_FOR_SALE',
+            qtyKgTotal: item.quantity,
+            qtyKgClean: item.quantity,
+            qtyKgNonClean: '0',
+            qtyKgReserved: '0',
+            cartonsCount: stock.cartonsCount,
+            unitCostCleanUsd: stock.unitCostCleanUsd,
+          });
+
+          // Update FIRST warehouse stock (reduce by shipped quantity)
+          const newCleanQty = parseFloat(stock.qtyKgClean) - parseFloat(item.quantity);
+          const newReservedQty = parseFloat(stock.qtyKgReserved) - parseFloat(item.quantity);
+          
+          await tx
+            .update(warehouseStock)
+            .set({ 
+              qtyKgClean: Math.max(0, newCleanQty).toString(),
+              qtyKgReserved: Math.max(0, newReservedQty).toString(),
+            })
+            .where(eq(warehouseStock.id, item.warehouseStockId));
+        }
+      }
+    });
   }
 }
 
