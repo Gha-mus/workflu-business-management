@@ -11,7 +11,9 @@ import {
   Users as UsersIcon,
   Settings,
   LogOut,
-  Shield
+  Shield,
+  FileText,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,8 @@ const navigation = [
   { name: 'Shipping', href: '/shipping', icon: Truck },
   { name: 'Sales', href: '/sales', icon: UsersIcon },
   { name: 'Orders', href: '/orders', icon: Package },
+  { name: 'Documents', href: '/documents', icon: FileText },
+  { name: 'Compliance', href: '/compliance', icon: AlertTriangle },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
 ];
 
