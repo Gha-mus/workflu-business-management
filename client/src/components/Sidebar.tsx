@@ -8,9 +8,10 @@ import {
   Truck,
   Package,
   BarChart3,
-  Users,
+  Users as UsersIcon,
   Settings,
-  LogOut
+  LogOut,
+  Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -21,12 +22,13 @@ const navigation = [
   { name: 'Purchases', href: '/purchases', icon: ShoppingCart },
   { name: 'Warehouse', href: '/warehouse', icon: Warehouse },
   { name: 'Shipping', href: '/shipping', icon: Truck },
+  { name: 'Sales', href: '/sales', icon: UsersIcon },
   { name: 'Orders', href: '/orders', icon: Package },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
 ];
 
 const adminNavigation = [
-  { name: 'Users & Roles', href: '/users', icon: Users },
+  { name: 'Users & Roles', href: '/users', icon: Shield },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

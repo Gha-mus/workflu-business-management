@@ -52,6 +52,16 @@ import {
   insertProcessingOperationSchema,
   insertStockTransferSchema,
   insertInventoryAdjustmentSchema,
+  insertCustomerSchema,
+  updateCustomerSchema,
+  insertSalesOrderSchema,
+  updateSalesOrderSchema,
+  insertSalesOrderItemSchema,
+  updateSalesOrderItemSchema,
+  insertCustomerCommunicationSchema,
+  insertRevenueTransactionSchema,
+  insertCustomerCreditLimitSchema,
+  insertPricingRuleSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1376,12 +1386,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/export-jobs/:id', requireRole(['admin', 'finance']), async (req, res) => {
     try {
       const { id } = req.params;
-      const updates = req.body;
+      const updates = insertExportJobSchema.partial().parse(req.body);
       
       const job = await schedulerService.updateScheduledJob(id, updates);
       res.json(job);
     } catch (error) {
       console.error("Error updating export job:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
       res.status(500).json({ message: "Failed to update export job" });
     }
   });
@@ -2442,6 +2460,434 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error validating warehouse workflow:", error);
       res.status(500).json({ message: "Failed to validate warehouse workflow" });
+    }
+  });
+
+  // Sales Pipeline APIs
+  
+  // Customer Management APIs
+  app.get('/api/customers', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { category, isActive, salesRepId } = req.query;
+      const filter: any = {};
+      
+      if (category) filter.category = category as string;
+      if (isActive !== undefined) filter.isActive = isActive === 'true';
+      if (salesRepId) filter.salesRepId = salesRepId as string;
+      
+      const customers = await storage.getCustomers(filter);
+      res.json(customers);
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+      res.status(500).json({ message: "Failed to fetch customers" });
+    }
+  });
+
+  app.post('/api/customers', requireRole(['admin', 'sales']), genericPeriodGuard, async (req: any, res) => {
+    try {
+      const customerData = insertCustomerSchema.parse({
+        ...req.body,
+        createdBy: req.user.claims.sub,
+      });
+      const customer = await storage.createCustomer(customerData);
+      res.json(customer);
+    } catch (error) {
+      console.error("Error creating customer:", error);
+      res.status(500).json({ message: "Failed to create customer" });
+    }
+  });
+
+  app.get('/api/customers/:id', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const customer = await storage.getCustomer(id);
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      res.json(customer);
+    } catch (error) {
+      console.error("Error fetching customer:", error);
+      res.status(500).json({ message: "Failed to fetch customer" });
+    }
+  });
+
+  app.patch('/api/customers/:id', requireRole(['admin', 'sales']), genericPeriodGuard, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = updateCustomerSchema.parse(req.body);
+      const customer = await storage.updateCustomer(id, updates);
+      res.json(customer);
+    } catch (error) {
+      console.error("Error updating customer:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to update customer" });
+    }
+  });
+
+  app.delete('/api/customers/:id', requireRole(['admin', 'sales']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const customer = await storage.deactivateCustomer(id, userId);
+      res.json(customer);
+    } catch (error) {
+      console.error("Error deactivating customer:", error);
+      res.status(500).json({ message: "Failed to deactivate customer" });
+    }
+  });
+
+  app.get('/api/customers/:id/performance', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const performance = await storage.updateCustomerPerformanceMetrics(id);
+      res.json(performance);
+    } catch (error) {
+      console.error("Error fetching customer performance:", error);
+      res.status(500).json({ message: "Failed to fetch customer performance" });
+    }
+  });
+
+  app.post('/api/customers/:id/communications', requireRole(['admin', 'sales']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const communicationData = insertCustomerCommunicationSchema.parse({
+        ...req.body,
+        customerId: id,
+        userId: req.user.claims.sub,
+      });
+      const communication = await storage.createCustomerCommunication(communicationData);
+      res.json(communication);
+    } catch (error) {
+      console.error("Error creating customer communication:", error);
+      res.status(500).json({ message: "Failed to create customer communication" });
+    }
+  });
+
+  app.get('/api/customers/:id/communications', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const communications = await storage.getCustomerCommunications(id, limit);
+      res.json(communications);
+    } catch (error) {
+      console.error("Error fetching customer communications:", error);
+      res.status(500).json({ message: "Failed to fetch customer communications" });
+    }
+  });
+
+  // Sales Order Management APIs
+  app.get('/api/sales-orders', requireRole(['admin', 'sales', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const { status, customerId, salesRepId, startDate, endDate } = req.query;
+      const filter: any = {};
+      
+      if (status) filter.status = status as string;
+      if (customerId) filter.customerId = customerId as string;
+      if (salesRepId) filter.salesRepId = salesRepId as string;
+      if (startDate && endDate) {
+        filter.dateRange = {
+          start: new Date(startDate as string),
+          end: new Date(endDate as string)
+        };
+      }
+      
+      const orders = await storage.getSalesOrders(filter);
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching sales orders:", error);
+      res.status(500).json({ message: "Failed to fetch sales orders" });
+    }
+  });
+
+  app.post('/api/sales-orders', requireRole(['admin', 'sales']), strictPeriodGuard, async (req: any, res) => {
+    try {
+      const orderData = insertSalesOrderSchema.parse({
+        ...req.body,
+        salesRepId: req.user.claims.sub,
+        createdBy: req.user.claims.sub,
+      });
+      const order = await storage.createSalesOrder(orderData);
+      res.json(order);
+    } catch (error) {
+      console.error("Error creating sales order:", error);
+      res.status(500).json({ message: "Failed to create sales order" });
+    }
+  });
+
+  app.get('/api/sales-orders/:id', requireRole(['admin', 'sales', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const order = await storage.getSalesOrderWithDetails(id);
+      if (!order) {
+        return res.status(404).json({ message: "Sales order not found" });
+      }
+      res.json(order);
+    } catch (error) {
+      console.error("Error fetching sales order:", error);
+      res.status(500).json({ message: "Failed to fetch sales order" });
+    }
+  });
+
+  app.patch('/api/sales-orders/:id', requireRole(['admin', 'sales']), strictPeriodGuard, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = updateSalesOrderSchema.parse(req.body);
+      const order = await storage.updateSalesOrder(id, updates);
+      res.json(order);
+    } catch (error) {
+      console.error("Error updating sales order:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to update sales order" });
+    }
+  });
+
+  app.patch('/api/sales-orders/:id/status', requireRole(['admin', 'sales', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      const userId = req.user.claims.sub;
+      
+      let order;
+      switch (status) {
+        case 'confirmed':
+          order = await storage.confirmSalesOrder(id, userId);
+          break;
+        case 'fulfilled':
+          order = await storage.fulfillSalesOrder(id, userId);
+          break;
+        case 'delivered':
+          order = await storage.deliverSalesOrder(id, userId);
+          break;
+        case 'cancelled':
+          const { reason } = req.body;
+          order = await storage.cancelSalesOrder(id, reason || 'No reason provided', userId);
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid status" });
+      }
+      
+      res.json(order);
+    } catch (error) {
+      console.error("Error updating sales order status:", error);
+      res.status(500).json({ message: "Failed to update sales order status" });
+    }
+  });
+
+  app.delete('/api/sales-orders/:id', requireRole(['admin', 'sales']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const order = await storage.cancelSalesOrder(id, 'Order deleted', userId);
+      res.json(order);
+    } catch (error) {
+      console.error("Error cancelling sales order:", error);
+      res.status(500).json({ message: "Failed to cancel sales order" });
+    }
+  });
+
+  app.post('/api/sales-orders/:id/fulfill', requireRole(['admin', 'sales', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const order = await storage.fulfillSalesOrder(id, userId);
+      res.json(order);
+    } catch (error) {
+      console.error("Error fulfilling sales order:", error);
+      res.status(500).json({ message: "Failed to fulfill sales order" });
+    }
+  });
+
+  app.get('/api/sales-orders/:id/items', requireRole(['admin', 'sales', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const items = await storage.getSalesOrderItems(id);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching sales order items:", error);
+      res.status(500).json({ message: "Failed to fetch sales order items" });
+    }
+  });
+
+  // Pricing & Revenue APIs
+  app.post('/api/pricing/calculate', requireRole(['admin', 'sales']), async (req, res) => {
+    try {
+      const { itemId, customerId, qualityGrade } = req.body;
+      const pricing = await storage.calculateItemPricing(itemId, customerId, qualityGrade);
+      res.json(pricing);
+    } catch (error) {
+      console.error("Error calculating pricing:", error);
+      res.status(500).json({ message: "Failed to calculate pricing" });
+    }
+  });
+
+  app.get('/api/revenue/transactions', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { status, customerId, salesOrderId, startDate, endDate } = req.query;
+      const filter: any = {};
+      
+      if (status) filter.status = status as string;
+      if (customerId) filter.customerId = customerId as string;
+      if (salesOrderId) filter.salesOrderId = salesOrderId as string;
+      if (startDate && endDate) {
+        filter.dateRange = {
+          start: new Date(startDate as string),
+          end: new Date(endDate as string)
+        };
+      }
+      
+      const transactions = await storage.getRevenueTransactions(filter);
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching revenue transactions:", error);
+      res.status(500).json({ message: "Failed to fetch revenue transactions" });
+    }
+  });
+
+  app.post('/api/revenue/transactions', requireRole(['admin', 'sales', 'finance']), strictPeriodGuard, async (req: any, res) => {
+    try {
+      const transactionData = insertRevenueTransactionSchema.parse({
+        ...req.body,
+        userId: req.user.claims.sub,
+      });
+      const transaction = await storage.createRevenueTransaction(transactionData);
+      res.json(transaction);
+    } catch (error) {
+      console.error("Error creating revenue transaction:", error);
+      res.status(500).json({ message: "Failed to create revenue transaction" });
+    }
+  });
+
+  app.get('/api/revenue/analytics', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const analytics = await storage.getSalesPerformanceAnalytics();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching revenue analytics:", error);
+      res.status(500).json({ message: "Failed to fetch revenue analytics" });
+    }
+  });
+
+  // Sales Analytics APIs
+  app.get('/api/sales/analytics', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const analytics = await storage.getSalesPerformanceAnalytics();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching sales analytics:", error);
+      res.status(500).json({ message: "Failed to fetch sales analytics" });
+    }
+  });
+
+  app.get('/api/sales/performance', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { salesRepId, periodType } = req.query;
+      const performance = salesRepId 
+        ? await storage.getSalesRepPerformance(salesRepId as string, periodType as string || 'monthly')
+        : await storage.getSalesPerformanceMetrics();
+      res.json(performance);
+    } catch (error) {
+      console.error("Error fetching sales performance:", error);
+      res.status(500).json({ message: "Failed to fetch sales performance" });
+    }
+  });
+
+  app.get('/api/customers/analytics', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { customerId } = req.query;
+      const analytics = customerId 
+        ? await storage.getCustomerProfitabilityAnalysis(customerId as string)
+        : await storage.getCustomerProfitabilityAnalysis();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching customer analytics:", error);
+      res.status(500).json({ message: "Failed to fetch customer analytics" });
+    }
+  });
+
+  // Sales order item management
+  app.post('/api/sales-orders/:orderId/items', requireRole(['admin', 'sales']), async (req: any, res) => {
+    try {
+      const { orderId } = req.params;
+      const itemData = insertSalesOrderItemSchema.parse({
+        ...req.body,
+        salesOrderId: orderId,
+      });
+      const item = await storage.createSalesOrderItem(itemData);
+      res.json(item);
+    } catch (error) {
+      console.error("Error creating sales order item:", error);
+      res.status(500).json({ message: "Failed to create sales order item" });
+    }
+  });
+
+  app.patch('/api/sales-order-items/:id', requireRole(['admin', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = updateSalesOrderItemSchema.parse(req.body);
+      const item = await storage.updateSalesOrderItem(id, updates);
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating sales order item:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to update sales order item" });
+    }
+  });
+
+  app.delete('/api/sales-order-items/:id', requireRole(['admin', 'sales']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteSalesOrderItem(id);
+      res.json({ message: "Sales order item deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting sales order item:", error);
+      res.status(500).json({ message: "Failed to delete sales order item" });
+    }
+  });
+
+  // Additional customer endpoints
+  app.get('/api/customers/search', requireRole(['admin', 'sales']), async (req, res) => {
+    try {
+      const { query, limit } = req.query;
+      const customers = await storage.searchCustomers(
+        query as string, 
+        limit ? parseInt(limit as string) : 50
+      );
+      res.json(customers);
+    } catch (error) {
+      console.error("Error searching customers:", error);
+      res.status(500).json({ message: "Failed to search customers" });
+    }
+  });
+
+  app.get('/api/customers/:id/account-balance', requireRole(['admin', 'sales', 'finance']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const balance = await storage.getCustomerAccountBalance(id);
+      res.json(balance);
+    } catch (error) {
+      console.error("Error fetching customer account balance:", error);
+      res.status(500).json({ message: "Failed to fetch customer account balance" });
     }
   });
 

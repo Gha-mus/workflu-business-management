@@ -28,6 +28,14 @@ import {
   processingOperations,
   stockTransfers,
   inventoryAdjustments,
+  customers,
+  salesOrders,
+  salesOrderItems,
+  customerCommunications,
+  revenueTransactions,
+  salesPerformanceMetrics,
+  customerCreditLimits,
+  pricingRules,
   type User,
   type UpsertUser,
   type Supplier,
@@ -86,6 +94,22 @@ import {
   type InsertStockTransfer,
   type InventoryAdjustment,
   type InsertInventoryAdjustment,
+  type Customer,
+  type InsertCustomer,
+  type SalesOrder,
+  type InsertSalesOrder,
+  type SalesOrderItem,
+  type InsertSalesOrderItem,
+  type CustomerCommunication,
+  type InsertCustomerCommunication,
+  type RevenueTransaction,
+  type InsertRevenueTransaction,
+  type SalesPerformanceMetric,
+  type InsertSalesPerformanceMetric,
+  type CustomerCreditLimit,
+  type InsertCustomerCreditLimit,
+  type PricingRule,
+  type InsertPricingRule,
   type ShipmentWithDetailsResponse,
   type ShippingAnalyticsResponse,
   type CreateShipmentFromStock,
@@ -383,6 +407,205 @@ export interface IStorage {
     batch?: WarehouseBatch;
     purchaseOrigin: Purchase;
     supplier: Supplier;
+  }>;
+
+  // Sales Pipeline Operations
+
+  // Customer operations
+  getCustomers(filter?: { category?: string; isActive?: boolean; salesRepId?: string }): Promise<Customer[]>;
+  getCustomer(id: string): Promise<Customer | undefined>;
+  createCustomer(customer: InsertCustomer): Promise<Customer>;
+  updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer>;
+  deactivateCustomer(id: string, userId: string): Promise<Customer>;
+  searchCustomers(query: string, limit?: number): Promise<Customer[]>;
+  getCustomersByCategory(category: string): Promise<Customer[]>;
+  updateCustomerPerformanceMetrics(customerId: string): Promise<Customer>;
+
+  // Sales order operations
+  getSalesOrders(filter?: { 
+    status?: string; 
+    customerId?: string; 
+    salesRepId?: string; 
+    dateRange?: { start: Date; end: Date };
+  }): Promise<SalesOrder[]>;
+  getSalesOrder(id: string): Promise<SalesOrder | undefined>;
+  getSalesOrderWithDetails(id: string): Promise<SalesOrder & { 
+    customer: Customer; 
+    items: (SalesOrderItem & { warehouseStock?: WarehouseStock })[];
+    communications: CustomerCommunication[];
+  } | undefined>;
+  createSalesOrder(salesOrder: InsertSalesOrder): Promise<SalesOrder>;
+  updateSalesOrder(id: string, salesOrder: Partial<InsertSalesOrder>): Promise<SalesOrder>;
+  confirmSalesOrder(id: string, userId: string): Promise<SalesOrder>;
+  fulfillSalesOrder(id: string, userId: string): Promise<SalesOrder>;
+  deliverSalesOrder(id: string, userId: string): Promise<SalesOrder>;
+  cancelSalesOrder(id: string, reason: string, userId: string): Promise<SalesOrder>;
+  calculateSalesOrderTotals(salesOrderId: string): Promise<SalesOrder>;
+
+  // Sales order item operations
+  getSalesOrderItems(salesOrderId: string): Promise<SalesOrderItem[]>;
+  getSalesOrderItem(id: string): Promise<SalesOrderItem | undefined>;
+  createSalesOrderItem(item: InsertSalesOrderItem): Promise<SalesOrderItem>;
+  updateSalesOrderItem(id: string, item: Partial<InsertSalesOrderItem>): Promise<SalesOrderItem>;
+  deleteSalesOrderItem(id: string): Promise<void>;
+  reserveInventoryForSalesOrderItem(itemId: string, userId: string): Promise<SalesOrderItem>;
+  fulfillSalesOrderItem(itemId: string, quantityFulfilled: string, userId: string): Promise<SalesOrderItem>;
+  calculateItemPricing(itemId: string, customerId: string, qualityGrade?: string): Promise<{
+    unitPrice: number;
+    lineTotal: number;
+    discountApplied: number;
+    marginPercent: number;
+  }>;
+
+  // Customer communication operations
+  getCustomerCommunications(customerId: string, limit?: number): Promise<CustomerCommunication[]>;
+  getCustomerCommunication(id: string): Promise<CustomerCommunication | undefined>;
+  createCustomerCommunication(communication: InsertCustomerCommunication): Promise<CustomerCommunication>;
+  updateCustomerCommunication(id: string, communication: Partial<InsertCustomerCommunication>): Promise<CustomerCommunication>;
+  getUpcomingFollowUps(userId?: string): Promise<CustomerCommunication[]>;
+  markCommunicationComplete(id: string, userId: string): Promise<CustomerCommunication>;
+
+  // Revenue transaction operations
+  getRevenueTransactions(filter?: {
+    customerId?: string;
+    salesOrderId?: string;
+    type?: string;
+    status?: string;
+    dateRange?: { start: Date; end: Date };
+  }): Promise<RevenueTransaction[]>;
+  getRevenueTransaction(id: string): Promise<RevenueTransaction | undefined>;
+  createRevenueTransaction(transaction: InsertRevenueTransaction): Promise<RevenueTransaction>;
+  updateRevenueTransaction(id: string, transaction: Partial<InsertRevenueTransaction>): Promise<RevenueTransaction>;
+  approveRevenueTransaction(id: string, userId: string): Promise<RevenueTransaction>;
+  reverseRevenueTransaction(id: string, reason: string, userId: string): Promise<RevenueTransaction>;
+  processPayment(salesOrderId: string, amount: string, paymentMethod: string, userId: string): Promise<RevenueTransaction>;
+  getCustomerAccountBalance(customerId: string): Promise<{
+    totalOutstanding: number;
+    creditLimit: number;
+    availableCredit: number;
+    overdueAmount: number;
+  }>;
+
+  // Sales performance metrics operations
+  getSalesPerformanceMetrics(filter?: {
+    periodType?: string;
+    salesRepId?: string;
+    customerId?: string;
+    customerCategory?: string;
+    dateRange?: { start: Date; end: Date };
+  }): Promise<SalesPerformanceMetric[]>;
+  calculateSalesPerformanceMetrics(periodType: string, startDate: Date, endDate: Date): Promise<void>;
+  getSalesRepPerformance(salesRepId: string, periodType: string): Promise<SalesPerformanceMetric[]>;
+  getCustomerPerformanceMetrics(customerId: string): Promise<SalesPerformanceMetric[]>;
+
+  // Customer credit limit operations
+  getCustomerCreditLimits(customerId: string): Promise<CustomerCreditLimit[]>;
+  getCurrentCustomerCreditLimit(customerId: string): Promise<CustomerCreditLimit | undefined>;
+  createCustomerCreditLimit(creditLimit: InsertCustomerCreditLimit): Promise<CustomerCreditLimit>;
+  updateCustomerCreditLimit(id: string, creditLimit: Partial<InsertCustomerCreditLimit>): Promise<CustomerCreditLimit>;
+  suspendCustomerCredit(customerId: string, reason: string, userId: string): Promise<CustomerCreditLimit>;
+  reinstateCustomerCredit(customerId: string, userId: string): Promise<CustomerCreditLimit>;
+  checkCreditLimitAvailability(customerId: string, orderAmount: number): Promise<{
+    isApproved: boolean;
+    availableCredit: number;
+    reason?: string;
+  }>;
+
+  // Pricing rule operations
+  getPricingRules(filter?: {
+    ruleType?: string;
+    customerCategory?: string;
+    qualityGrade?: string;
+    isActive?: boolean;
+  }): Promise<PricingRule[]>;
+  getPricingRule(id: string): Promise<PricingRule | undefined>;
+  createPricingRule(rule: InsertPricingRule): Promise<PricingRule>;
+  updatePricingRule(id: string, rule: Partial<InsertPricingRule>): Promise<PricingRule>;
+  deletePricingRule(id: string): Promise<void>;
+  calculateDynamicPricing(params: {
+    customerId: string;
+    qualityGrade: string;
+    quantity: number;
+    orderValue: number;
+  }): Promise<{
+    basePrice: number;
+    finalPrice: number;
+    appliedRules: Array<{ ruleName: string; adjustment: number; type: string }>;
+    totalDiscount: number;
+  }>;
+
+  // Sales analytics and reporting operations
+  getSalesDashboardData(userId?: string, dateRange?: { start: Date; end: Date }): Promise<{
+    totalRevenue: number;
+    totalOrders: number;
+    averageOrderValue: number;
+    topCustomers: Array<{ customer: Customer; revenue: number; orders: number }>;
+    salesTrends: Array<{ date: string; revenue: number; orders: number }>;
+    performanceByRep: Array<{ salesRep: User; revenue: number; orders: number; commission: number }>;
+    revenueByCategory: Array<{ category: string; revenue: number; percentage: number }>;
+  }>;
+  
+  getCustomerProfitabilityAnalysis(customerId?: string): Promise<Array<{
+    customer: Customer;
+    totalRevenue: number;
+    totalCost: number;
+    grossMargin: number;
+    marginPercent: number;
+    orderCount: number;
+    averageOrderValue: number;
+    lastOrderDate: Date;
+  }>>;
+
+  getProductPerformanceAnalysis(dateRange?: { start: Date; end: Date }): Promise<Array<{
+    qualityGrade: string;
+    totalRevenue: number;
+    totalQuantityKg: number;
+    averagePricePerKg: number;
+    orderCount: number;
+    marginPercent: number;
+  }>>;
+
+  getSalesForecasting(periodType: string, periodsToForecast: number): Promise<Array<{
+    period: string;
+    forecastedRevenue: number;
+    confidenceLevel: number;
+    basedOnHistoricalData: boolean;
+  }>>;
+
+  // Integration operations with other systems
+  allocateInventoryForSalesOrder(salesOrderId: string, userId: string): Promise<{
+    success: boolean;
+    allocatedItems: SalesOrderItem[];
+    partialAllocations: Array<{ itemId: string; requestedQuantity: number; allocatedQuantity: number }>;
+    unavailableItems: Array<{ itemId: string; reason: string }>;
+  }>;
+
+  createShipmentFromSalesOrder(salesOrderId: string, userId: string): Promise<{
+    salesOrder: SalesOrder;
+    shipment: Shipment;
+    message: string;
+  }>;
+
+  processRevenueRecognition(salesOrderId: string, userId: string): Promise<{
+    revenueTransactions: RevenueTransaction[];
+    totalRecognizedRevenue: number;
+    accountingPeriod: string;
+  }>;
+
+  // Period closing integration for sales
+  getSalesDataForPeriodClosing(periodStart: Date, periodEnd: Date): Promise<{
+    totalRevenue: number;
+    totalCost: number;
+    grossMargin: number;
+    openSalesOrders: SalesOrder[];
+    pendingRevenueTransactions: RevenueTransaction[];
+    salesPerformanceMetrics: SalesPerformanceMetric[];
+  }>;
+
+  validateSalesOrdersForPeriodClosing(periodStart: Date, periodEnd: Date): Promise<{
+    isValid: boolean;
+    issues: Array<{ salesOrderId: string; issue: string; severity: 'warning' | 'error' }>;
+    recommendations: string[];
   }>;
 }
 
@@ -2681,7 +2904,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  private async getDeliveryTimeAnalysis(whereClause: any): Promise<any> {
+  private async getDeliveryTimeAnalysisData(whereClause: any): Promise<any> {
     const result = await db
       .select({
         method: shipments.method,
@@ -2727,7 +2950,7 @@ export class DatabaseStorage implements IStorage {
       whereClause = and(...conditions);
     }
     
-    return await this.getDeliveryTimeAnalysis(whereClause);
+    return await this.getDeliveryTimeAnalysisData(whereClause);
   }
 
   // Integration operations
@@ -3872,6 +4095,987 @@ export class DatabaseStorage implements IStorage {
         baselineGrade: 'B',
         premiums,
       },
+    };
+  }
+
+  // Sales Pipeline Operations Implementation
+
+  // Customer operations
+  async getCustomers(filter?: { category?: string; isActive?: boolean; salesRepId?: string }): Promise<Customer[]> {
+    let query = db.select().from(customers);
+    
+    if (filter?.category) {
+      query = query.where(eq(customers.category, filter.category));
+    }
+    if (filter?.isActive !== undefined) {
+      query = query.where(eq(customers.isActive, filter.isActive));
+    }
+    if (filter?.salesRepId) {
+      query = query.where(eq(customers.salesRepId, filter.salesRepId));
+    }
+
+    return await query.orderBy(desc(customers.createdAt));
+  }
+
+  async getCustomer(id: string): Promise<Customer | undefined> {
+    const [customer] = await db.select().from(customers).where(eq(customers.id, id));
+    return customer;
+  }
+
+  async createCustomer(customer: InsertCustomer): Promise<Customer> {
+    const customerNumber = `CUS-${Date.now()}`;
+    const [newCustomer] = await db
+      .insert(customers)
+      .values({
+        ...customer,
+        customerNumber,
+      })
+      .returning();
+    return newCustomer;
+  }
+
+  async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer> {
+    const [updatedCustomer] = await db
+      .update(customers)
+      .set({
+        ...customer,
+        updatedAt: new Date(),
+      })
+      .where(eq(customers.id, id))
+      .returning();
+
+    if (!updatedCustomer) {
+      throw new Error('Customer not found');
+    }
+
+    return updatedCustomer;
+  }
+
+  async deactivateCustomer(id: string, userId: string): Promise<Customer> {
+    return await this.updateCustomer(id, { isActive: false });
+  }
+
+  async searchCustomers(query: string, limit: number = 50): Promise<Customer[]> {
+    return await db
+      .select()
+      .from(customers)
+      .where(
+        sql`(${customers.name} ILIKE ${`%${query}%`} OR ${customers.email} ILIKE ${`%${query}%`} OR ${customers.contactPerson} ILIKE ${`%${query}%`})`
+      )
+      .limit(limit)
+      .orderBy(desc(customers.createdAt));
+  }
+
+  async getCustomersByCategory(category: string): Promise<Customer[]> {
+    return await db
+      .select()
+      .from(customers)
+      .where(eq(customers.category, category))
+      .orderBy(customers.name);
+  }
+
+  async updateCustomerPerformanceMetrics(customerId: string): Promise<Customer> {
+    const ordersData = await db
+      .select({
+        totalOrders: count(salesOrders.id),
+        totalRevenue: sum(salesOrders.totalAmountUsd),
+      })
+      .from(salesOrders)
+      .where(and(
+        eq(salesOrders.customerId, customerId),
+        sql`${salesOrders.status} NOT IN ('draft', 'cancelled')`
+      ));
+
+    const stats = ordersData[0];
+    const totalOrdersCount = Number(stats.totalOrders || 0);
+    const totalRevenueUsd = parseFloat(stats.totalRevenue?.toString() || '0');
+    const averageOrderValueUsd = totalOrdersCount > 0 ? totalRevenueUsd / totalOrdersCount : 0;
+
+    return await this.updateCustomer(customerId, {
+      totalOrdersCount,
+      totalRevenueUsd: totalRevenueUsd.toString(),
+      averageOrderValueUsd: averageOrderValueUsd.toString(),
+    });
+  }
+
+  // Sales order operations
+  async getSalesOrders(filter?: { 
+    status?: string; 
+    customerId?: string; 
+    salesRepId?: string; 
+    dateRange?: { start: Date; end: Date };
+  }): Promise<SalesOrder[]> {
+    let query = db.select().from(salesOrders);
+    
+    const conditions = [];
+    if (filter?.status) {
+      conditions.push(eq(salesOrders.status, filter.status));
+    }
+    if (filter?.customerId) {
+      conditions.push(eq(salesOrders.customerId, filter.customerId));
+    }
+    if (filter?.salesRepId) {
+      conditions.push(eq(salesOrders.salesRepId, filter.salesRepId));
+    }
+    if (filter?.dateRange) {
+      conditions.push(gte(salesOrders.orderDate, filter.dateRange.start));
+      conditions.push(lte(salesOrders.orderDate, filter.dateRange.end));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    return await query.orderBy(desc(salesOrders.createdAt));
+  }
+
+  async getSalesOrder(id: string): Promise<SalesOrder | undefined> {
+    const [salesOrder] = await db.select().from(salesOrders).where(eq(salesOrders.id, id));
+    return salesOrder;
+  }
+
+  async getSalesOrderWithDetails(id: string): Promise<SalesOrder & { 
+    customer: Customer; 
+    items: (SalesOrderItem & { warehouseStock?: WarehouseStock })[];
+    communications: CustomerCommunication[];
+  } | undefined> {
+    const salesOrder = await this.getSalesOrder(id);
+    if (!salesOrder) return undefined;
+
+    const customer = await this.getCustomer(salesOrder.customerId);
+    if (!customer) return undefined;
+
+    const items = await db
+      .select()
+      .from(salesOrderItems)
+      .where(eq(salesOrderItems.salesOrderId, id));
+
+    const communications = await this.getCustomerCommunications(salesOrder.customerId, 10);
+
+    // Add warehouse stock info to items
+    const itemsWithStock = await Promise.all(
+      items.map(async (item) => {
+        let warehouseStock: WarehouseStock | undefined;
+        if (item.warehouseStockId) {
+          const [stock] = await db
+            .select()
+            .from(warehouseStock)
+            .where(eq(warehouseStock.id, item.warehouseStockId));
+          warehouseStock = stock;
+        }
+        return { ...item, warehouseStock };
+      })
+    );
+
+    return {
+      ...salesOrder,
+      customer,
+      items: itemsWithStock,
+      communications,
+    };
+  }
+
+  async createSalesOrder(salesOrder: InsertSalesOrder): Promise<SalesOrder> {
+    const salesOrderNumber = `SO-${Date.now()}`;
+    const [newSalesOrder] = await db
+      .insert(salesOrders)
+      .values({
+        ...salesOrder,
+        salesOrderNumber,
+        status: 'draft',
+      })
+      .returning();
+    return newSalesOrder;
+  }
+
+  async updateSalesOrder(id: string, salesOrder: Partial<InsertSalesOrder>): Promise<SalesOrder> {
+    const [updatedSalesOrder] = await db
+      .update(salesOrders)
+      .set({
+        ...salesOrder,
+        updatedAt: new Date(),
+      })
+      .where(eq(salesOrders.id, id))
+      .returning();
+
+    if (!updatedSalesOrder) {
+      throw new Error('Sales order not found');
+    }
+
+    return updatedSalesOrder;
+  }
+
+  async confirmSalesOrder(id: string, userId: string): Promise<SalesOrder> {
+    return await this.updateSalesOrder(id, { 
+      status: 'confirmed',
+      confirmedAt: new Date(),
+    });
+  }
+
+  async fulfillSalesOrder(id: string, userId: string): Promise<SalesOrder> {
+    return await db.transaction(async (tx) => {
+      // Get sales order items
+      const items = await tx.select().from(salesOrderItems).where(eq(salesOrderItems.salesOrderId, id));
+      
+      // Reserve warehouse stock for each item
+      for (const item of items) {
+        if (item.warehouseStockId) {
+          await this.reserveStockInTransaction(tx, item.warehouseStockId, parseFloat(item.quantity), id);
+        }
+      }
+      
+      // Update sales order status
+      const [updatedOrder] = await tx
+        .update(salesOrders)
+        .set({ 
+          status: 'fulfilled',
+          fulfilledAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(salesOrders.id, id))
+        .returning();
+      
+      return updatedOrder;
+    });
+  }
+
+  async deliverSalesOrder(id: string, userId: string): Promise<SalesOrder> {
+    return await this.updateSalesOrder(id, { 
+      status: 'delivered',
+      deliveredAt: new Date(),
+    });
+  }
+
+  async cancelSalesOrder(id: string, reason: string, userId: string): Promise<SalesOrder> {
+    return await this.updateSalesOrder(id, { 
+      status: 'cancelled',
+      cancelledAt: new Date(),
+      notes: reason,
+    });
+  }
+
+  async calculateSalesOrderTotals(salesOrderId: string): Promise<SalesOrder> {
+    const items = await this.getSalesOrderItems(salesOrderId);
+    
+    const subtotalAmount = items.reduce((sum, item) => 
+      sum + parseFloat(item.lineTotal || '0'), 0);
+    
+    const totalAmount = subtotalAmount; // Can add taxes, shipping, etc. here
+    
+    // Convert to USD if needed
+    const salesOrder = await this.getSalesOrder(salesOrderId);
+    if (!salesOrder) throw new Error('Sales order not found');
+    
+    const exchangeRate = parseFloat(salesOrder.exchangeRate || '1');
+    const totalAmountUsd = salesOrder.currency === 'USD' ? totalAmount : totalAmount * exchangeRate;
+
+    return await this.updateSalesOrder(salesOrderId, {
+      subtotalAmount: subtotalAmount.toString(),
+      totalAmount: totalAmount.toString(),
+      totalAmountUsd: totalAmountUsd.toString(),
+    });
+  }
+
+  // Sales order item operations
+  async getSalesOrderItems(salesOrderId: string): Promise<SalesOrderItem[]> {
+    return await db
+      .select()
+      .from(salesOrderItems)
+      .where(eq(salesOrderItems.salesOrderId, salesOrderId));
+  }
+
+  async getSalesOrderItem(id: string): Promise<SalesOrderItem | undefined> {
+    const [item] = await db.select().from(salesOrderItems).where(eq(salesOrderItems.id, id));
+    return item;
+  }
+
+  async createSalesOrderItem(item: InsertSalesOrderItem): Promise<SalesOrderItem> {
+    const [newItem] = await db
+      .insert(salesOrderItems)
+      .values(item)
+      .returning();
+    
+    // Recalculate order totals
+    await this.calculateSalesOrderTotals(item.salesOrderId);
+    
+    return newItem;
+  }
+
+  async updateSalesOrderItem(id: string, item: Partial<InsertSalesOrderItem>): Promise<SalesOrderItem> {
+    const [updatedItem] = await db
+      .update(salesOrderItems)
+      .set(item)
+      .where(eq(salesOrderItems.id, id))
+      .returning();
+
+    if (!updatedItem) {
+      throw new Error('Sales order item not found');
+    }
+
+    // Recalculate order totals
+    await this.calculateSalesOrderTotals(updatedItem.salesOrderId);
+
+    return updatedItem;
+  }
+
+  async deleteSalesOrderItem(id: string): Promise<void> {
+    const item = await this.getSalesOrderItem(id);
+    if (!item) throw new Error('Sales order item not found');
+    
+    await db.delete(salesOrderItems).where(eq(salesOrderItems.id, id));
+    
+    // Recalculate order totals
+    await this.calculateSalesOrderTotals(item.salesOrderId);
+  }
+
+  async reserveInventoryForSalesOrderItem(itemId: string, userId: string): Promise<SalesOrderItem> {
+    return await db.transaction(async (tx) => {
+      const [item] = await tx
+        .select()
+        .from(salesOrderItems)
+        .where(eq(salesOrderItems.id, itemId))
+        .for('update');
+
+      if (!item || !item.warehouseStockId) {
+        throw new Error('Sales order item or warehouse stock not found');
+      }
+
+      const quantityToReserve = parseFloat(item.quantity);
+
+      // Update warehouse stock reservation
+      await tx
+        .update(warehouseStock)
+        .set({
+          qtyKgReserved: sql`${warehouseStock.qtyKgReserved} + ${quantityToReserve}`,
+        })
+        .where(eq(warehouseStock.id, item.warehouseStockId));
+
+      // Update sales order item
+      const [updatedItem] = await tx
+        .update(salesOrderItems)
+        .set({
+          quantityReserved: item.quantity,
+        })
+        .where(eq(salesOrderItems.id, itemId))
+        .returning();
+
+      return updatedItem;
+    });
+  }
+
+  async fulfillSalesOrderItem(itemId: string, quantityFulfilled: string, userId: string): Promise<SalesOrderItem> {
+    const [updatedItem] = await db
+      .update(salesOrderItems)
+      .set({
+        quantityFulfilled,
+      })
+      .where(eq(salesOrderItems.id, itemId))
+      .returning();
+
+    if (!updatedItem) {
+      throw new Error('Sales order item not found');
+    }
+
+    return updatedItem;
+  }
+
+  async calculateItemPricing(itemId: string, customerId: string, qualityGrade?: string): Promise<{
+    unitPrice: number;
+    lineTotal: number;
+    discountApplied: number;
+    marginPercent: number;
+  }> {
+    // Basic pricing calculation - can be enhanced with more complex rules
+    const item = await this.getSalesOrderItem(itemId);
+    if (!item) throw new Error('Sales order item not found');
+
+    const basePrice = parseFloat(item.unitPrice || '0');
+    let finalPrice = basePrice;
+    let discountApplied = 0;
+
+    // Apply quality grade pricing if available
+    if (qualityGrade) {
+      const gradeMultipliers: Record<string, number> = {
+        'grade_1': 1.3,
+        'grade_2': 1.1,
+        'grade_3': 1.0,
+        'specialty': 1.5,
+        'commercial': 0.9,
+        'ungraded': 0.8,
+      };
+      
+      const multiplier = gradeMultipliers[qualityGrade] || 1.0;
+      finalPrice = basePrice * multiplier;
+    }
+
+    const quantity = parseFloat(item.quantity);
+    const lineTotal = finalPrice * quantity;
+    
+    // Calculate margin (simplified)
+    const cost = parseFloat(item.unitCost || '0');
+    const marginPercent = cost > 0 ? ((finalPrice - cost) / finalPrice) * 100 : 0;
+
+    return {
+      unitPrice: finalPrice,
+      lineTotal,
+      discountApplied,
+      marginPercent,
+    };
+  }
+
+  // Customer communication operations
+  async getCustomerCommunications(customerId: string, limit: number = 50): Promise<CustomerCommunication[]> {
+    return await db
+      .select()
+      .from(customerCommunications)
+      .where(eq(customerCommunications.customerId, customerId))
+      .orderBy(desc(customerCommunications.createdAt))
+      .limit(limit);
+  }
+
+  async getCustomerCommunication(id: string): Promise<CustomerCommunication | undefined> {
+    const [communication] = await db
+      .select()
+      .from(customerCommunications)
+      .where(eq(customerCommunications.id, id));
+    return communication;
+  }
+
+  async createCustomerCommunication(communication: InsertCustomerCommunication): Promise<CustomerCommunication> {
+    const [newCommunication] = await db
+      .insert(customerCommunications)
+      .values(communication)
+      .returning();
+    return newCommunication;
+  }
+
+  async updateCustomerCommunication(id: string, communication: Partial<InsertCustomerCommunication>): Promise<CustomerCommunication> {
+    const [updatedCommunication] = await db
+      .update(customerCommunications)
+      .set(communication)
+      .where(eq(customerCommunications.id, id))
+      .returning();
+
+    if (!updatedCommunication) {
+      throw new Error('Customer communication not found');
+    }
+
+    return updatedCommunication;
+  }
+
+  async getUpcomingFollowUps(userId?: string): Promise<CustomerCommunication[]> {
+    const now = new Date();
+    let query = db
+      .select()
+      .from(customerCommunications)
+      .where(and(
+        sql`${customerCommunications.followUpDate} IS NOT NULL`,
+        gte(customerCommunications.followUpDate, now),
+        eq(customerCommunications.status, 'pending')
+      ));
+
+    if (userId) {
+      query = query.where(eq(customerCommunications.userId, userId));
+    }
+
+    return await query.orderBy(customerCommunications.followUpDate);
+  }
+
+  async markCommunicationComplete(id: string, userId: string): Promise<CustomerCommunication> {
+    return await this.updateCustomerCommunication(id, {
+      status: 'completed',
+      completedAt: new Date(),
+    });
+  }
+
+  // Basic implementations for other required methods (to be expanded)
+  async getRevenueTransactions(): Promise<RevenueTransaction[]> {
+    return await db.select().from(revenueTransactions).orderBy(desc(revenueTransactions.createdAt));
+  }
+
+  async getRevenueTransaction(id: string): Promise<RevenueTransaction | undefined> {
+    const [transaction] = await db.select().from(revenueTransactions).where(eq(revenueTransactions.id, id));
+    return transaction;
+  }
+
+  async createRevenueTransaction(transaction: InsertRevenueTransaction): Promise<RevenueTransaction> {
+    const transactionNumber = `REV-${Date.now()}`;
+    const [newTransaction] = await db
+      .insert(revenueTransactions)
+      .values({
+        ...transaction,
+        transactionNumber,
+      })
+      .returning();
+    return newTransaction;
+  }
+
+  async updateRevenueTransaction(id: string, transaction: Partial<InsertRevenueTransaction>): Promise<RevenueTransaction> {
+    const [updatedTransaction] = await db
+      .update(revenueTransactions)
+      .set(transaction)
+      .where(eq(revenueTransactions.id, id))
+      .returning();
+
+    if (!updatedTransaction) {
+      throw new Error('Revenue transaction not found');
+    }
+
+    return updatedTransaction;
+  }
+
+  async approveRevenueTransaction(id: string, userId: string): Promise<RevenueTransaction> {
+    return await this.updateRevenueTransaction(id, {
+      status: 'approved',
+      approvedAt: new Date(),
+      approvedBy: userId,
+    });
+  }
+
+  async reverseRevenueTransaction(id: string, reason: string, userId: string): Promise<RevenueTransaction> {
+    return await this.updateRevenueTransaction(id, {
+      status: 'reversed',
+      notes: reason,
+    });
+  }
+
+  async processPayment(salesOrderId: string, amount: string, paymentMethod: string, userId: string): Promise<RevenueTransaction> {
+    const salesOrder = await this.getSalesOrder(salesOrderId);
+    if (!salesOrder) throw new Error('Sales order not found');
+
+    return await this.createRevenueTransaction({
+      customerId: salesOrder.customerId,
+      salesOrderId,
+      type: 'payment',
+      amount,
+      currency: salesOrder.currency,
+      exchangeRate: salesOrder.exchangeRate,
+      paymentMethod,
+      status: 'pending',
+      transactionDate: new Date(),
+      userId,
+    });
+  }
+
+  async getCustomerAccountBalance(customerId: string): Promise<{
+    totalOutstanding: number;
+    creditLimit: number;
+    availableCredit: number;
+    overdueAmount: number;
+  }> {
+    // Basic implementation - to be enhanced
+    const creditLimit = await this.getCurrentCustomerCreditLimit(customerId);
+    const limit = parseFloat(creditLimit?.creditLimit || '0');
+    
+    return {
+      totalOutstanding: 0,
+      creditLimit: limit,
+      availableCredit: limit,
+      overdueAmount: 0,
+    };
+  }
+
+  // Placeholder implementations for remaining methods (to be fully implemented)
+  async getSalesPerformanceMetrics(): Promise<SalesPerformanceMetric[]> {
+    return await db.select().from(salesPerformanceMetrics);
+  }
+
+  async getSalesPerformanceAnalytics(): Promise<any> {
+    try {
+      // Get current exchange rate for USD normalization
+      const exchangeRate = await this.getExchangeRate();
+
+      // Calculate total revenue with USD normalization
+      const revenueResult = await db
+        .select({
+          totalOrdersCount: count(salesOrders.id),
+          usdRevenue: sum(sql`CASE WHEN ${salesOrders.currency} = 'USD' THEN ${salesOrders.totalAmount} ELSE 0 END`),
+          etbRevenue: sum(sql`CASE WHEN ${salesOrders.currency} = 'ETB' THEN (${salesOrders.totalAmount} / ${salesOrders.exchangeRate}) ELSE 0 END`),
+          confirmedOrders: count(sql`CASE WHEN ${salesOrders.status} = 'confirmed' THEN 1 END`),
+          fulfilledOrders: count(sql`CASE WHEN ${salesOrders.status} = 'fulfilled' THEN 1 END`),
+          deliveredOrders: count(sql`CASE WHEN ${salesOrders.status} = 'delivered' THEN 1 END`),
+        })
+        .from(salesOrders);
+
+      const result = revenueResult[0];
+      const usdRevenue = new Decimal(result?.usdRevenue?.toString() || '0');
+      const etbRevenueInUsd = new Decimal(result?.etbRevenue?.toString() || '0');
+      const totalRevenueUsd = usdRevenue.add(etbRevenueInUsd);
+      const totalOrders = Number(result?.totalOrdersCount || 0);
+
+      // Get top customers with USD normalized revenue
+      const topCustomers = await db
+        .select({
+          id: customers.id,
+          name: customers.name,
+          customerNumber: customers.customerNumber,
+          totalRevenueUsd: customers.totalRevenueUsd,
+          totalOrdersCount: customers.totalOrdersCount,
+        })
+        .from(customers)
+        .orderBy(desc(customers.totalRevenueUsd))
+        .limit(5);
+
+      return {
+        totalRevenueUsd: totalRevenueUsd.toNumber(),
+        totalOrders,
+        averageOrderValue: totalOrders > 0 ? totalRevenueUsd.div(totalOrders).toNumber() : 0,
+        confirmedOrders: Number(result?.confirmedOrders || 0),
+        fulfilledOrders: Number(result?.fulfilledOrders || 0),
+        deliveredOrders: Number(result?.deliveredOrders || 0),
+        topCustomers,
+        conversionRate: totalOrders > 0 ? ((Number(result?.deliveredOrders || 0) / totalOrders) * 100) : 0,
+        exchangeRate,
+      };
+    } catch (error) {
+      console.error('Error fetching sales performance analytics:', error);
+      return {
+        totalRevenueUsd: 0,
+        totalOrders: 0,
+        averageOrderValue: 0,
+        topCustomers: [],
+        conversionRate: 0,
+      };
+    }
+  }
+
+  async calculateSalesPerformanceMetrics(periodType: string, startDate: Date, endDate: Date): Promise<void> {
+    // Implementation to be added
+  }
+
+  async getSalesRepPerformance(salesRepId: string, periodType: string): Promise<SalesPerformanceMetric[]> {
+    return await db
+      .select()
+      .from(salesPerformanceMetrics)
+      .where(eq(salesPerformanceMetrics.salesRepId, salesRepId));
+  }
+
+  async getCustomerPerformanceMetrics(customerId: string): Promise<SalesPerformanceMetric[]> {
+    return await db
+      .select()
+      .from(salesPerformanceMetrics)
+      .where(eq(salesPerformanceMetrics.customerId, customerId));
+  }
+
+  async getCustomerCreditLimits(customerId: string): Promise<CustomerCreditLimit[]> {
+    return await db
+      .select()
+      .from(customerCreditLimits)
+      .where(eq(customerCreditLimits.customerId, customerId));
+  }
+
+  async getCurrentCustomerCreditLimit(customerId: string): Promise<CustomerCreditLimit | undefined> {
+    const [creditLimit] = await db
+      .select()
+      .from(customerCreditLimits)
+      .where(and(
+        eq(customerCreditLimits.customerId, customerId),
+        eq(customerCreditLimits.isActive, true)
+      ))
+      .orderBy(desc(customerCreditLimits.createdAt))
+      .limit(1);
+    return creditLimit;
+  }
+
+  async createCustomerCreditLimit(creditLimit: InsertCustomerCreditLimit): Promise<CustomerCreditLimit> {
+    const [newCreditLimit] = await db
+      .insert(customerCreditLimits)
+      .values(creditLimit)
+      .returning();
+    return newCreditLimit;
+  }
+
+  async updateCustomerCreditLimit(id: string, creditLimit: Partial<InsertCustomerCreditLimit>): Promise<CustomerCreditLimit> {
+    const [updatedCreditLimit] = await db
+      .update(customerCreditLimits)
+      .set({
+        ...creditLimit,
+        updatedAt: new Date(),
+      })
+      .where(eq(customerCreditLimits.id, id))
+      .returning();
+
+    if (!updatedCreditLimit) {
+      throw new Error('Customer credit limit not found');
+    }
+
+    return updatedCreditLimit;
+  }
+
+  async suspendCustomerCredit(customerId: string, reason: string, userId: string): Promise<CustomerCreditLimit> {
+    const currentLimit = await this.getCurrentCustomerCreditLimit(customerId);
+    if (!currentLimit) throw new Error('No active credit limit found');
+
+    return await this.updateCustomerCreditLimit(currentLimit.id, {
+      isSuspended: true,
+      suspendedAt: new Date(),
+      notes: reason,
+    });
+  }
+
+  async reinstateCustomerCredit(customerId: string, userId: string): Promise<CustomerCreditLimit> {
+    const currentLimit = await this.getCurrentCustomerCreditLimit(customerId);
+    if (!currentLimit) throw new Error('No active credit limit found');
+
+    return await this.updateCustomerCreditLimit(currentLimit.id, {
+      isSuspended: false,
+      suspendedAt: null,
+    });
+  }
+
+  async checkCreditLimitAvailability(customerId: string, orderAmount: number): Promise<{
+    isApproved: boolean;
+    availableCredit: number;
+    reason?: string;
+  }> {
+    const creditLimit = await this.getCurrentCustomerCreditLimit(customerId);
+    if (!creditLimit) {
+      return {
+        isApproved: false,
+        availableCredit: 0,
+        reason: 'No credit limit established',
+      };
+    }
+
+    const limit = parseFloat(creditLimit.creditLimit);
+    const currentBalance = parseFloat(creditLimit.currentBalance || '0');
+    const availableCredit = limit - currentBalance;
+
+    return {
+      isApproved: availableCredit >= orderAmount && !creditLimit.isSuspended,
+      availableCredit,
+      reason: creditLimit.isSuspended ? 'Credit suspended' : 
+              availableCredit < orderAmount ? 'Insufficient credit limit' : undefined,
+    };
+  }
+
+  // Placeholder implementations for complex operations (to be fully implemented)
+  async getPricingRules(): Promise<PricingRule[]> {
+    return await db.select().from(pricingRules).where(eq(pricingRules.isActive, true));
+  }
+
+  async getPricingRule(id: string): Promise<PricingRule | undefined> {
+    const [rule] = await db.select().from(pricingRules).where(eq(pricingRules.id, id));
+    return rule;
+  }
+
+  async createPricingRule(rule: InsertPricingRule): Promise<PricingRule> {
+    const [newRule] = await db
+      .insert(pricingRules)
+      .values(rule)
+      .returning();
+    return newRule;
+  }
+
+  async updatePricingRule(id: string, rule: Partial<InsertPricingRule>): Promise<PricingRule> {
+    const [updatedRule] = await db
+      .update(pricingRules)
+      .set({
+        ...rule,
+        updatedAt: new Date(),
+      })
+      .where(eq(pricingRules.id, id))
+      .returning();
+
+    if (!updatedRule) {
+      throw new Error('Pricing rule not found');
+    }
+
+    return updatedRule;
+  }
+
+  async deletePricingRule(id: string): Promise<void> {
+    await db.delete(pricingRules).where(eq(pricingRules.id, id));
+  }
+
+  async calculateDynamicPricing(params: {
+    customerId: string;
+    qualityGrade: string;
+    quantity: number;
+    orderValue: number;
+  }): Promise<{
+    basePrice: number;
+    finalPrice: number;
+    appliedRules: Array<{ ruleName: string; adjustment: number; type: string }>;
+    totalDiscount: number;
+  }> {
+    // Basic implementation - to be enhanced with complex pricing rules
+    const basePrice = 10.0; // Base price per kg
+    let finalPrice = basePrice;
+    const appliedRules: Array<{ ruleName: string; adjustment: number; type: string }> = [];
+
+    // Quality grade adjustments
+    const gradeMultipliers: Record<string, number> = {
+      'grade_1': 1.3,
+      'grade_2': 1.1,
+      'grade_3': 1.0,
+      'specialty': 1.5,
+      'commercial': 0.9,
+      'ungraded': 0.8,
+    };
+
+    const gradeMultiplier = gradeMultipliers[params.qualityGrade] || 1.0;
+    if (gradeMultiplier !== 1.0) {
+      finalPrice *= gradeMultiplier;
+      appliedRules.push({
+        ruleName: `Quality Grade: ${params.qualityGrade}`,
+        adjustment: (gradeMultiplier - 1) * 100,
+        type: 'percentage',
+      });
+    }
+
+    // Volume discounts
+    if (params.quantity >= 1000) {
+      const volumeDiscount = 0.05; // 5% discount for large orders
+      finalPrice *= (1 - volumeDiscount);
+      appliedRules.push({
+        ruleName: 'Volume Discount (1000+ kg)',
+        adjustment: -volumeDiscount * 100,
+        type: 'percentage',
+      });
+    }
+
+    const totalDiscount = basePrice - finalPrice;
+
+    return {
+      basePrice,
+      finalPrice,
+      appliedRules,
+      totalDiscount,
+    };
+  }
+
+  async getSalesDashboardData(userId?: string, dateRange?: { start: Date; end: Date }): Promise<{
+    totalRevenue: number;
+    totalOrders: number;
+    averageOrderValue: number;
+    topCustomers: Array<{ customer: Customer; revenue: number; orders: number }>;
+    salesTrends: Array<{ date: string; revenue: number; orders: number }>;
+    performanceByRep: Array<{ salesRep: User; revenue: number; orders: number; commission: number }>;
+    revenueByCategory: Array<{ category: string; revenue: number; percentage: number }>;
+  }> {
+    // Basic implementation - to be enhanced
+    const totalRevenue = 0;
+    const totalOrders = 0;
+    const averageOrderValue = 0;
+    
+    return {
+      totalRevenue,
+      totalOrders,
+      averageOrderValue,
+      topCustomers: [],
+      salesTrends: [],
+      performanceByRep: [],
+      revenueByCategory: [],
+    };
+  }
+
+  async getCustomerProfitabilityAnalysis(customerId?: string): Promise<Array<{
+    customer: Customer;
+    totalRevenue: number;
+    totalCost: number;
+    grossMargin: number;
+    marginPercent: number;
+    orderCount: number;
+    averageOrderValue: number;
+    lastOrderDate: Date;
+  }>> {
+    // Implementation to be added
+    return [];
+  }
+
+  async getProductPerformanceAnalysis(dateRange?: { start: Date; end: Date }): Promise<Array<{
+    qualityGrade: string;
+    totalRevenue: number;
+    totalQuantityKg: number;
+    averagePricePerKg: number;
+    orderCount: number;
+    marginPercent: number;
+  }>> {
+    // Implementation to be added
+    return [];
+  }
+
+  async getSalesForecasting(periodType: string, periodsToForecast: number): Promise<Array<{
+    period: string;
+    forecastedRevenue: number;
+    confidenceLevel: number;
+    basedOnHistoricalData: boolean;
+  }>> {
+    // Implementation to be added
+    return [];
+  }
+
+  async allocateInventoryForSalesOrder(salesOrderId: string, userId: string): Promise<{
+    success: boolean;
+    allocatedItems: SalesOrderItem[];
+    partialAllocations: Array<{ itemId: string; requestedQuantity: number; allocatedQuantity: number }>;
+    unavailableItems: Array<{ itemId: string; reason: string }>;
+  }> {
+    // Implementation to be added
+    return {
+      success: true,
+      allocatedItems: [],
+      partialAllocations: [],
+      unavailableItems: [],
+    };
+  }
+
+  async createShipmentFromSalesOrder(salesOrderId: string, userId: string): Promise<{
+    salesOrder: SalesOrder;
+    shipment: Shipment;
+    message: string;
+  }> {
+    // Implementation to be added - requires integration with existing shipment system
+    const salesOrder = await this.getSalesOrder(salesOrderId);
+    if (!salesOrder) throw new Error('Sales order not found');
+
+    // Placeholder - actual implementation would create shipment
+    throw new Error('Implementation to be added');
+  }
+
+  async processRevenueRecognition(salesOrderId: string, userId: string): Promise<{
+    revenueTransactions: RevenueTransaction[];
+    totalRecognizedRevenue: number;
+    accountingPeriod: string;
+  }> {
+    // Implementation to be added
+    return {
+      revenueTransactions: [],
+      totalRecognizedRevenue: 0,
+      accountingPeriod: new Date().toISOString().slice(0, 7), // YYYY-MM format
+    };
+  }
+
+  async getSalesDataForPeriodClosing(periodStart: Date, periodEnd: Date): Promise<{
+    totalRevenue: number;
+    totalCost: number;
+    grossMargin: number;
+    openSalesOrders: SalesOrder[];
+    pendingRevenueTransactions: RevenueTransaction[];
+    salesPerformanceMetrics: SalesPerformanceMetric[];
+  }> {
+    // Implementation to be added
+    return {
+      totalRevenue: 0,
+      totalCost: 0,
+      grossMargin: 0,
+      openSalesOrders: [],
+      pendingRevenueTransactions: [],
+      salesPerformanceMetrics: [],
+    };
+  }
+
+  async validateSalesOrdersForPeriodClosing(periodStart: Date, periodEnd: Date): Promise<{
+    isValid: boolean;
+    issues: Array<{ salesOrderId: string; issue: string; severity: 'warning' | 'error' }>;
+    recommendations: string[];
+  }> {
+    // Implementation to be added
+    return {
+      isValid: true,
+      issues: [],
+      recommendations: [],
     };
   }
 }
