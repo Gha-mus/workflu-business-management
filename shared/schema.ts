@@ -687,6 +687,316 @@ export const documentWorkflowStates = pgTable("document_workflow_states", {
   index("idx_document_workflow_states_active").on(table.isActive),
 ]);
 
+// ===============================================
+// NOTIFICATION AND ALERT SYSTEM TABLES
+// ===============================================
+
+// Notification system enums
+export const notificationStatusEnum = pgEnum('notification_status', ['pending', 'sent', 'failed', 'read', 'dismissed']);
+export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'sms', 'webhook']);
+export const notificationPriorityEnum = pgEnum('notification_priority', ['low', 'medium', 'high', 'critical']);
+export const alertTypeEnum = pgEnum('alert_type', [
+  'threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 
+  'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert'
+]);
+export const alertCategoryEnum = pgEnum('alert_category', [
+  'capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 
+  'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 
+  'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 
+  'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation'
+]);
+export const notificationFrequencyEnum = pgEnum('notification_frequency', ['immediate', 'daily_digest', 'weekly_summary', 'monthly_report']);
+
+// Notification settings table - User preferences and thresholds
+export const notificationSettings = pgTable("notification_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  
+  // Channel preferences
+  enableInApp: boolean("enable_in_app").notNull().default(true),
+  enableEmail: boolean("enable_email").notNull().default(true),
+  enableSms: boolean("enable_sms").notNull().default(false),
+  enableWebhook: boolean("enable_webhook").notNull().default(false),
+  
+  // Alert category preferences
+  alertCategories: alertCategoryEnum("alert_categories").array().default([]),
+  
+  // Frequency settings
+  defaultFrequency: notificationFrequencyEnum("default_frequency").notNull().default('immediate'),
+  digestTime: varchar("digest_time").default('08:00'), // Time for daily digest (HH:mm format)
+  weeklyDigestDay: integer("weekly_digest_day").default(1), // 1 = Monday
+  monthlyDigestDay: integer("monthly_digest_day").default(1), // Day of month
+  
+  // Contact information
+  emailAddress: varchar("email_address"),
+  phoneNumber: varchar("phone_number"),
+  webhookUrl: varchar("webhook_url"),
+  
+  // Threshold configurations (JSON object storing various thresholds)
+  thresholds: jsonb("thresholds").default('{}'),
+  
+  // Escalation settings
+  escalationEnabled: boolean("escalation_enabled").notNull().default(false),
+  escalationTimeoutMinutes: integer("escalation_timeout_minutes").default(60),
+  escalationRecipients: text("escalation_recipients").array().default([]),
+  
+  // Quiet hours
+  quietHoursEnabled: boolean("quiet_hours_enabled").notNull().default(false),
+  quietHoursStart: varchar("quiet_hours_start").default('22:00'),
+  quietHoursEnd: varchar("quiet_hours_end").default('06:00'),
+  quietHoursTimezone: varchar("quiet_hours_timezone").default('UTC'),
+  
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_notification_settings_user_id").on(table.userId),
+  index("idx_notification_settings_active").on(table.isActive),
+]);
+
+// Notification templates table - Email/SMS templates for different alert types
+export const notificationTemplates = pgTable("notification_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Template identification
+  name: varchar("name").notNull(),
+  description: text("description"),
+  alertType: alertTypeEnum("alert_type").notNull(),
+  alertCategory: alertCategoryEnum("alert_category").notNull(),
+  channel: notificationChannelEnum("channel").notNull(),
+  
+  // Template content
+  subject: varchar("subject"), // For email templates
+  bodyTemplate: text("body_template").notNull(), // Template with placeholders like {{amount}}, {{threshold}}
+  htmlTemplate: text("html_template"), // HTML version for email
+  
+  // Template variables and formatting
+  templateVariables: jsonb("template_variables").default('[]'), // Array of variable names used in template
+  formatting: jsonb("formatting").default('{}'), // Formatting rules for variables
+  
+  // Localization
+  language: varchar("language").default('en'),
+  locale: varchar("locale").default('en_US'),
+  
+  // Template metadata
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  priority: notificationPriorityEnum("priority").notNull().default('medium'),
+  
+  // Customization
+  customCss: text("custom_css"), // For email HTML styling
+  attachmentAllowed: boolean("attachment_allowed").notNull().default(false),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_notification_templates_alert_type").on(table.alertType),
+  index("idx_notification_templates_category").on(table.alertCategory),
+  index("idx_notification_templates_channel").on(table.channel),
+  index("idx_notification_templates_active").on(table.isActive),
+  uniqueIndex("idx_notification_templates_unique").on(table.alertType, table.alertCategory, table.channel, table.language),
+]);
+
+// Notification queue table - Pending notifications with delivery status
+export const notificationQueue = pgTable("notification_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Recipient information
+  userId: varchar("user_id").notNull().references(() => users.id),
+  recipientEmail: varchar("recipient_email"),
+  recipientPhone: varchar("recipient_phone"),
+  recipientWebhook: varchar("recipient_webhook"),
+  
+  // Notification details
+  alertType: alertTypeEnum("alert_type").notNull(),
+  alertCategory: alertCategoryEnum("alert_category").notNull(),
+  priority: notificationPriorityEnum("priority").notNull().default('medium'),
+  channel: notificationChannelEnum("channel").notNull(),
+  
+  // Content
+  subject: varchar("subject"),
+  title: varchar("title").notNull(),
+  message: text("message").notNull(),
+  htmlContent: text("html_content"),
+  
+  // Context and linking
+  entityType: varchar("entity_type"), // purchase, capital_entry, shipment, etc.
+  entityId: varchar("entity_id"), // ID of the related business entity
+  actionUrl: varchar("action_url"), // URL for user to take action
+  
+  // Delivery metadata
+  templateId: varchar("template_id").references(() => notificationTemplates.id),
+  templateData: jsonb("template_data").default('{}'), // Data used to populate template
+  
+  // Scheduling and timing
+  scheduledFor: timestamp("scheduled_for").defaultNow(),
+  frequency: notificationFrequencyEnum("frequency").notNull().default('immediate'),
+  
+  // Delivery status and tracking
+  status: notificationStatusEnum("status").notNull().default('pending'),
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  dismissedAt: timestamp("dismissed_at"),
+  
+  // Retry and error handling
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  errorMessage: text("error_message"),
+  
+  // External system tracking
+  externalId: varchar("external_id"), // ID from email service, SMS service, etc.
+  deliveryMetadata: jsonb("delivery_metadata").default('{}'),
+  
+  // Grouping and deduplication
+  groupId: varchar("group_id"), // For grouping related notifications
+  deduplicationKey: varchar("deduplication_key"), // To prevent duplicate notifications
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_notification_queue_user_id").on(table.userId),
+  index("idx_notification_queue_status").on(table.status),
+  index("idx_notification_queue_priority").on(table.priority),
+  index("idx_notification_queue_scheduled_for").on(table.scheduledFor),
+  index("idx_notification_queue_entity").on(table.entityType, table.entityId),
+  index("idx_notification_queue_deduplication").on(table.deduplicationKey),
+  index("idx_notification_queue_group").on(table.groupId),
+]);
+
+// Alert configurations table - Business rule definitions and thresholds
+export const alertConfigurations = pgTable("alert_configurations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Configuration identification
+  name: varchar("name").notNull(),
+  description: text("description"),
+  alertType: alertTypeEnum("alert_type").notNull(),
+  alertCategory: alertCategoryEnum("alert_category").notNull(),
+  
+  // Scope and targeting
+  isGlobal: boolean("is_global").notNull().default(true), // Applies to all users or specific roles
+  targetRoles: userRoleEnum("target_roles").array().default([]),
+  targetUsers: text("target_users").array().default([]), // Specific user IDs
+  
+  // Alert conditions and thresholds
+  conditions: jsonb("conditions").notNull(), // Complex condition definitions
+  thresholds: jsonb("thresholds").default('{}'), // Numeric thresholds
+  
+  // Monitoring settings
+  monitoringEnabled: boolean("monitoring_enabled").notNull().default(true),
+  checkIntervalMinutes: integer("check_interval_minutes").default(60),
+  monitoringSchedule: varchar("monitoring_schedule"), // Cron expression for scheduled checks
+  
+  // Alert behavior
+  priority: notificationPriorityEnum("priority").notNull().default('medium'),
+  channels: notificationChannelEnum("channels").array().default(['in_app']),
+  frequency: notificationFrequencyEnum("frequency").notNull().default('immediate'),
+  
+  // Escalation rules
+  escalationEnabled: boolean("escalation_enabled").notNull().default(false),
+  escalationTimeoutMinutes: integer("escalation_timeout_minutes").default(60),
+  escalationLevels: jsonb("escalation_levels").default('[]'), // Escalation level definitions
+  
+  // Deduplication and throttling
+  deduplicationEnabled: boolean("deduplication_enabled").notNull().default(true),
+  deduplicationWindowMinutes: integer("deduplication_window_minutes").default(60),
+  throttlingEnabled: boolean("throttling_enabled").notNull().default(false),
+  maxAlertsPerHour: integer("max_alerts_per_hour").default(10),
+  
+  // Business context
+  businessImpact: varchar("business_impact"), // low, medium, high, critical
+  slaMinutes: integer("sla_minutes"), // Expected response time
+  
+  // Configuration metadata
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  triggerCount: integer("trigger_count").notNull().default(0),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_alert_configurations_type").on(table.alertType),
+  index("idx_alert_configurations_category").on(table.alertCategory),
+  index("idx_alert_configurations_active").on(table.isActive),
+  index("idx_alert_configurations_monitoring").on(table.monitoringEnabled),
+  index("idx_alert_configurations_global").on(table.isGlobal),
+]);
+
+// Notification history table - Audit trail of all sent notifications
+export const notificationHistory = pgTable("notification_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Original notification reference
+  originalNotificationId: varchar("original_notification_id").references(() => notificationQueue.id),
+  
+  // Recipient information
+  userId: varchar("user_id").notNull().references(() => users.id),
+  recipientEmail: varchar("recipient_email"),
+  recipientPhone: varchar("recipient_phone"),
+  recipientWebhook: varchar("recipient_webhook"),
+  
+  // Notification details
+  alertType: alertTypeEnum("alert_type").notNull(),
+  alertCategory: alertCategoryEnum("alert_category").notNull(),
+  priority: notificationPriorityEnum("priority").notNull(),
+  channel: notificationChannelEnum("channel").notNull(),
+  
+  // Content snapshot
+  subject: varchar("subject"),
+  title: varchar("title").notNull(),
+  message: text("message").notNull(),
+  
+  // Context and linking
+  entityType: varchar("entity_type"),
+  entityId: varchar("entity_id"),
+  actionUrl: varchar("action_url"),
+  
+  // Delivery information
+  status: notificationStatusEnum("status").notNull(),
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  dismissedAt: timestamp("dismissed_at"),
+  
+  // Delivery attempts and results
+  totalAttempts: integer("total_attempts").notNull().default(0),
+  finalStatus: varchar("final_status").notNull(), // success, failed, partially_delivered
+  errorDetails: text("error_details"),
+  
+  // External system tracking
+  externalId: varchar("external_id"),
+  deliveryMetadata: jsonb("delivery_metadata").default('{}'),
+  
+  // Performance tracking
+  processingTimeMs: integer("processing_time_ms"),
+  deliveryTimeMs: integer("delivery_time_ms"),
+  
+  // Configuration snapshot (for audit purposes)
+  configurationSnapshot: jsonb("configuration_snapshot").default('{}'),
+  templateSnapshot: jsonb("template_snapshot").default('{}'),
+  
+  // User interaction tracking
+  userAgent: text("user_agent"),
+  ipAddress: varchar("ip_address"),
+  clickCount: integer("click_count").notNull().default(0),
+  lastClickAt: timestamp("last_click_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_notification_history_user_id").on(table.userId),
+  index("idx_notification_history_alert_type").on(table.alertType),
+  index("idx_notification_history_category").on(table.alertCategory),
+  index("idx_notification_history_status").on(table.status),
+  index("idx_notification_history_sent_at").on(table.sentAt),
+  index("idx_notification_history_entity").on(table.entityType, table.entityId),
+  index("idx_notification_history_created_at").on(table.createdAt),
+]);
+
 // Sales Pipeline Tables
 
 // Customer categories enum
@@ -3908,4 +4218,326 @@ export interface DocumentAnalytics {
   }>;
   storageUsed: number;
   averageFileSize: number;
+}
+
+// ===============================================
+// NOTIFICATION SYSTEM ZOD SCHEMAS AND TYPES
+// ===============================================
+
+// Notification settings schemas
+export const insertNotificationSettingSchema = createInsertSchema(notificationSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateNotificationSettingSchema = insertNotificationSettingSchema.partial();
+
+export const notificationSettingFilterSchema = z.object({
+  userId: z.string().optional(),
+  isActive: z.boolean().optional(),
+  enableInApp: z.boolean().optional(),
+  enableEmail: z.boolean().optional(),
+  enableSms: z.boolean().optional(),
+  enableWebhook: z.boolean().optional(),
+});
+
+// Notification template schemas
+export const insertNotificationTemplateSchema = createInsertSchema(notificationTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateNotificationTemplateSchema = insertNotificationTemplateSchema.partial();
+
+export const notificationTemplateFilterSchema = z.object({
+  alertType: z.enum(['threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert']).optional(),
+  alertCategory: z.enum(['capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation']).optional(),
+  channel: z.enum(['in_app', 'email', 'sms', 'webhook']).optional(),
+  isActive: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
+  language: z.string().optional(),
+});
+
+// Notification queue schemas
+export const insertNotificationQueueSchema = createInsertSchema(notificationQueue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateNotificationQueueSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'sent', 'failed', 'read', 'dismissed']),
+  readAt: z.string().optional(),
+  dismissedAt: z.string().optional(),
+  errorMessage: z.string().optional(),
+});
+
+export const notificationQueueFilterSchema = z.object({
+  userId: z.string().optional(),
+  status: z.enum(['pending', 'sent', 'failed', 'read', 'dismissed']).optional(),
+  priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  channel: z.enum(['in_app', 'email', 'sms', 'webhook']).optional(),
+  alertType: z.enum(['threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert']).optional(),
+  alertCategory: z.enum(['capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation']).optional(),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+  scheduledFrom: z.string().optional(),
+  scheduledTo: z.string().optional(),
+  limit: z.number().min(1).max(100).default(20),
+  offset: z.number().min(0).default(0),
+});
+
+export const createNotificationSchema = z.object({
+  userId: z.string(),
+  alertType: z.enum(['threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert']),
+  alertCategory: z.enum(['capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation']),
+  priority: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
+  channels: z.array(z.enum(['in_app', 'email', 'sms', 'webhook'])).default(['in_app']),
+  title: z.string(),
+  message: z.string(),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+  actionUrl: z.string().optional(),
+  templateData: z.record(z.any()).optional(),
+  scheduledFor: z.string().optional(),
+});
+
+// Alert configuration schemas
+export const insertAlertConfigurationSchema = createInsertSchema(alertConfigurations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateAlertConfigurationSchema = insertAlertConfigurationSchema.partial().extend({
+  id: z.string(),
+});
+
+export const alertConfigurationFilterSchema = z.object({
+  alertType: z.enum(['threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert']).optional(),
+  alertCategory: z.enum(['capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation']).optional(),
+  isGlobal: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  monitoringEnabled: z.boolean().optional(),
+  targetRole: z.enum(['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker']).optional(),
+});
+
+// Notification history schemas
+export const notificationHistoryFilterSchema = z.object({
+  userId: z.string().optional(),
+  status: z.enum(['pending', 'sent', 'failed', 'read', 'dismissed']).optional(),
+  alertType: z.enum(['threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 'financial_alert', 'operational_alert', 'security_alert', 'workflow_alert']).optional(),
+  alertCategory: z.enum(['capital_threshold', 'inventory_level', 'purchase_order', 'sales_order', 'document_expiry', 'approval_workflow', 'financial_health', 'operational_delay', 'compliance_issue', 'market_timing', 'system_health', 'quality_issue', 'supplier_issue', 'shipping_delay', 'payment_due', 'currency_fluctuation']).optional(),
+  channel: z.enum(['in_app', 'email', 'sms', 'webhook']).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+});
+
+// Threshold configuration schema for various business metrics
+export const thresholdConfigurationSchema = z.object({
+  // Capital thresholds
+  capitalThresholds: z.object({
+    lowBalanceThreshold: z.number().min(0).default(5000),
+    criticalBalanceThreshold: z.number().min(0).default(1000),
+    highExposureThreshold: z.number().min(0).default(50000),
+    currency: z.string().default('USD'),
+  }).optional(),
+
+  // Inventory thresholds
+  inventoryThresholds: z.object({
+    lowStockThreshold: z.number().min(0).default(100), // kg
+    criticalStockThreshold: z.number().min(0).default(50), // kg
+    expiryWarningDays: z.number().min(1).default(30),
+    qualityGradeAlert: z.enum(['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial']).optional(),
+  }).optional(),
+
+  // Purchase thresholds
+  purchaseThresholds: z.object({
+    highValueThreshold: z.number().min(0).default(10000),
+    urgentApprovalThreshold: z.number().min(0).default(25000),
+    supplierRiskThreshold: z.number().min(1).max(5).default(3), // Risk score
+    paymentDelayDays: z.number().min(1).default(7),
+  }).optional(),
+
+  // Sales thresholds
+  salesThresholds: z.object({
+    largeOrderThreshold: z.number().min(0).default(15000),
+    creditLimitWarningPercent: z.number().min(0).max(100).default(80),
+    paymentOverdueDays: z.number().min(1).default(5),
+    fulfillmentDelayDays: z.number().min(1).default(3),
+  }).optional(),
+
+  // Financial KPI thresholds
+  financialThresholds: z.object({
+    grossMarginThreshold: z.number().min(0).max(100).default(15), // Percent
+    cashFlowWarningDays: z.number().min(1).default(30),
+    roiThreshold: z.number().min(0).default(10), // Percent
+    currencyExposurePercent: z.number().min(0).max(100).default(25),
+  }).optional(),
+
+  // Operational thresholds
+  operationalThresholds: z.object({
+    shippingDelayDays: z.number().min(1).default(2),
+    qualityIssueThreshold: z.number().min(1).max(5).default(3), // Score
+    supplierPerformanceThreshold: z.number().min(0).max(100).default(80), // Percent
+    documentExpiryWarningDays: z.number().min(1).default(30),
+  }).optional(),
+});
+
+// Notification system TypeScript types
+export type NotificationSetting = typeof notificationSettings.$inferSelect;
+export type InsertNotificationSetting = z.infer<typeof insertNotificationSettingSchema>;
+export type UpdateNotificationSetting = z.infer<typeof updateNotificationSettingSchema>;
+export type NotificationSettingFilter = z.infer<typeof notificationSettingFilterSchema>;
+
+export type NotificationTemplate = typeof notificationTemplates.$inferSelect;
+export type InsertNotificationTemplate = z.infer<typeof insertNotificationTemplateSchema>;
+export type UpdateNotificationTemplate = z.infer<typeof updateNotificationTemplateSchema>;
+export type NotificationTemplateFilter = z.infer<typeof notificationTemplateFilterSchema>;
+
+export type NotificationQueue = typeof notificationQueue.$inferSelect;
+export type InsertNotificationQueue = z.infer<typeof insertNotificationQueueSchema>;
+export type UpdateNotificationQueue = z.infer<typeof updateNotificationQueueSchema>;
+export type NotificationQueueFilter = z.infer<typeof notificationQueueFilterSchema>;
+export type CreateNotification = z.infer<typeof createNotificationSchema>;
+
+export type AlertConfiguration = typeof alertConfigurations.$inferSelect;
+export type InsertAlertConfiguration = z.infer<typeof insertAlertConfigurationSchema>;
+export type UpdateAlertConfiguration = z.infer<typeof updateAlertConfigurationSchema>;
+export type AlertConfigurationFilter = z.infer<typeof alertConfigurationFilterSchema>;
+
+export type NotificationHistory = typeof notificationHistory.$inferSelect;
+export type NotificationHistoryFilter = z.infer<typeof notificationHistoryFilterSchema>;
+
+export type ThresholdConfiguration = z.infer<typeof thresholdConfigurationSchema>;
+
+// Notification system response types
+export interface NotificationCenterResponse {
+  notifications: Array<NotificationQueue & {
+    canDismiss: boolean;
+    canMarkAsRead: boolean;
+    timeAgo: string;
+    actionText?: string;
+  }>;
+  unreadCount: number;
+  totalCount: number;
+  hasMore: boolean;
+  summary: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+}
+
+export interface NotificationSettingsResponse extends NotificationSetting {
+  effectiveThresholds: ThresholdConfiguration;
+  availableChannels: Array<{
+    channel: 'in_app' | 'email' | 'sms' | 'webhook';
+    enabled: boolean;
+    configured: boolean;
+    requiresSetup: boolean;
+  }>;
+  recentActivity: Array<{
+    alertType: string;
+    alertCategory: string;
+    triggeredAt: string;
+    acknowledged: boolean;
+  }>;
+}
+
+export interface AlertMonitoringDashboard {
+  activeAlerts: Array<{
+    id: string;
+    alertType: string;
+    alertCategory: string;
+    priority: 'low' | 'medium' | 'high' | 'critical';
+    description: string;
+    entityType?: string;
+    entityId?: string;
+    triggeredAt: string;
+    isAcknowledged: boolean;
+    escalationLevel: number;
+    assignedTo?: string;
+  }>;
+  alertMetrics: {
+    totalAlerts: number;
+    criticalAlerts: number;
+    acknowledgedAlerts: number;
+    averageResponseTime: number; // minutes
+    alertTrends: Array<{
+      date: string;
+      count: number;
+      critical: number;
+    }>;
+  };
+  systemHealth: {
+    monitoringActive: boolean;
+    lastHealthCheck: string;
+    alertsProcessed: number;
+    notificationsSent: number;
+    failureRate: number;
+  };
+}
+
+export interface NotificationDeliveryStatus {
+  notificationId: string;
+  status: 'pending' | 'sent' | 'failed' | 'read' | 'dismissed';
+  channels: Array<{
+    channel: 'in_app' | 'email' | 'sms' | 'webhook';
+    status: 'pending' | 'sent' | 'failed' | 'delivered';
+    attemptCount: number;
+    lastAttempt?: string;
+    errorMessage?: string;
+    deliveredAt?: string;
+    readAt?: string;
+  }>;
+  metadata: {
+    totalAttempts: number;
+    processingTime: number;
+    deliveryTime?: number;
+  };
+}
+
+export interface NotificationAnalytics {
+  deliveryStats: {
+    totalSent: number;
+    successRate: number;
+    failureRate: number;
+    averageDeliveryTime: number;
+    channelBreakdown: Array<{
+      channel: string;
+      sent: number;
+      delivered: number;
+      failed: number;
+    }>;
+  };
+  engagementStats: {
+    openRate: number;
+    clickRate: number;
+    dismissalRate: number;
+    responseRate: number;
+    preferredChannels: Array<{
+      channel: string;
+      usage: number;
+      engagement: number;
+    }>;
+  };
+  alertEffectiveness: {
+    mostTriggered: Array<{
+      alertCategory: string;
+      count: number;
+      avgResponseTime: number;
+    }>;
+    leastEngaged: Array<{
+      alertCategory: string;
+      dismissalRate: number;
+      suggestions: string[];
+    }>;
+  };
 }

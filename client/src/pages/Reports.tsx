@@ -1120,22 +1120,26 @@ export default function Reports() {
                         <h3 className="text-lg font-semibold">Profitability</h3>
                       </CardHeader>
                       <CardContent>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Inventory Value</span>
-                            <span className="font-medium">${tradingActivity.profitability.totalInventoryValue.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Purchase Cost</span>
-                            <span className="font-medium">${tradingActivity.profitability.totalPurchaseCost.toLocaleString()}</span>
-                          </div>
-                          <div className="border-t pt-3">
+                        {tradingActivity?.profitability ? (
+                          <div className="space-y-3">
                             <div className="flex justify-between">
-                              <span className="text-sm font-medium">Est. Margin</span>
-                              <span className="font-bold text-lg">{tradingActivity.profitability.estimatedMargin.toFixed(1)}%</span>
+                              <span className="text-sm text-muted-foreground">Inventory Value</span>
+                              <span className="font-medium">${(tradingActivity.profitability.totalInventoryValue || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Purchase Cost</span>
+                              <span className="font-medium">${(tradingActivity.profitability.totalPurchaseCost || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="border-t pt-3">
+                              <div className="flex justify-between">
+                                <span className="text-sm font-medium">Est. Margin</span>
+                                <span className="font-bold text-lg">{(tradingActivity.profitability.estimatedMargin || 0).toFixed(1)}%</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No profitability data available</p>
+                        )}
                       </CardContent>
                     </Card>
                   </div>

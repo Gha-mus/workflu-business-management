@@ -42,6 +42,12 @@ import {
   documentCompliance,
   documentAccessLogs,
   documentWorkflowStates,
+  // Notification system tables
+  notificationSettings,
+  notificationTemplates,
+  notificationQueue,
+  alertConfigurations,
+  notificationHistory,
   type User,
   type UpsertUser,
   type Supplier,
@@ -153,6 +159,31 @@ import {
   type DocumentVersionCreateRequest,
   type DocumentComplianceUpdateRequest,
   type ComplianceFilterRequest,
+  // Notification system types
+  type NotificationSetting,
+  type InsertNotificationSetting,
+  type UpdateNotificationSetting,
+  type NotificationSettingFilter,
+  type NotificationTemplate,
+  type InsertNotificationTemplate,
+  type UpdateNotificationTemplate,
+  type NotificationTemplateFilter,
+  type NotificationQueue,
+  type InsertNotificationQueue,
+  type UpdateNotificationQueue,
+  type NotificationQueueFilter,
+  type CreateNotification,
+  type AlertConfiguration,
+  type InsertAlertConfiguration,
+  type UpdateAlertConfiguration,
+  type AlertConfigurationFilter,
+  type NotificationHistory,
+  type NotificationHistoryFilter,
+  type NotificationCenterResponse,
+  type NotificationSettingsResponse,
+  type AlertMonitoringDashboard,
+  type NotificationAnalytics,
+  type NotificationDeliveryStatus,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
@@ -1637,6 +1668,67 @@ export interface IStorage {
     updated: number;
     failed: Array<{ documentId: string; error: string }>;
   }>;
+
+  // ===============================================
+  // NOTIFICATION SYSTEM STORAGE INTERFACE
+  // ===============================================
+
+  // Notification Settings operations
+  getNotificationSettings(userId: string): Promise<NotificationSetting | undefined>;
+  createNotificationSettings(settings: InsertNotificationSetting, auditContext?: AuditContext): Promise<NotificationSetting>;
+  updateNotificationSettings(userId: string, settings: UpdateNotificationSetting, auditContext?: AuditContext): Promise<NotificationSetting>;
+  getUserNotificationPreferences(userId: string): Promise<NotificationSettingsResponse>;
+
+  // Notification Template operations
+  getNotificationTemplates(filter?: NotificationTemplateFilter): Promise<NotificationTemplate[]>;
+  getNotificationTemplate(id: string): Promise<NotificationTemplate | undefined>;
+  getTemplateByTypeAndChannel(alertType: string, alertCategory: string, channel: string, language?: string): Promise<NotificationTemplate | undefined>;
+  createNotificationTemplate(template: InsertNotificationTemplate, auditContext?: AuditContext): Promise<NotificationTemplate>;
+  updateNotificationTemplate(id: string, template: UpdateNotificationTemplate, auditContext?: AuditContext): Promise<NotificationTemplate>;
+  deleteNotificationTemplate(id: string, auditContext?: AuditContext): Promise<void>;
+
+  // Notification Queue operations
+  getNotifications(filter: NotificationQueueFilter): Promise<NotificationQueue[]>;
+  getNotification(id: string): Promise<NotificationQueue | undefined>;
+  getUserNotifications(userId: string, filter?: Partial<NotificationQueueFilter>): Promise<NotificationCenterResponse>;
+  createNotification(notification: CreateNotification): Promise<NotificationQueue>;
+  queueNotification(notification: InsertNotificationQueue): Promise<NotificationQueue>;
+  updateNotificationStatus(id: string, updates: UpdateNotificationQueue, auditContext?: AuditContext): Promise<NotificationQueue>;
+  markNotificationAsRead(id: string, userId: string): Promise<NotificationQueue>;
+  dismissNotification(id: string, userId: string): Promise<NotificationQueue>;
+  bulkMarkNotificationsAsRead(notificationIds: string[], userId: string): Promise<{ updated: number }>;
+  bulkDismissNotifications(notificationIds: string[], userId: string): Promise<{ updated: number }>;
+  getPendingNotifications(limit?: number): Promise<NotificationQueue[]>;
+  getFailedNotifications(limit?: number): Promise<NotificationQueue[]>;
+  
+  // Alert Configuration operations
+  getAlertConfigurations(filter?: AlertConfigurationFilter): Promise<AlertConfiguration[]>;
+  getAlertConfiguration(id: string): Promise<AlertConfiguration | undefined>;
+  getActiveAlertConfigurations(): Promise<AlertConfiguration[]>;
+  getUserAlertConfigurations(userId: string): Promise<AlertConfiguration[]>;
+  getRoleAlertConfigurations(role: string): Promise<AlertConfiguration[]>;
+  createAlertConfiguration(config: InsertAlertConfiguration, auditContext?: AuditContext): Promise<AlertConfiguration>;
+  updateAlertConfiguration(id: string, config: UpdateAlertConfiguration, auditContext?: AuditContext): Promise<AlertConfiguration>;
+  deleteAlertConfiguration(id: string, auditContext?: AuditContext): Promise<void>;
+  toggleAlertConfiguration(id: string, isActive: boolean, auditContext?: AuditContext): Promise<AlertConfiguration>;
+
+  // Notification History operations
+  getNotificationHistory(filter: NotificationHistoryFilter): Promise<NotificationHistory[]>;
+  getUserNotificationHistory(userId: string, filter?: Partial<NotificationHistoryFilter>): Promise<NotificationHistory[]>;
+  getNotificationAnalytics(userId?: string, dateFrom?: string, dateTo?: string): Promise<NotificationAnalytics>;
+  archiveNotificationHistory(olderThanDays: number): Promise<{ archived: number }>;
+
+  // Alert Monitoring operations
+  getAlertMonitoringDashboard(userId?: string): Promise<AlertMonitoringDashboard>;
+  checkThresholdAlerts(): Promise<{ triggered: number; notifications: number }>;
+  evaluateBusinessAlerts(): Promise<{ evaluated: number; triggered: number }>;
+  processNotificationQueue(batchSize?: number): Promise<{ processed: number; failed: number }>;
+  getNotificationDeliveryStatus(notificationId: string): Promise<NotificationDeliveryStatus>;
+
+  // Bulk notification operations
+  createBulkNotifications(notifications: CreateNotification[]): Promise<NotificationQueue[]>;
+  sendDigestNotifications(frequency: 'daily_digest' | 'weekly_summary' | 'monthly_report'): Promise<{ sent: number; failed: number }>;
+  cleanupOldNotifications(retentionDays: number): Promise<{ deleted: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -7377,6 +7469,1084 @@ export class DatabaseStorage implements IStorage {
         scenarioAnalysis: [],
       };
     }
+  }
+
+  // ===============================================
+  // NOTIFICATION SYSTEM IMPLEMENTATION
+  // ===============================================
+
+  // Notification Settings operations
+  async getNotificationSettings(userId: string): Promise<NotificationSetting | undefined> {
+    try {
+      const [settings] = await db
+        .select()
+        .from(notificationSettings)
+        .where(eq(notificationSettings.userId, userId));
+      return settings;
+    } catch (error) {
+      console.error('Error fetching notification settings:', error);
+      return undefined;
+    }
+  }
+
+  async createNotificationSettings(settings: InsertNotificationSetting, auditContext?: AuditContext): Promise<NotificationSetting> {
+    try {
+      const [newSettings] = await db
+        .insert(notificationSettings)
+        .values(settings)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'notification_settings',
+          newSettings.id,
+          'create',
+          'notification_configuration',
+          null,
+          settings,
+          undefined,
+          undefined,
+          `Created notification settings for user ${settings.userId}`
+        );
+      }
+
+      return newSettings;
+    } catch (error) {
+      console.error('Error creating notification settings:', error);
+      throw new Error('Failed to create notification settings');
+    }
+  }
+
+  async updateNotificationSettings(userId: string, settings: UpdateNotificationSetting, auditContext?: AuditContext): Promise<NotificationSetting> {
+    try {
+      const [oldSettings] = await db
+        .select()
+        .from(notificationSettings)
+        .where(eq(notificationSettings.userId, userId));
+
+      const [updatedSettings] = await db
+        .update(notificationSettings)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(notificationSettings.userId, userId))
+        .returning();
+
+      if (auditContext && oldSettings) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'notification_settings',
+          updatedSettings.id,
+          'update',
+          'notification_configuration',
+          oldSettings,
+          settings,
+          undefined,
+          undefined,
+          `Updated notification settings for user ${userId}`
+        );
+      }
+
+      return updatedSettings;
+    } catch (error) {
+      console.error('Error updating notification settings:', error);
+      throw new Error('Failed to update notification settings');
+    }
+  }
+
+  async getUserNotificationPreferences(userId: string): Promise<NotificationSettingsResponse> {
+    try {
+      const settings = await this.getNotificationSettings(userId);
+      
+      // Create default settings if none exist
+      const effectiveSettings = settings || {
+        id: `temp-${userId}`,
+        userId,
+        enableInApp: true,
+        enableEmail: true,
+        enableSms: false,
+        enableWebhook: false,
+        alertCategories: [],
+        defaultFrequency: 'immediate' as const,
+        digestTime: '08:00',
+        weeklyDigestDay: 1,
+        monthlyDigestDay: 1,
+        emailAddress: null,
+        phoneNumber: null,
+        webhookUrl: null,
+        thresholds: {},
+        escalationEnabled: false,
+        escalationTimeoutMinutes: 60,
+        escalationRecipients: [],
+        quietHoursEnabled: false,
+        quietHoursStart: '22:00',
+        quietHoursEnd: '06:00',
+        quietHoursTimezone: 'UTC',
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Get recent notification activity for this user
+      const recentActivity = await db
+        .select({
+          alertType: notificationQueue.alertType,
+          alertCategory: notificationQueue.alertCategory,
+          createdAt: notificationQueue.createdAt,
+          status: notificationQueue.status,
+        })
+        .from(notificationQueue)
+        .where(eq(notificationQueue.userId, userId))
+        .orderBy(desc(notificationQueue.createdAt))
+        .limit(10);
+
+      return {
+        ...effectiveSettings,
+        effectiveThresholds: effectiveSettings.thresholds as any || {},
+        availableChannels: [
+          { channel: 'in_app', enabled: effectiveSettings.enableInApp, configured: true, requiresSetup: false },
+          { channel: 'email', enabled: effectiveSettings.enableEmail, configured: !!effectiveSettings.emailAddress, requiresSetup: !effectiveSettings.emailAddress },
+          { channel: 'sms', enabled: effectiveSettings.enableSms, configured: !!effectiveSettings.phoneNumber, requiresSetup: !effectiveSettings.phoneNumber },
+          { channel: 'webhook', enabled: effectiveSettings.enableWebhook, configured: !!effectiveSettings.webhookUrl, requiresSetup: !effectiveSettings.webhookUrl },
+        ],
+        recentActivity: recentActivity.map(activity => ({
+          alertType: activity.alertType,
+          alertCategory: activity.alertCategory,
+          triggeredAt: activity.createdAt?.toISOString() || '',
+          acknowledged: activity.status === 'read' || activity.status === 'dismissed',
+        })),
+      };
+    } catch (error) {
+      console.error('Error fetching user notification preferences:', error);
+      throw new Error('Failed to fetch notification preferences');
+    }
+  }
+
+  // Notification Template operations
+  async getNotificationTemplates(filter?: NotificationTemplateFilter): Promise<NotificationTemplate[]> {
+    try {
+      const query = db.select().from(notificationTemplates);
+      
+      if (filter?.alertType) {
+        query.where(eq(notificationTemplates.alertType, filter.alertType));
+      }
+      if (filter?.alertCategory) {
+        query.where(eq(notificationTemplates.alertCategory, filter.alertCategory));
+      }
+      if (filter?.channel) {
+        query.where(eq(notificationTemplates.channel, filter.channel));
+      }
+      if (filter?.isActive !== undefined) {
+        query.where(eq(notificationTemplates.isActive, filter.isActive));
+      }
+      if (filter?.language) {
+        query.where(eq(notificationTemplates.language, filter.language));
+      }
+
+      return await query.orderBy(desc(notificationTemplates.createdAt));
+    } catch (error) {
+      console.error('Error fetching notification templates:', error);
+      return [];
+    }
+  }
+
+  async getNotificationTemplate(id: string): Promise<NotificationTemplate | undefined> {
+    try {
+      const [template] = await db
+        .select()
+        .from(notificationTemplates)
+        .where(eq(notificationTemplates.id, id));
+      return template;
+    } catch (error) {
+      console.error('Error fetching notification template:', error);
+      return undefined;
+    }
+  }
+
+  async getTemplateByTypeAndChannel(alertType: string, alertCategory: string, channel: string, language = 'en'): Promise<NotificationTemplate | undefined> {
+    try {
+      const [template] = await db
+        .select()
+        .from(notificationTemplates)
+        .where(
+          and(
+            eq(notificationTemplates.alertType, alertType),
+            eq(notificationTemplates.alertCategory, alertCategory),
+            eq(notificationTemplates.channel, channel),
+            eq(notificationTemplates.language, language),
+            eq(notificationTemplates.isActive, true)
+          )
+        )
+        .orderBy(desc(notificationTemplates.isDefault))
+        .limit(1);
+      return template;
+    } catch (error) {
+      console.error('Error fetching template by type and channel:', error);
+      return undefined;
+    }
+  }
+
+  async createNotificationTemplate(template: InsertNotificationTemplate, auditContext?: AuditContext): Promise<NotificationTemplate> {
+    try {
+      const [newTemplate] = await db
+        .insert(notificationTemplates)
+        .values(template)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'notification_templates',
+          newTemplate.id,
+          'create',
+          'template_management',
+          null,
+          template,
+          undefined,
+          undefined,
+          `Created notification template: ${template.name}`
+        );
+      }
+
+      return newTemplate;
+    } catch (error) {
+      console.error('Error creating notification template:', error);
+      throw new Error('Failed to create notification template');
+    }
+  }
+
+  async updateNotificationTemplate(id: string, template: UpdateNotificationTemplate, auditContext?: AuditContext): Promise<NotificationTemplate> {
+    try {
+      const [oldTemplate] = await db
+        .select()
+        .from(notificationTemplates)
+        .where(eq(notificationTemplates.id, id));
+
+      if (!oldTemplate) {
+        throw new Error('Notification template not found');
+      }
+
+      const [updatedTemplate] = await db
+        .update(notificationTemplates)
+        .set({ ...template, updatedAt: new Date() })
+        .where(eq(notificationTemplates.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'notification_templates',
+          id,
+          'update',
+          'template_management',
+          oldTemplate,
+          template,
+          undefined,
+          undefined,
+          `Updated notification template: ${oldTemplate.name}`
+        );
+      }
+
+      return updatedTemplate;
+    } catch (error) {
+      console.error('Error updating notification template:', error);
+      throw new Error('Failed to update notification template');
+    }
+  }
+
+  async deleteNotificationTemplate(id: string, auditContext?: AuditContext): Promise<void> {
+    try {
+      const [template] = await db
+        .select()
+        .from(notificationTemplates)
+        .where(eq(notificationTemplates.id, id));
+
+      if (!template) {
+        throw new Error('Notification template not found');
+      }
+
+      await db
+        .delete(notificationTemplates)
+        .where(eq(notificationTemplates.id, id));
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'notification_templates',
+          id,
+          'delete',
+          'template_management',
+          template,
+          null,
+          undefined,
+          undefined,
+          `Deleted notification template: ${template.name}`
+        );
+      }
+    } catch (error) {
+      console.error('Error deleting notification template:', error);
+      throw new Error('Failed to delete notification template');
+    }
+  }
+
+  // Notification Queue operations
+  async getNotifications(filter: NotificationQueueFilter): Promise<NotificationQueue[]> {
+    try {
+      let query = db.select().from(notificationQueue);
+
+      const conditions = [];
+      if (filter.userId) conditions.push(eq(notificationQueue.userId, filter.userId));
+      if (filter.status) conditions.push(eq(notificationQueue.status, filter.status));
+      if (filter.priority) conditions.push(eq(notificationQueue.priority, filter.priority));
+      if (filter.channel) conditions.push(eq(notificationQueue.channel, filter.channel));
+      if (filter.alertType) conditions.push(eq(notificationQueue.alertType, filter.alertType));
+      if (filter.alertCategory) conditions.push(eq(notificationQueue.alertCategory, filter.alertCategory));
+      if (filter.entityType) conditions.push(eq(notificationQueue.entityType, filter.entityType));
+      if (filter.entityId) conditions.push(eq(notificationQueue.entityId, filter.entityId));
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      return await query
+        .orderBy(desc(notificationQueue.createdAt))
+        .limit(filter.limit || 20)
+        .offset(filter.offset || 0);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      return [];
+    }
+  }
+
+  async getNotification(id: string): Promise<NotificationQueue | undefined> {
+    try {
+      const [notification] = await db
+        .select()
+        .from(notificationQueue)
+        .where(eq(notificationQueue.id, id));
+      return notification;
+    } catch (error) {
+      console.error('Error fetching notification:', error);
+      return undefined;
+    }
+  }
+
+  async getUserNotifications(userId: string, filter?: Partial<NotificationQueueFilter>): Promise<NotificationCenterResponse> {
+    try {
+      const baseFilter: NotificationQueueFilter = {
+        userId,
+        limit: 50,
+        offset: 0,
+        ...filter,
+      };
+
+      const notifications = await this.getNotifications(baseFilter);
+
+      // Get counts by priority
+      const priorityCounts = await db
+        .select({
+          priority: notificationQueue.priority,
+          count: sql<number>`count(*)`,
+        })
+        .from(notificationQueue)
+        .where(and(
+          eq(notificationQueue.userId, userId),
+          eq(notificationQueue.status, 'pending')
+        ))
+        .groupBy(notificationQueue.priority);
+
+      const summary = {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      };
+
+      priorityCounts.forEach(({ priority, count }) => {
+        summary[priority as keyof typeof summary] = Number(count);
+      });
+
+      // Get unread count
+      const unreadResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(notificationQueue)
+        .where(and(
+          eq(notificationQueue.userId, userId),
+          eq(notificationQueue.status, 'pending')
+        ));
+
+      const unreadCount = Number(unreadResult[0]?.count || 0);
+      const totalCount = notifications.length;
+
+      return {
+        notifications: notifications.map(notification => ({
+          ...notification,
+          canDismiss: true,
+          canMarkAsRead: notification.status === 'pending',
+          timeAgo: this.calculateTimeAgo(notification.createdAt),
+          actionText: notification.actionUrl ? 'View Details' : undefined,
+        })),
+        unreadCount,
+        totalCount,
+        hasMore: totalCount >= (baseFilter.limit || 50),
+        summary,
+      };
+    } catch (error) {
+      console.error('Error fetching user notifications:', error);
+      return {
+        notifications: [],
+        unreadCount: 0,
+        totalCount: 0,
+        hasMore: false,
+        summary: { critical: 0, high: 0, medium: 0, low: 0 },
+      };
+    }
+  }
+
+  async createNotification(notification: CreateNotification): Promise<NotificationQueue> {
+    try {
+      // Get user settings to determine delivery preferences
+      const userSettings = await this.getNotificationSettings(notification.userId);
+      
+      const queueData: InsertNotificationQueue = {
+        userId: notification.userId,
+        alertType: notification.alertType,
+        alertCategory: notification.alertCategory,
+        priority: notification.priority || 'medium',
+        channel: 'in_app', // Default to in-app, will be expanded based on user preferences
+        title: notification.title,
+        message: notification.message,
+        entityType: notification.entityType,
+        entityId: notification.entityId,
+        actionUrl: notification.actionUrl,
+        templateData: notification.templateData || {},
+        scheduledFor: notification.scheduledFor ? new Date(notification.scheduledFor) : new Date(),
+      };
+
+      return await this.queueNotification(queueData);
+    } catch (error) {
+      console.error('Error creating notification:', error);
+      throw new Error('Failed to create notification');
+    }
+  }
+
+  async queueNotification(notification: InsertNotificationQueue): Promise<NotificationQueue> {
+    try {
+      const [queuedNotification] = await db
+        .insert(notificationQueue)
+        .values(notification)
+        .returning();
+
+      return queuedNotification;
+    } catch (error) {
+      console.error('Error queueing notification:', error);
+      throw new Error('Failed to queue notification');
+    }
+  }
+
+  async updateNotificationStatus(id: string, updates: UpdateNotificationQueue, auditContext?: AuditContext): Promise<NotificationQueue> {
+    try {
+      const [updatedNotification] = await db
+        .update(notificationQueue)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(notificationQueue.id, id))
+        .returning();
+
+      if (!updatedNotification) {
+        throw new Error('Notification not found');
+      }
+
+      return updatedNotification;
+    } catch (error) {
+      console.error('Error updating notification status:', error);
+      throw new Error('Failed to update notification status');
+    }
+  }
+
+  async markNotificationAsRead(id: string, userId: string): Promise<NotificationQueue> {
+    try {
+      const [updatedNotification] = await db
+        .update(notificationQueue)
+        .set({ 
+          status: 'read',
+          readAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(notificationQueue.id, id),
+          eq(notificationQueue.userId, userId)
+        ))
+        .returning();
+
+      if (!updatedNotification) {
+        throw new Error('Notification not found or access denied');
+      }
+
+      return updatedNotification;
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      throw new Error('Failed to mark notification as read');
+    }
+  }
+
+  async dismissNotification(id: string, userId: string): Promise<NotificationQueue> {
+    try {
+      const [updatedNotification] = await db
+        .update(notificationQueue)
+        .set({ 
+          status: 'dismissed',
+          dismissedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(notificationQueue.id, id),
+          eq(notificationQueue.userId, userId)
+        ))
+        .returning();
+
+      if (!updatedNotification) {
+        throw new Error('Notification not found or access denied');
+      }
+
+      return updatedNotification;
+    } catch (error) {
+      console.error('Error dismissing notification:', error);
+      throw new Error('Failed to dismiss notification');
+    }
+  }
+
+  async bulkMarkNotificationsAsRead(notificationIds: string[], userId: string): Promise<{ updated: number }> {
+    try {
+      const result = await db
+        .update(notificationQueue)
+        .set({ 
+          status: 'read',
+          readAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          sql`${notificationQueue.id} = ANY(${notificationIds})`,
+          eq(notificationQueue.userId, userId)
+        ));
+
+      return { updated: result.rowsAffected };
+    } catch (error) {
+      console.error('Error bulk marking notifications as read:', error);
+      return { updated: 0 };
+    }
+  }
+
+  async bulkDismissNotifications(notificationIds: string[], userId: string): Promise<{ updated: number }> {
+    try {
+      const result = await db
+        .update(notificationQueue)
+        .set({ 
+          status: 'dismissed',
+          dismissedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          sql`${notificationQueue.id} = ANY(${notificationIds})`,
+          eq(notificationQueue.userId, userId)
+        ));
+
+      return { updated: result.rowsAffected };
+    } catch (error) {
+      console.error('Error bulk dismissing notifications:', error);
+      return { updated: 0 };
+    }
+  }
+
+  async getPendingNotifications(limit = 100): Promise<NotificationQueue[]> {
+    try {
+      return await db
+        .select()
+        .from(notificationQueue)
+        .where(and(
+          eq(notificationQueue.status, 'pending'),
+          lte(notificationQueue.scheduledFor, new Date())
+        ))
+        .orderBy(notificationQueue.priority, notificationQueue.scheduledFor)
+        .limit(limit);
+    } catch (error) {
+      console.error('Error fetching pending notifications:', error);
+      return [];
+    }
+  }
+
+  async getFailedNotifications(limit = 50): Promise<NotificationQueue[]> {
+    try {
+      return await db
+        .select()
+        .from(notificationQueue)
+        .where(eq(notificationQueue.status, 'failed'))
+        .orderBy(desc(notificationQueue.lastAttemptAt))
+        .limit(limit);
+    } catch (error) {
+      console.error('Error fetching failed notifications:', error);
+      return [];
+    }
+  }
+
+  // Alert Configuration operations
+  async getAlertConfigurations(filter?: AlertConfigurationFilter): Promise<AlertConfiguration[]> {
+    try {
+      const query = db.select().from(alertConfigurations);
+      
+      const conditions = [];
+      if (filter?.alertType) conditions.push(eq(alertConfigurations.alertType, filter.alertType));
+      if (filter?.alertCategory) conditions.push(eq(alertConfigurations.alertCategory, filter.alertCategory));
+      if (filter?.isGlobal !== undefined) conditions.push(eq(alertConfigurations.isGlobal, filter.isGlobal));
+      if (filter?.isActive !== undefined) conditions.push(eq(alertConfigurations.isActive, filter.isActive));
+      if (filter?.monitoringEnabled !== undefined) conditions.push(eq(alertConfigurations.monitoringEnabled, filter.monitoringEnabled));
+
+      if (conditions.length > 0) {
+        query.where(and(...conditions));
+      }
+
+      return await query.orderBy(desc(alertConfigurations.createdAt));
+    } catch (error) {
+      console.error('Error fetching alert configurations:', error);
+      return [];
+    }
+  }
+
+  async getAlertConfiguration(id: string): Promise<AlertConfiguration | undefined> {
+    try {
+      const [config] = await db
+        .select()
+        .from(alertConfigurations)
+        .where(eq(alertConfigurations.id, id));
+      return config;
+    } catch (error) {
+      console.error('Error fetching alert configuration:', error);
+      return undefined;
+    }
+  }
+
+  async getActiveAlertConfigurations(): Promise<AlertConfiguration[]> {
+    try {
+      return await db
+        .select()
+        .from(alertConfigurations)
+        .where(and(
+          eq(alertConfigurations.isActive, true),
+          eq(alertConfigurations.monitoringEnabled, true)
+        ))
+        .orderBy(alertConfigurations.priority);
+    } catch (error) {
+      console.error('Error fetching active alert configurations:', error);
+      return [];
+    }
+  }
+
+  async getUserAlertConfigurations(userId: string): Promise<AlertConfiguration[]> {
+    try {
+      return await db
+        .select()
+        .from(alertConfigurations)
+        .where(
+          sql`${alertConfigurations.isGlobal} = true OR ${userId} = ANY(${alertConfigurations.targetUsers})`
+        )
+        .orderBy(alertConfigurations.priority);
+    } catch (error) {
+      console.error('Error fetching user alert configurations:', error);
+      return [];
+    }
+  }
+
+  async getRoleAlertConfigurations(role: string): Promise<AlertConfiguration[]> {
+    try {
+      return await db
+        .select()
+        .from(alertConfigurations)
+        .where(
+          sql`${alertConfigurations.isGlobal} = true OR ${role} = ANY(${alertConfigurations.targetRoles})`
+        )
+        .orderBy(alertConfigurations.priority);
+    } catch (error) {
+      console.error('Error fetching role alert configurations:', error);
+      return [];
+    }
+  }
+
+  async createAlertConfiguration(config: InsertAlertConfiguration, auditContext?: AuditContext): Promise<AlertConfiguration> {
+    try {
+      const [newConfig] = await db
+        .insert(alertConfigurations)
+        .values(config)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'alert_configurations',
+          newConfig.id,
+          'create',
+          'alert_management',
+          null,
+          config,
+          undefined,
+          undefined,
+          `Created alert configuration: ${config.name}`
+        );
+      }
+
+      return newConfig;
+    } catch (error) {
+      console.error('Error creating alert configuration:', error);
+      throw new Error('Failed to create alert configuration');
+    }
+  }
+
+  async updateAlertConfiguration(id: string, config: UpdateAlertConfiguration, auditContext?: AuditContext): Promise<AlertConfiguration> {
+    try {
+      const [oldConfig] = await db
+        .select()
+        .from(alertConfigurations)
+        .where(eq(alertConfigurations.id, id));
+
+      if (!oldConfig) {
+        throw new Error('Alert configuration not found');
+      }
+
+      const [updatedConfig] = await db
+        .update(alertConfigurations)
+        .set({ ...config, updatedAt: new Date() })
+        .where(eq(alertConfigurations.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'alert_configurations',
+          id,
+          'update',
+          'alert_management',
+          oldConfig,
+          config,
+          undefined,
+          undefined,
+          `Updated alert configuration: ${oldConfig.name}`
+        );
+      }
+
+      return updatedConfig;
+    } catch (error) {
+      console.error('Error updating alert configuration:', error);
+      throw new Error('Failed to update alert configuration');
+    }
+  }
+
+  async deleteAlertConfiguration(id: string, auditContext?: AuditContext): Promise<void> {
+    try {
+      const [config] = await db
+        .select()
+        .from(alertConfigurations)
+        .where(eq(alertConfigurations.id, id));
+
+      if (!config) {
+        throw new Error('Alert configuration not found');
+      }
+
+      await db
+        .delete(alertConfigurations)
+        .where(eq(alertConfigurations.id, id));
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'alert_configurations',
+          id,
+          'delete',
+          'alert_management',
+          config,
+          null,
+          undefined,
+          undefined,
+          `Deleted alert configuration: ${config.name}`
+        );
+      }
+    } catch (error) {
+      console.error('Error deleting alert configuration:', error);
+      throw new Error('Failed to delete alert configuration');
+    }
+  }
+
+  async toggleAlertConfiguration(id: string, isActive: boolean, auditContext?: AuditContext): Promise<AlertConfiguration> {
+    try {
+      const [updatedConfig] = await db
+        .update(alertConfigurations)
+        .set({ isActive, updatedAt: new Date() })
+        .where(eq(alertConfigurations.id, id))
+        .returning();
+
+      if (!updatedConfig) {
+        throw new Error('Alert configuration not found');
+      }
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'alert_configurations',
+          id,
+          'update',
+          'alert_management',
+          { isActive: !isActive },
+          { isActive },
+          undefined,
+          undefined,
+          `${isActive ? 'Activated' : 'Deactivated'} alert configuration: ${updatedConfig.name}`
+        );
+      }
+
+      return updatedConfig;
+    } catch (error) {
+      console.error('Error toggling alert configuration:', error);
+      throw new Error('Failed to toggle alert configuration');
+    }
+  }
+
+  // Notification History operations
+  async getNotificationHistory(filter: NotificationHistoryFilter): Promise<NotificationHistory[]> {
+    try {
+      let query = db.select().from(notificationHistory);
+
+      const conditions = [];
+      if (filter.userId) conditions.push(eq(notificationHistory.userId, filter.userId));
+      if (filter.status) conditions.push(eq(notificationHistory.status, filter.status));
+      if (filter.alertType) conditions.push(eq(notificationHistory.alertType, filter.alertType));
+      if (filter.alertCategory) conditions.push(eq(notificationHistory.alertCategory, filter.alertCategory));
+      if (filter.channel) conditions.push(eq(notificationHistory.channel, filter.channel));
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      return await query
+        .orderBy(desc(notificationHistory.createdAt))
+        .limit(filter.limit || 50)
+        .offset(filter.offset || 0);
+    } catch (error) {
+      console.error('Error fetching notification history:', error);
+      return [];
+    }
+  }
+
+  async getUserNotificationHistory(userId: string, filter?: Partial<NotificationHistoryFilter>): Promise<NotificationHistory[]> {
+    try {
+      const historyFilter: NotificationHistoryFilter = {
+        userId,
+        limit: 100,
+        offset: 0,
+        ...filter,
+      };
+
+      return await this.getNotificationHistory(historyFilter);
+    } catch (error) {
+      console.error('Error fetching user notification history:', error);
+      return [];
+    }
+  }
+
+  async getNotificationAnalytics(userId?: string, dateFrom?: string, dateTo?: string): Promise<NotificationAnalytics> {
+    try {
+      // This is a comprehensive implementation that would analyze notification effectiveness
+      // For now, returning a mock implementation with the correct structure
+      return {
+        deliveryStats: {
+          totalSent: 0,
+          successRate: 0,
+          failureRate: 0,
+          averageDeliveryTime: 0,
+          channelBreakdown: [],
+        },
+        engagementStats: {
+          openRate: 0,
+          clickRate: 0,
+          dismissalRate: 0,
+          responseRate: 0,
+          preferredChannels: [],
+        },
+        alertEffectiveness: {
+          mostTriggered: [],
+          leastEngaged: [],
+        },
+      };
+    } catch (error) {
+      console.error('Error calculating notification analytics:', error);
+      throw new Error('Failed to calculate notification analytics');
+    }
+  }
+
+  async archiveNotificationHistory(olderThanDays: number): Promise<{ archived: number }> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+
+      // In a production system, this would move old records to an archive table
+      const result = await db
+        .delete(notificationHistory)
+        .where(lte(notificationHistory.createdAt, cutoffDate));
+
+      return { archived: result.rowsAffected };
+    } catch (error) {
+      console.error('Error archiving notification history:', error);
+      return { archived: 0 };
+    }
+  }
+
+  // Alert Monitoring operations
+  async getAlertMonitoringDashboard(userId?: string): Promise<AlertMonitoringDashboard> {
+    try {
+      // Mock implementation - would contain real monitoring logic
+      return {
+        activeAlerts: [],
+        alertMetrics: {
+          totalAlerts: 0,
+          criticalAlerts: 0,
+          acknowledgedAlerts: 0,
+          averageResponseTime: 0,
+          alertTrends: [],
+        },
+        systemHealth: {
+          monitoringActive: true,
+          lastHealthCheck: new Date().toISOString(),
+          alertsProcessed: 0,
+          notificationsSent: 0,
+          failureRate: 0,
+        },
+      };
+    } catch (error) {
+      console.error('Error fetching alert monitoring dashboard:', error);
+      throw new Error('Failed to fetch alert monitoring dashboard');
+    }
+  }
+
+  async checkThresholdAlerts(): Promise<{ triggered: number; notifications: number }> {
+    try {
+      // Mock implementation - would contain real threshold checking logic
+      return { triggered: 0, notifications: 0 };
+    } catch (error) {
+      console.error('Error checking threshold alerts:', error);
+      return { triggered: 0, notifications: 0 };
+    }
+  }
+
+  async evaluateBusinessAlerts(): Promise<{ evaluated: number; triggered: number }> {
+    try {
+      // Mock implementation - would contain real business alert logic
+      return { evaluated: 0, triggered: 0 };
+    } catch (error) {
+      console.error('Error evaluating business alerts:', error);
+      return { evaluated: 0, triggered: 0 };
+    }
+  }
+
+  async processNotificationQueue(batchSize = 50): Promise<{ processed: number; failed: number }> {
+    try {
+      // Mock implementation - would contain real queue processing logic
+      return { processed: 0, failed: 0 };
+    } catch (error) {
+      console.error('Error processing notification queue:', error);
+      return { processed: 0, failed: 0 };
+    }
+  }
+
+  async getNotificationDeliveryStatus(notificationId: string): Promise<NotificationDeliveryStatus> {
+    try {
+      const notification = await this.getNotification(notificationId);
+      
+      if (!notification) {
+        throw new Error('Notification not found');
+      }
+
+      return {
+        notificationId,
+        status: notification.status,
+        channels: [{
+          channel: notification.channel,
+          status: notification.status === 'sent' ? 'sent' : 'pending',
+          attemptCount: notification.attempts,
+          lastAttempt: notification.lastAttemptAt?.toISOString(),
+          errorMessage: notification.errorMessage || undefined,
+          deliveredAt: notification.deliveredAt?.toISOString(),
+          readAt: notification.readAt?.toISOString(),
+        }],
+        metadata: {
+          totalAttempts: notification.attempts,
+          processingTime: 0, // Would be calculated from actual timing data
+          deliveryTime: notification.deliveredAt && notification.createdAt ? 
+            notification.deliveredAt.getTime() - notification.createdAt.getTime() : undefined,
+        },
+      };
+    } catch (error) {
+      console.error('Error fetching notification delivery status:', error);
+      throw new Error('Failed to fetch notification delivery status');
+    }
+  }
+
+  // Bulk notification operations
+  async createBulkNotifications(notifications: CreateNotification[]): Promise<NotificationQueue[]> {
+    try {
+      const queuedNotifications: NotificationQueue[] = [];
+      
+      for (const notification of notifications) {
+        const queued = await this.createNotification(notification);
+        queuedNotifications.push(queued);
+      }
+
+      return queuedNotifications;
+    } catch (error) {
+      console.error('Error creating bulk notifications:', error);
+      return [];
+    }
+  }
+
+  async sendDigestNotifications(frequency: 'daily_digest' | 'weekly_summary' | 'monthly_report'): Promise<{ sent: number; failed: number }> {
+    try {
+      // Mock implementation - would contain real digest logic
+      return { sent: 0, failed: 0 };
+    } catch (error) {
+      console.error('Error sending digest notifications:', error);
+      return { sent: 0, failed: 0 };
+    }
+  }
+
+  async cleanupOldNotifications(retentionDays: number): Promise<{ deleted: number }> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+      const result = await db
+        .delete(notificationQueue)
+        .where(and(
+          lte(notificationQueue.createdAt, cutoffDate),
+          sql`${notificationQueue.status} IN ('sent', 'read', 'dismissed')`
+        ));
+
+      return { deleted: result.rowsAffected };
+    } catch (error) {
+      console.error('Error cleaning up old notifications:', error);
+      return { deleted: 0 };
+    }
+  }
+
+  // Utility helper methods
+  private calculateTimeAgo(date: Date | null): string {
+    if (!date) return 'Unknown';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    
+    return date.toLocaleDateString();
   }
 }
 
