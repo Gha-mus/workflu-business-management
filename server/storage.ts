@@ -23,9 +23,15 @@ import {
   type InsertFilterRecord,
   type Setting,
   type InsertSetting,
+  type FinancialSummaryResponse,
+  type CashFlowResponse,
+  type InventoryAnalyticsResponse,
+  type SupplierPerformanceResponse,
+  type TradingActivityResponse,
+  type DateRangeFilter,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sum, sql } from "drizzle-orm";
+import { eq, desc, and, sum, sql, gte, lte, count, avg } from "drizzle-orm";
 import Decimal from "decimal.js";
 
 export interface IStorage {
@@ -80,6 +86,14 @@ export interface IStorage {
   // Filter operations
   getFilterRecords(): Promise<FilterRecord[]>;
   createFilterRecord(record: InsertFilterRecord): Promise<FilterRecord>;
+  
+  // Reporting operations
+  getFinancialSummary(filters?: DateRangeFilter): Promise<FinancialSummaryResponse>;
+  getCashflowAnalysis(period: string): Promise<CashFlowResponse>;
+  getInventoryAnalytics(): Promise<InventoryAnalyticsResponse>;
+  getSupplierPerformance(): Promise<SupplierPerformanceResponse>;
+  getTradingActivity(): Promise<TradingActivityResponse>;
+  exportReportData(type: string, format: string): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -643,6 +657,557 @@ export class DatabaseStorage implements IStorage {
   async createFilterRecord(record: InsertFilterRecord): Promise<FilterRecord> {
     const [result] = await db.insert(filterRecords).values(record).returning();
     return result;
+  }
+
+  // Reporting operations with USD normalization
+  async getFinancialSummary(filters?: DateRangeFilter): Promise<FinancialSummaryResponse> {
+    // Get current exchange rate
+    const exchangeRate = await this.getExchangeRate();
+
+    // Build date filter conditions
+    const dateConditions = [];
+    if (filters?.startDate) {
+      dateConditions.push(gte(purchases.date, new Date(filters.startDate)));
+    }
+    if (filters?.endDate) {
+      dateConditions.push(lte(purchases.date, new Date(filters.endDate)));
+    }
+
+    // Get capital entries summary
+    const capitalResult = await db
+      .select({
+        capitalIn: sum(
+          sql`CASE WHEN ${capitalEntries.type} = 'CapitalIn' THEN ${capitalEntries.amount} ELSE 0 END`
+        ),
+        capitalOut: sum(
+          sql`CASE WHEN ${capitalEntries.type} = 'CapitalOut' THEN ${capitalEntries.amount} ELSE 0 END`
+        ),
+      })
+      .from(capitalEntries)
+      .where(dateConditions.length > 0 ? and(...dateConditions.map(cond => 
+        // Map purchase date conditions to capital entry dates
+        cond.toString().includes('date') ? 
+          cond.toString().replace('purchases.date', 'capital_entries.date') 
+          : cond
+      )) : undefined);
+
+    const capitalIn = new Decimal(capitalResult[0]?.capitalIn?.toString() || '0');
+    const capitalOut = new Decimal(capitalResult[0]?.capitalOut?.toString() || '0');
+    const currentBalance = capitalIn.sub(capitalOut);
+
+    // Get purchase totals with USD normalization
+    const purchaseQuery = db
+      .select({
+        totalPurchases: sum(purchases.total),
+        totalPaid: sum(purchases.amountPaid),
+        usdCount: count(sql`CASE WHEN ${purchases.currency} = 'USD' THEN 1 END`),
+        usdAmount: sum(sql`CASE WHEN ${purchases.currency} = 'USD' THEN ${purchases.total} ELSE 0 END`),
+        etbCount: count(sql`CASE WHEN ${purchases.currency} = 'ETB' THEN 1 END`),
+        etbAmount: sum(sql`CASE WHEN ${purchases.currency} = 'ETB' THEN (${purchases.total} / ${purchases.exchangeRate}) ELSE 0 END`),
+      })
+      .from(purchases);
+
+    if (dateConditions.length > 0) {
+      purchaseQuery.where(and(...dateConditions));
+    }
+
+    const purchaseResult = await purchaseQuery;
+    
+    const totalPurchases = new Decimal(purchaseResult[0]?.totalPurchases?.toString() || '0');
+    const totalPaid = new Decimal(purchaseResult[0]?.totalPaid?.toString() || '0');
+    const totalOutstanding = totalPurchases.sub(totalPaid);
+
+    // Calculate inventory value with USD normalization
+    const inventoryResult = await db
+      .select({
+        totalValue: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
+      })
+      .from(warehouseStock)
+      .where(sql`${warehouseStock.qtyKgClean} > 0`);
+
+    const totalInventoryValue = new Decimal(inventoryResult[0]?.totalValue?.toString() || '0');
+    const netPosition = currentBalance.add(totalInventoryValue).sub(totalOutstanding);
+
+    return {
+      summary: {
+        currentBalance: currentBalance.toNumber(),
+        capitalIn: capitalIn.toNumber(),
+        capitalOut: capitalOut.toNumber(),
+        totalPurchases: totalPurchases.toNumber(),
+        totalPaid: totalPaid.toNumber(),
+        totalOutstanding: totalOutstanding.toNumber(),
+        totalInventoryValue: totalInventoryValue.toNumber(),
+        netPosition: netPosition.toNumber(),
+      },
+      currencyBreakdown: {
+        usd: {
+          amount: new Decimal(purchaseResult[0]?.usdAmount?.toString() || '0').toNumber(),
+          count: Number(purchaseResult[0]?.usdCount || 0),
+        },
+        etb: {
+          amount: new Decimal(purchaseResult[0]?.etbAmount?.toString() || '0').toNumber(),
+          count: Number(purchaseResult[0]?.etbCount || 0),
+        },
+      },
+      exchangeRate,
+    };
+  }
+
+  async getCashflowAnalysis(period: string): Promise<CashFlowResponse> {
+    // Determine date range based on period
+    const endDate = new Date();
+    const startDate = new Date();
+    
+    switch (period) {
+      case 'last-7-days':
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+      case 'last-30-days':
+        startDate.setDate(startDate.getDate() - 30);
+        break;
+      case 'last-90-days':
+        startDate.setDate(startDate.getDate() - 90);
+        break;
+      case 'last-year':
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        break;
+      default:
+        startDate.setDate(startDate.getDate() - 30);
+    }
+
+    // Get daily capital flows
+    const capitalFlows = await db
+      .select({
+        date: sql<string>`DATE(${capitalEntries.date})`,
+        capitalIn: sum(
+          sql`CASE WHEN ${capitalEntries.type} = 'CapitalIn' THEN ${capitalEntries.amount} ELSE 0 END`
+        ),
+        capitalOut: sum(
+          sql`CASE WHEN ${capitalEntries.type} = 'CapitalOut' THEN ${capitalEntries.amount} ELSE 0 END`
+        ),
+      })
+      .from(capitalEntries)
+      .where(and(
+        gte(capitalEntries.date, startDate),
+        lte(capitalEntries.date, endDate)
+      ))
+      .groupBy(sql`DATE(${capitalEntries.date})`)
+      .orderBy(sql`DATE(${capitalEntries.date})`);
+
+    // Get daily purchase payments
+    const purchasePayments = await db
+      .select({
+        date: sql<string>`DATE(${purchases.date})`,
+        payments: sum(purchases.amountPaid),
+      })
+      .from(purchases)
+      .where(and(
+        gte(purchases.date, startDate),
+        lte(purchases.date, endDate),
+        sql`${purchases.amountPaid} > 0`
+      ))
+      .groupBy(sql`DATE(${purchases.date})`)
+      .orderBy(sql`DATE(${purchases.date})`);
+
+    // Merge and calculate net flows
+    const flowMap = new Map();
+    
+    capitalFlows.forEach(flow => {
+      const capitalIn = new Decimal(flow.capitalIn?.toString() || '0');
+      const capitalOut = new Decimal(flow.capitalOut?.toString() || '0');
+      flowMap.set(flow.date, {
+        date: flow.date,
+        capitalIn: capitalIn.toNumber(),
+        capitalOut: capitalOut.toNumber(),
+        purchasePayments: 0,
+        netFlow: capitalIn.sub(capitalOut).toNumber(),
+      });
+    });
+
+    purchasePayments.forEach(payment => {
+      const existing = flowMap.get(payment.date) || {
+        date: payment.date,
+        capitalIn: 0,
+        capitalOut: 0,
+        purchasePayments: 0,
+        netFlow: 0,
+      };
+      const paymentAmount = new Decimal(payment.payments?.toString() || '0');
+      existing.purchasePayments = paymentAmount.toNumber();
+      existing.netFlow = existing.capitalIn - existing.capitalOut - existing.purchasePayments;
+      flowMap.set(payment.date, existing);
+    });
+
+    const data = Array.from(flowMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Calculate summary
+    const summary = data.reduce(
+      (acc, day) => ({
+        totalIn: acc.totalIn + day.capitalIn,
+        totalOut: acc.totalOut + day.capitalOut + day.purchasePayments,
+        netFlow: acc.netFlow + day.netFlow,
+      }),
+      { totalIn: 0, totalOut: 0, netFlow: 0 }
+    );
+
+    return {
+      period,
+      data,
+      summary,
+    };
+  }
+
+  async getInventoryAnalytics(): Promise<InventoryAnalyticsResponse> {
+    // Get warehouse summary with USD valuation
+    const warehouseSummary = await db
+      .select({
+        warehouse: warehouseStock.warehouse,
+        totalKg: sum(warehouseStock.qtyKgClean),
+        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
+        count: count(),
+      })
+      .from(warehouseStock)
+      .where(sql`${warehouseStock.qtyKgClean} > 0`)
+      .groupBy(warehouseStock.warehouse);
+
+    const firstWarehouse = warehouseSummary.find(w => w.warehouse === 'FIRST') || { totalKg: '0', valueUsd: '0', count: 0 };
+    const finalWarehouse = warehouseSummary.find(w => w.warehouse === 'FINAL') || { totalKg: '0', valueUsd: '0', count: 0 };
+
+    // Get status breakdown
+    const statusBreakdown = await db
+      .select({
+        status: warehouseStock.status,
+        count: count(),
+        totalKg: sum(warehouseStock.qtyKgClean),
+        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
+      })
+      .from(warehouseStock)
+      .where(sql`${warehouseStock.qtyKgClean} > 0`)
+      .groupBy(warehouseStock.status);
+
+    // Get filter analysis
+    const filterAnalysis = await db
+      .select({
+        totalFiltered: count(),
+        avgYield: avg(filterRecords.filterYield),
+        totalInput: sum(filterRecords.inputKg),
+        totalOutput: sum(filterRecords.outputCleanKg),
+      })
+      .from(filterRecords);
+
+    // Get top products by supplier
+    const topProducts = await db
+      .select({
+        supplierId: warehouseStock.supplierId,
+        supplierName: suppliers.name,
+        totalKg: sum(warehouseStock.qtyKgClean),
+        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
+      })
+      .from(warehouseStock)
+      .innerJoin(suppliers, eq(warehouseStock.supplierId, suppliers.id))
+      .where(sql`${warehouseStock.qtyKgClean} > 0`)
+      .groupBy(warehouseStock.supplierId, suppliers.name)
+      .orderBy(desc(sum(warehouseStock.qtyKgClean)))
+      .limit(10);
+
+    return {
+      warehouseSummary: {
+        first: {
+          totalKg: new Decimal(firstWarehouse.totalKg?.toString() || '0').toNumber(),
+          valueUsd: new Decimal(firstWarehouse.valueUsd?.toString() || '0').toNumber(),
+          count: Number(firstWarehouse.count || 0),
+        },
+        final: {
+          totalKg: new Decimal(finalWarehouse.totalKg?.toString() || '0').toNumber(),
+          valueUsd: new Decimal(finalWarehouse.valueUsd?.toString() || '0').toNumber(),
+          count: Number(finalWarehouse.count || 0),
+        },
+      },
+      statusBreakdown: statusBreakdown.map(status => ({
+        status: status.status,
+        count: Number(status.count || 0),
+        totalKg: new Decimal(status.totalKg?.toString() || '0').toNumber(),
+        valueUsd: new Decimal(status.valueUsd?.toString() || '0').toNumber(),
+      })),
+      filterAnalysis: {
+        totalFiltered: Number(filterAnalysis[0]?.totalFiltered || 0),
+        averageYield: new Decimal(filterAnalysis[0]?.avgYield?.toString() || '0').toNumber(),
+        totalInputKg: new Decimal(filterAnalysis[0]?.totalInput?.toString() || '0').toNumber(),
+        totalOutputKg: new Decimal(filterAnalysis[0]?.totalOutput?.toString() || '0').toNumber(),
+      },
+      topProducts: topProducts.map(product => ({
+        supplierId: product.supplierId,
+        supplierName: product.supplierName,
+        totalKg: new Decimal(product.totalKg?.toString() || '0').toNumber(),
+        valueUsd: new Decimal(product.valueUsd?.toString() || '0').toNumber(),
+      })),
+    };
+  }
+
+  async getSupplierPerformance(): Promise<SupplierPerformanceResponse> {
+    // Get supplier metrics with USD normalization
+    const supplierMetrics = await db
+      .select({
+        supplierId: suppliers.id,
+        supplierName: suppliers.name,
+        totalPurchases: count(purchases.id),
+        totalValue: sum(sql`
+          CASE 
+            WHEN ${purchases.currency} = 'USD' THEN ${purchases.total}
+            ELSE ${purchases.total} / COALESCE(${purchases.exchangeRate}, 1)
+          END
+        `),
+        totalWeight: sum(purchases.weight),
+        avgPrice: avg(sql`
+          CASE 
+            WHEN ${purchases.currency} = 'USD' THEN ${purchases.pricePerKg}
+            ELSE ${purchases.pricePerKg} / COALESCE(${purchases.exchangeRate}, 1)
+          END
+        `),
+        orderCount: count(sql`DISTINCT ${purchases.orderId}`),
+      })
+      .from(suppliers)
+      .leftJoin(purchases, eq(suppliers.id, purchases.supplierId))
+      .where(eq(suppliers.isActive, true))
+      .groupBy(suppliers.id, suppliers.name);
+
+    // Calculate trends (simplified - comparing last 30 days vs previous 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+    const recentMetrics = await db
+      .select({
+        supplierId: purchases.supplierId,
+        avgPrice: avg(sql`
+          CASE 
+            WHEN ${purchases.currency} = 'USD' THEN ${purchases.pricePerKg}
+            ELSE ${purchases.pricePerKg} / COALESCE(${purchases.exchangeRate}, 1)
+          END
+        `),
+        totalWeight: sum(purchases.weight),
+      })
+      .from(purchases)
+      .where(gte(purchases.date, thirtyDaysAgo))
+      .groupBy(purchases.supplierId);
+
+    const previousMetrics = await db
+      .select({
+        supplierId: purchases.supplierId,
+        avgPrice: avg(sql`
+          CASE 
+            WHEN ${purchases.currency} = 'USD' THEN ${purchases.pricePerKg}
+            ELSE ${purchases.pricePerKg} / COALESCE(${purchases.exchangeRate}, 1)
+          END
+        `),
+        totalWeight: sum(purchases.weight),
+      })
+      .from(purchases)
+      .where(and(
+        gte(purchases.date, sixtyDaysAgo),
+        lte(purchases.date, thirtyDaysAgo)
+      ))
+      .groupBy(purchases.supplierId);
+
+    // Build trends map
+    const recentMap = new Map(recentMetrics.map(m => [m.supplierId, m]));
+    const previousMap = new Map(previousMetrics.map(m => [m.supplierId, m]));
+
+    const suppliers_ = supplierMetrics.map(supplier => {
+      const recent = recentMap.get(supplier.supplierId);
+      const previous = previousMap.get(supplier.supplierId);
+      
+      let priceChange = 0;
+      let volumeChange = 0;
+
+      if (recent && previous) {
+        const recentPrice = new Decimal(recent.avgPrice?.toString() || '0');
+        const previousPrice = new Decimal(previous.avgPrice?.toString() || '0');
+        if (previousPrice.gt(0)) {
+          priceChange = recentPrice.sub(previousPrice).div(previousPrice).mul(100).toNumber();
+        }
+
+        const recentVolume = new Decimal(recent.totalWeight?.toString() || '0');
+        const previousVolume = new Decimal(previous.totalWeight?.toString() || '0');
+        if (previousVolume.gt(0)) {
+          volumeChange = recentVolume.sub(previousVolume).div(previousVolume).mul(100).toNumber();
+        }
+      }
+
+      return {
+        id: supplier.supplierId,
+        name: supplier.supplierName,
+        metrics: {
+          totalPurchases: Number(supplier.totalPurchases || 0),
+          totalValue: new Decimal(supplier.totalValue?.toString() || '0').toNumber(),
+          totalWeight: new Decimal(supplier.totalWeight?.toString() || '0').toNumber(),
+          averagePrice: new Decimal(supplier.avgPrice?.toString() || '0').toNumber(),
+          averageQuality: undefined, // Could be calculated from warehouse data
+          onTimeDelivery: 95, // Placeholder - would need delivery tracking
+          orderCount: Number(supplier.orderCount || 0),
+        },
+        trends: {
+          priceChange,
+          volumeChange,
+        },
+      };
+    });
+
+    const activeSuppliers = suppliers_.filter(s => s.metrics.totalPurchases > 0);
+    const topPerformer = activeSuppliers.reduce((best, current) => 
+      current.metrics.totalValue > best.metrics.totalValue ? current : best,
+      activeSuppliers[0]
+    );
+
+    return {
+      suppliers: suppliers_,
+      summary: {
+        totalSuppliers: suppliers_.length,
+        activeSuppliers: activeSuppliers.length,
+        topPerformer: topPerformer?.name,
+      },
+    };
+  }
+
+  async getTradingActivity(): Promise<TradingActivityResponse> {
+    // Get order fulfillment stats
+    const orderStats = await db
+      .select({
+        status: orders.status,
+        count: count(),
+      })
+      .from(orders)
+      .groupBy(orders.status);
+
+    const stats = orderStats.reduce((acc, stat) => {
+      const statusCount = Number(stat.count || 0);
+      acc.total += statusCount;
+      
+      switch (stat.status) {
+        case 'completed':
+          acc.completed += statusCount;
+          break;
+        case 'cancelled':
+          acc.cancelled += statusCount;
+          break;
+        default:
+          acc.pending += statusCount;
+      }
+      
+      return acc;
+    }, { total: 0, completed: 0, pending: 0, cancelled: 0 });
+
+    const fulfillmentRate = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
+
+    // Get volume analysis from purchases (as proxy for order volume)
+    const volumeAnalysis = await db
+      .select({
+        totalVolume: sum(purchases.weight),
+        avgOrderSize: avg(purchases.weight),
+        maxOrderSize: sql<number>`MAX(${purchases.weight})`,
+        orderCount: count(),
+      })
+      .from(purchases);
+
+    // Get time analysis (simplified - based on creation to completion time)
+    const completedOrders = await db
+      .select({
+        createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
+      })
+      .from(orders)
+      .where(eq(orders.status, 'completed'));
+
+    let totalProcessingDays = 0;
+    let processedOrdersCount = 0;
+
+    completedOrders.forEach(order => {
+      if (order.createdAt && order.updatedAt) {
+        const days = (new Date(order.updatedAt).getTime() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+        totalProcessingDays += days;
+        processedOrdersCount++;
+      }
+    });
+
+    const averageProcessingTime = processedOrdersCount > 0 ? totalProcessingDays / processedOrdersCount : 0;
+
+    return {
+      orderFulfillment: {
+        stats,
+        fulfillmentRate,
+      },
+      volumeAnalysis: {
+        totalVolume: new Decimal(volumeAnalysis[0]?.totalVolume?.toString() || '0').toNumber(),
+        averageOrderSize: new Decimal(volumeAnalysis[0]?.avgOrderSize?.toString() || '0').toNumber(),
+        largestOrder: Number(volumeAnalysis[0]?.maxOrderSize || 0),
+      },
+      timeAnalysis: {
+        averageProcessingTime: Math.round(averageProcessingTime * 10) / 10,
+        totalProcessingDays: Math.round(totalProcessingDays),
+      },
+    };
+  }
+
+  async exportReportData(type: string, format: string): Promise<any> {
+    // Implementation depends on the specific type requested
+    switch (type) {
+      case 'financial':
+        const financialData = await this.getFinancialSummary();
+        return format === 'csv' ? this.convertToCSV(financialData) : financialData;
+      
+      case 'inventory':
+        const inventoryData = await this.getInventoryAnalytics();
+        return format === 'csv' ? this.convertToCSV(inventoryData) : inventoryData;
+        
+      case 'suppliers':
+        const supplierData = await this.getSupplierPerformance();
+        return format === 'csv' ? this.convertToCSV(supplierData) : supplierData;
+        
+      case 'trading':
+        const tradingData = await this.getTradingActivity();
+        return format === 'csv' ? this.convertToCSV(tradingData) : tradingData;
+        
+      case 'all':
+        const allData = {
+          financial: await this.getFinancialSummary(),
+          inventory: await this.getInventoryAnalytics(),
+          suppliers: await this.getSupplierPerformance(),
+          trading: await this.getTradingActivity(),
+        };
+        return format === 'csv' ? this.convertToCSV(allData) : allData;
+        
+      default:
+        throw new Error(`Unsupported report type: ${type}`);
+    }
+  }
+
+  // Helper method to convert data to CSV format
+  private convertToCSV(data: any): string {
+    // Simple CSV conversion - in a real implementation, you'd want more sophisticated formatting
+    if (Array.isArray(data)) {
+      if (data.length === 0) return '';
+      
+      const headers = Object.keys(data[0]);
+      const csvRows = [headers.join(',')];
+      
+      for (const row of data) {
+        const values = headers.map(header => {
+          const value = row[header];
+          return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value;
+        });
+        csvRows.push(values.join(','));
+      }
+      
+      return csvRows.join('\n');
+    } else if (typeof data === 'object') {
+      // Convert object to key-value CSV
+      return Object.entries(data)
+        .map(([key, value]) => `"${key}","${JSON.stringify(value).replace(/"/g, '""')}"`)
+        .join('\n');
+    }
+    
+    return JSON.stringify(data);
   }
 
   // Utility method to create consistent hash for advisory locks

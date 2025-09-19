@@ -354,3 +354,168 @@ export type WarehouseStatusUpdate = z.infer<typeof warehouseStatusUpdateSchema>;
 export type WarehouseFilterOperation = z.infer<typeof warehouseFilterOperationSchema>;
 export type WarehouseMoveToFinal = z.infer<typeof warehouseMoveToFinalSchema>;
 export type WarehouseStockFilter = z.infer<typeof warehouseStockFilterSchema>;
+
+// Reporting Schemas and Types
+
+// Financial Summary Schema
+export const financialSummaryResponseSchema = z.object({
+  summary: z.object({
+    currentBalance: z.number(),
+    capitalIn: z.number(),
+    capitalOut: z.number(),
+    totalPurchases: z.number(),
+    totalPaid: z.number(),
+    totalOutstanding: z.number(),
+    totalInventoryValue: z.number(),
+    netPosition: z.number(),
+  }),
+  currencyBreakdown: z.object({
+    usd: z.object({
+      amount: z.number(),
+      count: z.number(),
+    }),
+    etb: z.object({
+      amount: z.number(),
+      count: z.number(),
+    }),
+  }),
+  exchangeRate: z.number(),
+});
+
+// Cash Flow Schema
+export const cashFlowResponseSchema = z.object({
+  period: z.string(),
+  data: z.array(z.object({
+    date: z.string(),
+    capitalIn: z.number(),
+    capitalOut: z.number(),
+    purchasePayments: z.number(),
+    netFlow: z.number(),
+  })),
+  summary: z.object({
+    totalIn: z.number(),
+    totalOut: z.number(),
+    netFlow: z.number(),
+  }),
+});
+
+// Inventory Analytics Schema
+export const inventoryAnalyticsResponseSchema = z.object({
+  warehouseSummary: z.object({
+    first: z.object({
+      totalKg: z.number(),
+      valueUsd: z.number(),
+      count: z.number(),
+    }),
+    final: z.object({
+      totalKg: z.number(),
+      valueUsd: z.number(),
+      count: z.number(),
+    }),
+  }),
+  statusBreakdown: z.array(z.object({
+    status: z.string(),
+    count: z.number(),
+    totalKg: z.number(),
+    valueUsd: z.number(),
+  })),
+  filterAnalysis: z.object({
+    totalFiltered: z.number(),
+    averageYield: z.number(),
+    totalInputKg: z.number(),
+    totalOutputKg: z.number(),
+  }),
+  topProducts: z.array(z.object({
+    supplierId: z.string(),
+    supplierName: z.string(),
+    totalKg: z.number(),
+    valueUsd: z.number(),
+  })),
+});
+
+// Supplier Performance Schema
+export const supplierPerformanceResponseSchema = z.object({
+  suppliers: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    metrics: z.object({
+      totalPurchases: z.number(),
+      totalValue: z.number(),
+      totalWeight: z.number(),
+      averagePrice: z.number(),
+      averageQuality: z.string().optional(),
+      onTimeDelivery: z.number(),
+      orderCount: z.number(),
+    }),
+    trends: z.object({
+      priceChange: z.number(),
+      volumeChange: z.number(),
+    }),
+  })),
+  summary: z.object({
+    totalSuppliers: z.number(),
+    activeSuppliers: z.number(),
+    topPerformer: z.string().optional(),
+  }),
+});
+
+// Trading Activity Schema
+export const tradingActivityResponseSchema = z.object({
+  orderFulfillment: z.object({
+    stats: z.object({
+      total: z.number(),
+      completed: z.number(),
+      pending: z.number(),
+      cancelled: z.number(),
+    }),
+    fulfillmentRate: z.number(),
+  }),
+  volumeAnalysis: z.object({
+    totalVolume: z.number(),
+    averageOrderSize: z.number(),
+    largestOrder: z.number(),
+  }),
+  timeAnalysis: z.object({
+    averageProcessingTime: z.number(),
+    totalProcessingDays: z.number(),
+  }),
+});
+
+// Date Range Filter Schema
+export const dateRangeFilterSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+}).refine((data) => {
+  if (data.startDate && data.endDate) {
+    const start = new Date(data.startDate);
+    const end = new Date(data.endDate);
+    return start <= end;
+  }
+  return true;
+}, {
+  message: "Start date must be before or equal to end date",
+  path: ["startDate"],
+});
+
+// Period Filter Schema
+export const periodFilterSchema = z.object({
+  period: z.enum(['last-7-days', 'last-30-days', 'last-90-days', 'last-year']),
+});
+
+// Export Type Schema
+export const exportTypeSchema = z.object({
+  type: z.enum(['financial', 'inventory', 'suppliers', 'trading', 'all']),
+  format: z.enum(['json', 'csv']).optional().default('json'),
+});
+
+// Response Types
+export type FinancialSummaryResponse = z.infer<typeof financialSummaryResponseSchema>;
+export type CashFlowResponse = z.infer<typeof cashFlowResponseSchema>;
+export type InventoryAnalyticsResponse = z.infer<typeof inventoryAnalyticsResponseSchema>;
+export type SupplierPerformanceResponse = z.infer<typeof supplierPerformanceResponseSchema>;
+export type TradingActivityResponse = z.infer<typeof tradingActivityResponseSchema>;
+
+// Filter Types
+export type DateRangeFilter = z.infer<typeof dateRangeFilterSchema>;
+export type PeriodFilter = z.infer<typeof periodFilterSchema>;
+export type ExportType = z.infer<typeof exportTypeSchema>;

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { CapitalBalanceResponse, OrdersResponse, WarehouseStockResponse } from "@shared/schema";
+import type { OrdersResponse, FinancialSummaryResponse, TradingActivityResponse } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { 
   DollarSign, 
@@ -9,32 +9,29 @@ import {
 } from "lucide-react";
 
 export function DashboardStats() {
-  const { data: capitalBalance, isLoading: capitalLoading } = useQuery<CapitalBalanceResponse>({
-    queryKey: ['/api/capital/balance'],
+  // Use the new financial summary endpoint for consistency
+  const { data: financialSummary, isLoading: financialLoading } = useQuery<FinancialSummaryResponse>({
+    queryKey: ['/api/reports/financial/summary'],
   });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<OrdersResponse>({
     queryKey: ['/api/orders'],
   });
 
-  const { data: warehouseStock, isLoading: stockLoading } = useQuery<WarehouseStockResponse>({
-    queryKey: ['/api/warehouse/stock'],
+  const { data: tradingActivity, isLoading: tradingLoading } = useQuery<TradingActivityResponse>({
+    queryKey: ['/api/reports/trading/activity'],
   });
 
   const activeOrders = orders?.filter((order: any) => order.status !== 'completed')?.length || 0;
   
-  const inventoryValue = warehouseStock?.reduce((sum: number, stock: any) => 
-    sum + (parseFloat(stock.qtyKgClean) * parseFloat(stock.unitCostCleanUsd || '0')), 0
-  ) || 0;
-
-  const totalWeight = warehouseStock?.reduce((sum: number, stock: any) => 
-    sum + parseFloat(stock.qtyKgClean), 0
-  ) || 0;
+  // Get values from financial summary for consistency
+  const currentBalance = financialSummary?.summary?.currentBalance || 0;
+  const inventoryValue = financialSummary?.summary?.totalInventoryValue || 0;
 
   const stats = [
     {
       title: "Working Capital",
-      value: capitalLoading ? "Loading..." : `$${(capitalBalance?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      value: financialLoading ? "Loading..." : `$${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
       change: "+2.5% from last month",
       changeType: "positive",
       icon: DollarSign,
@@ -45,7 +42,7 @@ export function DashboardStats() {
     {
       title: "Active Orders",
       value: ordersLoading ? "Loading..." : activeOrders.toString(),
-      change: "3 pending shipping",
+      change: tradingActivity ? `${tradingActivity.orderFulfillment.fulfillmentRate.toFixed(1)}% fulfillment rate` : "3 pending shipping",
       changeType: "neutral",
       icon: Package,
       bgColor: "bg-blue-500/10",
@@ -54,8 +51,8 @@ export function DashboardStats() {
     },
     {
       title: "Inventory Value",
-      value: stockLoading ? "Loading..." : `$${inventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-      change: `${totalWeight.toLocaleString()} kg total`,
+      value: financialLoading ? "Loading..." : `$${inventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      change: tradingActivity ? `${tradingActivity.volumeAnalysis.totalVolume.toLocaleString()} kg total` : "Real-time valuation",
       changeType: "neutral",
       icon: Warehouse,
       bgColor: "bg-green-500/10",
@@ -63,10 +60,10 @@ export function DashboardStats() {
       testId: "stat-inventory"
     },
     {
-      title: "Monthly Revenue",
-      value: "$67,890.00",
-      change: "+15.3% from last month",
-      changeType: "positive",
+      title: "Net Position",
+      value: financialLoading ? "Loading..." : `$${(financialSummary?.summary?.netPosition || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      change: "Capital + Inventory - Outstanding",
+      changeType: (financialSummary?.summary?.netPosition || 0) >= 0 ? "positive" : "negative",
       icon: TrendingUp,
       bgColor: "bg-amber-500/10",
       iconColor: "text-amber-600",
