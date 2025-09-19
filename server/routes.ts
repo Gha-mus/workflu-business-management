@@ -12,6 +12,10 @@ import {
   insertWarehouseStockSchema,
   insertFilterRecordSchema,
   insertSettingSchema,
+  warehouseStatusUpdateSchema,
+  warehouseFilterOperationSchema,
+  warehouseMoveToFinalSchema,
+  warehouseStockFilterSchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -129,28 +133,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         amountInUsd = entryAmount.div(new Decimal(entryData.exchangeRate));
       }
       
-      // Check for negative balance prevention AFTER USD conversion
-      if (entryData.type === 'CapitalOut') {
-        const currentBalance = await storage.getCapitalBalance();
-        const newBalance = new Decimal(currentBalance).sub(amountInUsd);
-        
-        // Check if negative balance prevention is enabled
-        const preventNegativeSetting = await storage.getSetting('PREVENT_NEGATIVE_BALANCE');
-        const preventNegative = preventNegativeSetting?.value === 'true';
-        
-        if (preventNegative && newBalance.lt(0)) {
-          return res.status(400).json({
-            message: `Cannot create capital withdrawal. Would result in negative balance: ${newBalance.toFixed(2)} USD`,
-            field: "amount",
-            currentBalance: currentBalance,
-            requestedAmount: amountInUsd.toFixed(2),
-            shortfall: newBalance.abs().toFixed(2)
-          });
-        }
-      }
-      
       // Store USD amount with original paymentCurrency and exchangeRate as metadata
-      const entry = await storage.createCapitalEntry({
+      // Use concurrency protection to prevent race conditions  
+      const entry = await storage.createCapitalEntryWithConcurrencyProtection({
         ...entryData,
         amount: amountInUsd.toFixed(2), // Store normalized USD amount for accurate balance calculation
       });
@@ -260,8 +245,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const total = weight.mul(pricePerKg);
       const remaining = total.sub(amountPaid);
 
-      // Use atomic transaction to create purchase with all side effects
-      const purchase = await storage.createPurchaseWithSideEffects({
+      // Use atomic transaction with retry logic to create purchase with all side effects
+      const purchase = await storage.createPurchaseWithSideEffectsRetryable({
         ...purchaseData,
         total: total.toFixed(2),
         remaining: remaining.toFixed(2),
@@ -294,20 +279,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Warehouse routes
   app.get('/api/warehouse/stock', requireRole(['admin', 'warehouse']), async (req, res) => {
     try {
-      const stock = await storage.getWarehouseStock();
+      let stock;
+      
+      // Support query filtering
+      const queryParams = req.query;
+      if (Object.keys(queryParams).length > 0) {
+        const filterParams = warehouseStockFilterSchema.parse(queryParams);
+        
+        if (filterParams.status && filterParams.warehouse) {
+          // This combination would need a new storage method, for now get by status
+          stock = await storage.getWarehouseStockByStatus(filterParams.status);
+        } else if (filterParams.status) {
+          stock = await storage.getWarehouseStockByStatus(filterParams.status);
+        } else if (filterParams.warehouse) {
+          stock = await storage.getWarehouseStockByWarehouse(filterParams.warehouse);
+        } else {
+          stock = await storage.getWarehouseStock();
+        }
+      } else {
+        stock = await storage.getWarehouseStock();
+      }
+      
       res.json(stock);
     } catch (error) {
       console.error("Error fetching warehouse stock:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          errors: error.errors
+        });
+      }
+      
       res.status(500).json({ message: "Failed to fetch warehouse stock" });
     }
   });
 
-  app.get('/api/warehouse/stock/:status', requireRole(['admin', 'warehouse']), async (req, res) => {
+  app.get('/api/warehouse/stock/status/:status', requireRole(['admin', 'warehouse']), async (req, res) => {
     try {
       const stock = await storage.getWarehouseStockByStatus(req.params.status);
       res.json(stock);
     } catch (error) {
       console.error("Error fetching warehouse stock by status:", error);
+      res.status(500).json({ message: "Failed to fetch warehouse stock" });
+    }
+  });
+
+  app.get('/api/warehouse/stock/warehouse/:warehouse', requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const stock = await storage.getWarehouseStockByWarehouse(req.params.warehouse);
+      res.json(stock);
+    } catch (error) {
+      console.error("Error fetching warehouse stock by warehouse:", error);
       res.status(500).json({ message: "Failed to fetch warehouse stock" });
     }
   });
@@ -320,6 +343,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating warehouse stock:", error);
       res.status(500).json({ message: "Failed to update warehouse stock" });
+    }
+  });
+
+  app.patch('/api/warehouse/stock/:id/status', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ message: "Stock ID is required" });
+      }
+
+      const statusData = warehouseStatusUpdateSchema.parse(req.body);
+      const stock = await storage.updateWarehouseStockStatus(id, statusData.status, req.user.claims.sub);
+      
+      res.json(stock);
+    } catch (error) {
+      console.error("Error updating warehouse stock status:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid status data",
+          errors: error.errors
+        });
+      }
+      
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      
+      res.status(500).json({ message: "Failed to update warehouse stock status" });
+    }
+  });
+
+  app.post('/api/warehouse/filter', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const filterData = warehouseFilterOperationSchema.parse(req.body);
+      
+      const result = await storage.executeFilterOperation(
+        filterData.purchaseId, 
+        filterData.outputCleanKg, 
+        filterData.outputNonCleanKg, 
+        req.user.claims.sub
+      );
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error executing filter operation:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid filter operation data",
+          errors: error.errors
+        });
+      }
+      
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      
+      res.status(500).json({ message: "Failed to execute filter operation" });
+    }
+  });
+
+  app.post('/api/warehouse/move-to-final', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const moveData = warehouseMoveToFinalSchema.parse(req.body);
+      
+      const finalStock = await storage.moveStockToFinalWarehouse(moveData.stockId, req.user.claims.sub);
+      res.json(finalStock);
+    } catch (error) {
+      console.error("Error moving stock to final warehouse:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid move operation data",
+          errors: error.errors
+        });
+      }
+      
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      
+      res.status(500).json({ message: "Failed to move stock to final warehouse" });
     }
   });
 
