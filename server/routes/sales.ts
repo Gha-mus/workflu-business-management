@@ -76,10 +76,13 @@ salesRouter.get("/customers", isAuthenticated, async (req, res) => {
 // POST /api/sales/customers
 salesRouter.post("/customers",
   isAuthenticated,
-  requireRole(["admin", "sales"]),
+  requireRole(["admin", "sales", "worker"]),
   async (req, res) => {
     try {
-      const validatedData = insertCustomerSchema.parse(req.body);
+      const validatedData = insertCustomerSchema.parse({
+        ...req.body,
+        createdBy: (req.user as any).claims?.sub || 'unknown',
+      });
       const customer = await storage.createCustomer(validatedData);
 
       // Create audit log
@@ -149,7 +152,7 @@ salesRouter.post("/multi-order-invoice",
   requireRole(["admin", "sales"]),
   requireApproval("sale_order"),
   genericPeriodGuard,
-  async (req, res) => {
+  async (req: any, res) => {
     try {
       const userId = (req.user as any).claims?.sub || 'unknown';
       const invoiceId = await salesEnhancementService.createMultiOrderInvoice(req.body, userId);

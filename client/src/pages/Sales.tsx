@@ -53,6 +53,7 @@ import { format } from "date-fns";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import type { Customer as CustomerType, SalesOrder as SalesOrderType, InsertCustomer, InsertSalesOrder } from "@shared/schema";
 import { insertCustomerSchema, insertSalesOrderSchema } from "@shared/schema";
+import { z } from "zod";
 
 interface Customer {
   id: string;
@@ -162,7 +163,7 @@ export default function Sales() {
 
   // Data queries
   const { data: customers, isLoading: customersLoading } = useQuery<Customer[]>({
-    queryKey: ['/api/customers'],
+    queryKey: ['/api/sales/customers'],
     enabled: !!user,
   });
 
@@ -183,23 +184,23 @@ export default function Sales() {
 
   // Additional queries for selected customer
   const { data: customerCommunications } = useQuery<CustomerCommunication[]>({
-    queryKey: ['/api/customers', selectedCustomer?.id, 'communications'],
+    queryKey: ['/api/sales/customers', selectedCustomer?.id, 'communications'],
     enabled: !!selectedCustomer?.id,
   });
 
   const { data: customerPerformance } = useQuery<CustomerPerformance>({
-    queryKey: ['/api/customers', selectedCustomer?.id, 'performance'],
+    queryKey: ['/api/sales/customers', selectedCustomer?.id, 'performance'],
     enabled: !!selectedCustomer?.id,
   });
 
   // Mutations
   const createCustomerMutation = useMutation({
     mutationFn: async (customerData: InsertCustomer) => {
-      return await apiRequest('POST', '/api/customers', customerData);
+      return await apiRequest('POST', '/api/sales/customers', customerData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Customer created successfully" });
-      queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sales/customers'] });
       setShowNewCustomerModal(false);
     },
     onError: () => {
@@ -755,8 +756,15 @@ export default function Sales() {
 
 // New Customer Form Component
 function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCustomer) => void; isLoading: boolean }) {
+  const customerFormSchema = insertCustomerSchema.extend({
+    name: z.string().min(1, 'Company name is required'),
+    email: z.string().email('Invalid email address').optional().or(z.literal('')),
+    phone: z.string().min(1, 'Phone number is required'),
+    contactPerson: z.string().min(1, 'Contact person is required'),
+  });
+
   const form = useForm<InsertCustomer>({
-    resolver: zodResolver(insertCustomerSchema),
+    resolver: zodResolver(customerFormSchema),
     defaultValues: {
       name: '',
       email: '',
@@ -772,6 +780,19 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
   });
 
   const handleSubmit = (data: InsertCustomer) => {
+    // Additional client-side validation
+    if (!data.name?.trim()) {
+      form.setError('name', { message: 'Company name is required' });
+      return;
+    }
+    if (!data.phone?.trim()) {
+      form.setError('phone', { message: 'Phone number is required' });
+      return;
+    }
+    if (!data.contactPerson?.trim()) {
+      form.setError('contactPerson', { message: 'Contact person is required' });
+      return;
+    }
     onSubmit(data);
   };
 
