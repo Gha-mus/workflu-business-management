@@ -1,0 +1,137 @@
+Verify All Required Fields & Data Points Across All 10 Workflow Stages
+
+Hi,
+
+Before moving forward, I need you to double-check that every single required field, question, and data point across Stages 1 → 10 is fully implemented in both the UI and the API as per workflow_reference.json.
+
+Please prepare a stage-by-stage checklist that covers:
+
+Stage 1 — Working Capital
+
+Entry ID, date, amount, type (CapitalIn/Out/Reclass/Reverse).
+
+Currency (USD/ETB) with historical FX rate.
+
+Opening balance.
+
+Reference links (order_id / purchase_id / shipping_leg_id / expense_id).
+
+Stage 2 — Purchases
+
+Supplier ID, weight (kg), price/kg, total cost.
+
+Currency + historical FX.
+
+Payment method (cash / advance / credit).
+
+Advance + settlement amounts.
+
+Funding source (Capital/External).
+
+Stage 3 — Warehouse
+
+Stock status (Awaiting Decision, Awaiting Filter, Ready to Ship, Non-Clean, Ready for Sale).
+
+Quantities: total_kg, clean_kg, nonclean_kg, reserved_kg.
+
+Unit cost (USD).
+
+Filter yield & cost redistribution.
+
+Stage 4 — Shipping
+
+Order ID, shipment ID, carrier, departure/arrival dates.
+
+Weights: net_kg, carton_kg, gross_kg, chargeable_kg.
+
+Number of cartons.
+
+Rate/kg, commission %, transfer fee, leg total cost.
+
+Arrival costs (broker, handling, delivery).
+
+Inspection data: clean_kg, damaged_kg, grade, settlement option.
+
+Landed cost per kg and per carton.
+
+Stage 5 — Operating Expenses
+
+Expense type (labor, rent, supplies, bank fees, other).
+
+Amount, currency, funding source.
+
+Supplies purchase & consumption (cartons, tape, labels).
+
+Stage 6 — Sales
+
+Customer ID, type (Wholesale/Retail).
+
+Invoice ID, source warehouse (FIRST for non-clean, FINAL for clean).
+
+Product unit (8kg / 20kg carton).
+
+Price/carton (USD/ETB) + total.
+
+Paid vs remaining balance.
+
+Returns to original warehouse.
+
+Stage 7 — Revenues
+
+Ledger entries: CustomerReceipt, Refund, Withdrawal, ReinvestOut, TransferFee, Reclass, Reverse.
+
+Accounting vs Withdrawable balance.
+
+Partner withdrawals.
+
+Reinvestment flows (Revenue → Capital + Expenses).
+
+Stage 8 — Users & Permissions
+
+Roles: Admin, Finance, Purchasing, Warehouse, Shipping, Sales, Worker.
+
+Multi-role assignments.
+
+Warehouse scoping.
+
+Sensitive change policies.
+
+Visibility controls (costs, margins).
+
+Stage 9 — Reports & KPIs
+
+Capital Movement, Supplier reports, Warehouse stock, Shipping leg details, Expenses, Sales, Revenues.
+
+KPIs: avg cost/kg, avg sell price, damage %, profit margin %, collection rate, DSO, reinvestment ratio.
+
+Export options (CSV/XLSX/PDF).
+
+Stage 10 — Settings
+
+Base currency, secondary currency, timezone, system start date.
+
+Central FX rate with historical log.
+
+Numbering schemes (prefix, year, sequence).
+
+Period close guard.
+
+Approval thresholds.
+
+What I need back:
+
+A table per stage with:
+
+Field / Data Point
+
+Implemented? (Yes/No)
+
+Where (UI + API)
+
+Notes / Gaps
+
+If any field or question is missing, implement it immediately and update the checklist.
+
+Confirm by running validation tests per stage (inputs, calculations, validations, and cross-stage integration).
+
+⚠️ Please do not skip or stop mid-way — the checklist must cover all 10 stages completely.
