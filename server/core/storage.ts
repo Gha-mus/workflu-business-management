@@ -2938,6 +2938,126 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // STAGE 2 COMPLIANCE: Simple purchase payment settlement workflow
+  async settlePurchasePayment(purchaseId: string, settlementData: {
+    amount: number;
+    currency: string;
+    settlementNotes?: string;
+  }, auditContext?: AuditContext): Promise<Purchase> {
+    // Use transaction for atomic settlement
+    const result = await db.transaction(async (tx) => {
+      // Get the purchase with locking
+      const [purchase] = await tx
+        .select()
+        .from(purchases)
+        .where(eq(purchases.id, purchaseId))
+        .for('update');
+      
+      if (!purchase) {
+        throw new Error(`Purchase not found: ${purchaseId}`);
+      }
+
+      // CRITICAL: Convert settlement amount to purchase currency if different
+      const centralRate = await ConfigurationService.getInstance().getCentralExchangeRate();
+      
+      let settleAmountInPurchaseCurrency: Decimal;
+      if (settlementData.currency !== purchase.currency) {
+        if (settlementData.currency === 'USD' && purchase.currency === 'ETB') {
+          // Converting USD payment to ETB purchase
+          settleAmountInPurchaseCurrency = new Decimal(settlementData.amount).mul(centralRate);
+        } else if (settlementData.currency === 'ETB' && purchase.currency === 'USD') {
+          // Converting ETB payment to USD purchase
+          settleAmountInPurchaseCurrency = new Decimal(settlementData.amount).div(centralRate);
+        } else {
+          const error = new Error(`Unsupported currency conversion: ${settlementData.currency} to ${purchase.currency}`);
+          (error as any).code = 'VALIDATION_ERROR';
+          throw error;
+        }
+      } else {
+        // Same currency - no conversion needed
+        settleAmountInPurchaseCurrency = new Decimal(settlementData.amount);
+      }
+
+      // Validate settlement amount against remaining balance (in purchase currency)
+      const remainingBalance = new Decimal(purchase.remaining);
+      
+      if (settleAmountInPurchaseCurrency.lessThanOrEqualTo(0)) {
+        const error = new Error('Settlement amount must be greater than 0');
+        (error as any).code = 'VALIDATION_ERROR';
+        throw error;
+      }
+      
+      if (settleAmountInPurchaseCurrency.greaterThan(remainingBalance)) {
+        const error = new Error(`Settlement amount (${settleAmountInPurchaseCurrency.toFixed(2)} ${purchase.currency}) cannot exceed remaining balance (${remainingBalance.toFixed(2)} ${purchase.currency})`);
+        (error as any).code = 'VALIDATION_ERROR';
+        throw error;
+      }
+
+      // Calculate new balances in purchase currency
+      const currentAmountPaid = new Decimal(purchase.amountPaid);
+      const newAmountPaid = currentAmountPaid.add(settleAmountInPurchaseCurrency);
+      const newRemaining = remainingBalance.sub(settleAmountInPurchaseCurrency);
+
+      // CRITICAL: Determine status using rounded remaining (same as persisted value)
+      const roundedRemaining = newRemaining.toDecimalPlaces(2);
+      const newStatus = roundedRemaining.isZero() ? 'paid' : purchase.status;
+
+      // Update purchase with new balances and status
+      const [updatedPurchase] = await tx
+        .update(purchases)
+        .set({
+          amountPaid: newAmountPaid.toFixed(2),
+          remaining: newRemaining.toFixed(2),
+          status: newStatus,
+          updatedAt: new Date(),
+        })
+        .where(eq(purchases.id, purchaseId))
+        .returning();
+
+      // STAGE 2 SECURITY: Create CapitalOut entry ONLY if purchase is capital-funded
+      // CRITICAL: Derive funding source from purchase record, ignore any client input
+      if (purchase.fundingSource === 'capital') {
+        // CRITICAL: Convert settlement amount to USD based on PAYMENT currency (not purchase currency)
+        const settlementAmountUSD = settlementData.currency === 'ETB' 
+          ? new Decimal(settlementData.amount).div(centralRate)
+          : new Decimal(settlementData.amount);
+
+        // Create CapitalOut entry for capital-funded settlement
+        await this.createCapitalEntryInTransaction(tx, {
+          amount: settlementAmountUSD.toFixed(2),
+          type: 'CapitalOut',
+          reference: purchase.id,
+          description: `Purchase settlement payment (${purchase.purchaseNumber}) - ${settlementData.amount} ${settlementData.currency} - ${settlementData.settlementNotes || 'Payment settlement'}`,
+          paymentCurrency: 'USD', // Normalized to USD
+          createdBy: auditContext?.userId || 'system',
+        });
+      }
+
+      return updatedPurchase;
+    });
+
+    // STAGE 2 COMPLIANCE: Complete audit logging for payment settlement
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchases',
+        result.id,
+        'update',
+        'purchase_payment_settlement',
+        {
+          settlementAmount: settlementData.amount,
+          previousAmountPaid: new Decimal(result.amountPaid).sub(settlementData.amount).toFixed(2),
+          previousRemaining: new Decimal(result.remaining).add(settlementData.amount).toFixed(2)
+        },
+        result,
+        settlementData.amount, // Settlement amount impact
+        settlementData.currency
+      );
+    }
+
+    return result;
+  }
+
   // STAGE 2 COMPLIANCE: Return to supplier handling
   async processSupplierReturn(returnData: {
     purchaseId: string;
