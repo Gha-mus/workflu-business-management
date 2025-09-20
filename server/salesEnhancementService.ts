@@ -183,7 +183,7 @@ class SalesEnhancementService {
             qualityGrade: warehouseStockRecord.qualityGrade,
             quantityKg: item.quantityKg.toString(),
             unitPriceUsd: (item.pricePerCarton / (parseFloat(item.cartonSize) || 8)).toString(),
-            totalPrice: totalRevenue.toString(),
+            lineTotal: totalRevenue.toString(),
             unitCost: unitCost.toString(),
             totalCost: totalCost.toString(),
             profitMargin: profitMargin.toString(),
@@ -444,12 +444,10 @@ class SalesEnhancementService {
           await db
             .insert(revenueTransactions)
             .values({
+              transactionNumber: `REF-${nanoid(8)}`,
               customerId: originalOrder.customerId,
               salesOrderId: returnData.originalSalesOrderId,
               type: 'customer_refund',
-              customerId: originalOrder.customerId,
-              salesOrderId: returnData.originalSalesOrderId,
-              transactionType: 'customer_refund',
               amount: totalRefundAmount.toString(),
               currency: originalOrder.currency,
               exchangeRate: originalOrder.exchangeRate,

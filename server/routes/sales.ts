@@ -6,9 +6,9 @@ import { salesEnhancementService } from "../salesEnhancementService";
 import { 
   insertSalesOrderSchema,
   insertCustomerSchema,
-  salesOrderStatusUpdateSchema
 } from "@shared/schema";
 import { requireApproval } from "../approvalMiddleware";
+import { genericPeriodGuard } from "../core/middleware/periodGuard";
 
 export const salesRouter = Router();
 
@@ -33,7 +33,7 @@ salesRouter.post("/orders",
       const validatedData = insertSalesOrderSchema.parse(req.body);
       const order = await storage.createSalesOrder({
         ...validatedData,
-        userId: (req.user as any).claims?.sub || 'unknown'
+        createdBy: (req.user as any).claims?.sub || 'unknown'
       });
 
       // Create audit log
@@ -49,7 +49,7 @@ salesRouter.post("/orders",
           entityId: order.id,
           action: 'create',
           operationType: 'sale_order',
-          description: `Created sales order: ${order.orderNumber}`,
+          description: `Created sales order: ${order.salesOrderNumber}`,
           newValues: order
         }
       );
@@ -115,7 +115,7 @@ salesRouter.post("/return",
   validateSalesReturn,
   async (req, res) => {
     try {
-      const result = await storage.processSalesReturn(req.body);
+      const result = await storage.processSalesReturn(req.body.id, (req.user as any).claims?.sub || 'unknown');
 
       // Create audit log
       await auditService.logOperation(
@@ -139,6 +139,74 @@ salesRouter.post("/return",
     } catch (error) {
       console.error("Error processing sales return:", error);
       res.status(500).json({ message: "Failed to process sales return" });
+    }
+  }
+);
+
+// POST /api/sales/multi-order-invoice - Stage 6 enhancement  
+salesRouter.post("/multi-order-invoice",
+  isAuthenticated,
+  requireRole(["admin", "sales"]),
+  requireApproval("sale_order"),
+  genericPeriodGuard,
+  async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub || 'unknown';
+      const invoiceId = await salesEnhancementService.createMultiOrderInvoice(req.body, userId);
+
+      // Create audit log
+      await auditService.logOperation(
+        {
+          userId,
+          userName: (req.user as any).claims?.email || 'Unknown',
+          source: 'sales',
+          severity: 'info',
+        },
+        {
+          entityType: 'sales_orders',
+          entityId: invoiceId,
+          action: 'create',
+          operationType: 'multi_order_invoice',
+          description: `Created multi-order invoice for customer ${req.body.customerId}`,
+          newValues: { customerId: req.body.customerId, itemCount: req.body.orderItems?.length || 0 }
+        }
+      );
+
+      res.status(201).json({ invoiceId, message: "Multi-order invoice created successfully" });
+    } catch (error) {
+      console.error("Error creating multi-order invoice:", error);
+      res.status(500).json({ message: "Failed to create multi-order invoice", error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+);
+
+// GET /api/sales/overdue-receivables - Stage 6 enhancement  
+salesRouter.get("/overdue-receivables",
+  isAuthenticated,
+  requireRole(["admin", "sales", "finance"]),
+  async (req, res) => {
+    try {
+      const overdueReceivables = await salesEnhancementService.checkOverdueReceivables();
+      res.json(overdueReceivables);
+    } catch (error) {
+      console.error("Error fetching overdue receivables:", error);
+      res.status(500).json({ message: "Failed to fetch overdue receivables" });
+    }
+  }
+);
+
+// POST /api/sales/warehouse-source-validation - Stage 6 enhancement
+salesRouter.post("/warehouse-source-validation",
+  isAuthenticated,
+  requireRole(["admin", "sales", "warehouse"]),
+  async (req, res) => {
+    try {
+      const { warehouseStockId, requestedWarehouse } = req.body;
+      const validation = await salesEnhancementService.validateWarehouseSource(warehouseStockId, requestedWarehouse);
+      res.json(validation);
+    } catch (error) {
+      console.error("Error validating warehouse source:", error);
+      res.status(500).json({ message: "Failed to validate warehouse source" });
     }
   }
 );
