@@ -798,6 +798,7 @@ export interface IStorage {
   getWarehouseStock(): Promise<WarehouseStock[]>;
   getWarehouseStockByStatus(status: string): Promise<WarehouseStock[]>;
   getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]>;
+  getWarehouseStockById(id: string): Promise<WarehouseStock | null>;
   createWarehouseStock(stock: InsertWarehouseStock, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
   updateWarehouseStock(id: string, stock: Partial<InsertWarehouseStock>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
   updateWarehouseStockStatus(id: string, status: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
@@ -3402,6 +3403,11 @@ export class DatabaseStorage implements IStorage {
 
   async getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]> {
     return await db.select().from(warehouseStock).where(eq(warehouseStock.warehouse, warehouse));
+  }
+
+  async getWarehouseStockById(id: string): Promise<WarehouseStock | null> {
+    const result = await db.select().from(warehouseStock).where(eq(warehouseStock.id, id)).limit(1);
+    return result[0] ?? null;
   }
 
   async createWarehouseStock(stock: InsertWarehouseStock, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock> {
