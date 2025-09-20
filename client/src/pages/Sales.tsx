@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import type { Customer as CustomerType, SalesOrder, InsertCustomer, InsertSalesOrder } from "@shared/schema";
+import type { Customer as CustomerType, SalesOrder as SalesOrderType, InsertCustomer, InsertSalesOrder } from "@shared/schema";
 import { insertCustomerSchema, insertSalesOrderSchema } from "@shared/schema";
 
 interface Customer {
@@ -176,7 +176,7 @@ export default function Sales() {
     enabled: !!user,
   });
 
-  const { data: salesAnalytics } = useQuery({
+  const { data: salesAnalytics } = useQuery<{totalRevenueUsd?: number}>({
     queryKey: ['/api/sales/analytics'],
     enabled: !!user,
   });
@@ -195,10 +195,7 @@ export default function Sales() {
   // Mutations
   const createCustomerMutation = useMutation({
     mutationFn: async (customerData: InsertCustomer) => {
-      return await apiRequest('/api/customers', {
-        method: 'POST',
-        body: customerData,
-      });
+      return await apiRequest('POST', '/api/customers', customerData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Customer created successfully" });
@@ -212,10 +209,7 @@ export default function Sales() {
 
   const createSalesOrderMutation = useMutation({
     mutationFn: async (orderData: InsertSalesOrder) => {
-      return await apiRequest('/api/sales-orders', {
-        method: 'POST',
-        body: orderData,
-      });
+      return await apiRequest('POST', '/api/sales-orders', orderData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Sales order created successfully" });
@@ -770,8 +764,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
       contactPerson: '',
       category: 'retail',
       creditLimit: '',
-      paymentTerms: '30',
-      address: '',
+      paymentTerms: 'net_30',
       notes: '',
       salesRepId: '',
       createdBy: '',
@@ -793,7 +786,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
               <FormItem>
                 <FormLabel>Company Name</FormLabel>
                 <FormControl>
-                  <Input {...field} data-testid="input-customer-name" />
+                  <Input {...field} value={field.value || ''} data-testid="input-customer-name" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -806,7 +799,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
               <FormItem>
                 <FormLabel>Contact Person</FormLabel>
                 <FormControl>
-                  <Input {...field} data-testid="input-contact-person" />
+                  <Input {...field} value={field.value || ''} data-testid="input-contact-person" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -822,7 +815,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input {...field} type="email" data-testid="input-customer-email" />
+                  <Input {...field} type="email" value={field.value || ''} data-testid="input-customer-email" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -835,7 +828,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
               <FormItem>
                 <FormLabel>Phone</FormLabel>
                 <FormControl>
-                  <Input {...field} data-testid="input-customer-phone" />
+                  <Input {...field} value={field.value || ''} data-testid="input-customer-phone" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -874,7 +867,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
               <FormItem>
                 <FormLabel>Credit Limit ($)</FormLabel>
                 <FormControl>
-                  <Input {...field} type="number" data-testid="input-credit-limit" />
+                  <Input {...field} type="number" value={field.value || ''} data-testid="input-credit-limit" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -889,7 +882,7 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
             <FormItem>
               <FormLabel>Notes</FormLabel>
               <FormControl>
-                <Textarea {...field} data-testid="textarea-customer-notes" />
+                <Textarea {...field} value={field.value || ''} data-testid="textarea-customer-notes" />
               </FormControl>
               <FormMessage />
             </FormItem>
