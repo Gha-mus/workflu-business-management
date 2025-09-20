@@ -2667,20 +2667,13 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   updatedAt: true,
 });
 
+// Stage 1 Compliance: Purchases use central FX only - no client exchangeRate accepted
 export const insertPurchaseSchema = createInsertSchema(purchases).omit({
   id: true,
   purchaseNumber: true,
+  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
   createdAt: true,
   updatedAt: true,
-}).refine((data) => {
-  // Require exchangeRate for non-USD currencies
-  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Exchange rate is required for non-USD currencies",
-  path: ["exchangeRate"],
 });
 
 export const insertCapitalEntrySchema = createInsertSchema(capitalEntries).omit({
@@ -2728,6 +2721,23 @@ export const purchaseReturnSchema = z.object({
   approvedBy: z.string().min(1),
   refundMethod: z.enum(['credit_balance', 'capital_refund', 'advance_credit']),
   qualityIssues: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+}).strict();
+
+// Stage 2: Advance lifecycle schemas
+export const supplierAdvanceIssueSchema = z.object({
+  supplierId: z.string().min(1),
+  amountUsd: z.number().positive(),
+  issuedDate: z.string().datetime().transform(d => new Date(d)),
+  notes: z.string().optional(),
+  fundingSource: z.enum(['capital', 'external']).default('external'),
+}).strict();
+
+export const supplierAdvanceConsumeSchema = z.object({
+  supplierId: z.string().min(1),
+  amountUsd: z.number().positive(),
+  consumedDate: z.string().datetime().transform(d => new Date(d)),
+  referencePurchaseId: z.string().optional(),
   notes: z.string().optional(),
 }).strict();
 

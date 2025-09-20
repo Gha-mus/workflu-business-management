@@ -14,6 +14,7 @@ import {
   purchases,
   capitalEntries,
   users,
+  supplierQualityAssessments,
   type Supplier,
   type Purchase
 } from "@shared/schema";
@@ -60,6 +61,7 @@ export interface PurchaseReturn {
   returnDate: Date;
   approvedBy: string;
   refundMethod: 'credit_balance' | 'capital_refund' | 'advance_credit';
+  returnId?: string; // Optional - provided by router for ID consistency
 }
 
 export interface FlexibleCurrencyPurchase {
@@ -97,9 +99,27 @@ class SupplierEnhancementService {
   async assessSupplierQuality(
     assessment: SupplierQualityAssessment,
     userId: string
-  ): Promise<void> {
+  ): Promise<any> {
     try {
       console.log(`Assessing quality for supplier ${assessment.supplierId}`);
+
+      // Persist quality assessment record to supplierQualityAssessments table
+      const [qualityRecord] = await db
+        .insert(supplierQualityAssessments)
+        .values({
+          supplierId: assessment.supplierId,
+          qualityGrade: assessment.qualityGrade,
+          qualityScore: assessment.qualityScore.toString(),
+          consistencyScore: assessment.assessmentCriteria.consistency.toString(),
+          defectRateScore: assessment.assessmentCriteria.defectRate.toString(),
+          deliveryTimelinessScore: assessment.assessmentCriteria.deliveryTimeliness.toString(),
+          packagingScore: assessment.assessmentCriteria.packaging.toString(),
+          overallScore: assessment.assessmentCriteria.overall.toString(),
+          assessedBy: assessment.assessedBy,
+          notes: assessment.notes,
+          assessmentDate: assessment.assessmentDate
+        })
+        .returning();
 
       // Update supplier with new quality grading
       await db
@@ -132,7 +152,6 @@ class SupplierEnhancementService {
             assessedBy: assessment.assessedBy,
             notes: assessment.notes,
           },
-          businessContext: `Supplier quality assessment completed`,
         }
       );
 
@@ -163,6 +182,9 @@ class SupplierEnhancementService {
           });
         }
       }
+
+      // Return the created quality record after all operations complete
+      return { qualityRecord, assessment };
     } catch (error) {
       console.error("Error assessing supplier quality:", error);
       throw new Error(`Failed to assess supplier quality: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -189,7 +211,8 @@ class SupplierEnhancementService {
         ));
 
       const alerts: OverdueAdvanceAlert[] = [];
-      const advanceTermsDays = await configurationService.getNumericSetting('SUPPLIER_ADVANCE_TERMS_DAYS', 30);
+      const advanceTermsDaysSetting = await configurationService.getSystemSetting('SUPPLIER_ADVANCE_TERMS_DAYS', 'operational');
+      const advanceTermsDays = advanceTermsDaysSetting ? parseInt(advanceTermsDaysSetting) : 30;
 
       for (const supplier of suppliersWithAdvances) {
         if (!supplier.lastAdvanceDate) continue;
@@ -272,8 +295,8 @@ class SupplierEnhancementService {
         throw new Error(`Return amount $${returnRequest.returnAmountUsd} exceeds original purchase $${originalTotal}`);
       }
 
-      // Create return transaction based on refund method
-      const returnId = `RET-${nanoid(8)}`;
+      // Use provided returnId or generate one as fallback
+      const returnId = (returnRequest as any).returnId || `RET-${nanoid(8)}`;
       let refundProcessed = false;
 
       switch (returnRequest.refundMethod) {

@@ -3,9 +3,10 @@ import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
 import { auditService } from "../auditService";
 import { supplierEnhancementService } from "../modules/purchases/supplierService";
-import { insertPurchaseSchema, insertSupplierSchema, insertSupplierQualityAssessmentSchema } from "@shared/schema";
+import { insertPurchaseSchema, insertSupplierSchema, insertSupplierQualityAssessmentSchema, purchaseReturnSchema, supplierAdvanceIssueSchema, supplierAdvanceConsumeSchema } from "@shared/schema";
 import { purchasePeriodGuard } from "../periodGuard";
 import { requireApproval } from "../approvalMiddleware";
+import { configurationService } from "../configurationService";
 
 export const purchasesRouter = Router();
 
@@ -28,22 +29,43 @@ purchasesRouter.post("/",
   requireApproval("purchase"),
   async (req, res) => {
     try {
-      const validatedData = insertPurchaseSchema.parse(req.body);
+      // Stage 1 Compliance: Strip client exchangeRate and use central rate
+      const { exchangeRate: clientRate, ...sanitizedData } = req.body;
+      const validatedData = insertPurchaseSchema.parse(sanitizedData);
+      
+      // Stage 1 Compliance: Get central exchange rate for all currencies
+      const centralExchangeRate = await configurationService.getCentralExchangeRate();
+      
+      // Generate purchase document number
+      const purchaseNumber = await configurationService.generateEntityNumber('purchase', {
+        prefix: 'PUR',
+        suffix: new Date().getFullYear().toString().slice(-2)
+      });
+      
       const purchase = await storage.createPurchase({
         ...validatedData,
-        userId: req.user!.id
+        purchaseNumber,
+        exchangeRate: centralExchangeRate.toString(),
+        createdBy: (req.user as any)?.claims?.sub || 'unknown'
       });
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "purchase",
-        entityId: purchase.id,
-        description: `Created purchase from ${purchase.supplierName}`,
-        previousState: null,
-        newState: purchase
-      });
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'purchase_management',
+          severity: 'info',
+        },
+        {
+          entityType: 'purchases',
+          entityId: purchase.id,
+          action: 'create',
+          operationType: 'purchase_creation',
+          description: `Created purchase ${purchase.purchaseNumber} from supplier`,
+          newValues: purchase
+        }
+      );
 
       res.status(201).json(purchase);
     } catch (error) {
@@ -74,15 +96,22 @@ purchasesRouter.post("/suppliers",
       const supplier = await storage.createSupplier(validatedData);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "supplier",
-        entityId: supplier.id,
-        description: `Created supplier: ${supplier.name}`,
-        previousState: null,
-        newState: supplier
-      });
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'supplier_management',
+          severity: 'info',
+        },
+        {
+          entityType: 'suppliers',
+          entityId: supplier.id,
+          action: 'create',
+          operationType: 'supplier_creation',
+          description: `Created supplier: ${supplier.name}`,
+          newValues: supplier
+        }
+      );
 
       res.status(201).json(supplier);
     } catch (error) {
@@ -102,7 +131,7 @@ purchasesRouter.post("/quality-assessment",
       const validatedData = insertSupplierQualityAssessmentSchema.parse(req.body);
       const assessment = await supplierEnhancementService.assessSupplierQuality(
         validatedData,
-        req.user!.claims.sub
+        (req.user as any)?.claims?.sub || 'unknown'
       );
       res.status(201).json(assessment);
     } catch (error) {
@@ -123,6 +152,183 @@ purchasesRouter.get("/overdue-advances",
     } catch (error) {
       console.error("Error fetching overdue advances:", error);
       res.status(500).json({ message: "Failed to fetch overdue advances" });
+    }
+  }
+);
+
+// POST /api/purchases/returns - Stage 2 Compliance: Purchase return processing with approval chain
+purchasesRouter.post("/returns",
+  isAuthenticated,
+  requireRole(["admin", "purchasing", "finance"]),
+  purchasePeriodGuard,
+  requireApproval("purchase_return"),
+  async (req, res) => {
+    try {
+      // Stage 2 Compliance: Validate purchase return request
+      const validatedData = purchaseReturnSchema.parse(req.body);
+      
+      // Generate return ID for tracking
+      const returnId = await configurationService.generateEntityNumber('purchase_return', {
+        prefix: 'RET',
+        suffix: new Date().getFullYear().toString().slice(-2)
+      });
+      
+      // Process the purchase return using supplier enhancement service
+      const returnResult = await supplierEnhancementService.processPurchaseReturn(
+        {
+          ...validatedData,
+          returnId,
+        },
+        (req.user as any)?.claims?.sub || 'unknown'
+      );
+      
+      // Create audit log for the return operation
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'purchase_return',
+          severity: 'warning',
+        },
+        {
+          entityType: 'purchase_returns',
+          entityId: returnId,
+          action: 'create',
+          operationType: 'purchase_return',
+          description: `Processed purchase return ${returnId}: ${validatedData.returnReason}`,
+          newValues: validatedData,
+          financialImpact: validatedData.returnAmountUsd,
+          currency: 'USD'
+        }
+      );
+      
+      res.status(201).json({
+        returnId: returnId,
+        status: 'processed',
+        returnRequest: validatedData,
+        processingResult: returnResult
+      });
+    } catch (error) {
+      console.error("Error processing purchase return:", error);
+      res.status(500).json({ message: "Failed to process purchase return" });
+    }
+  }
+);
+
+// POST /api/purchases/advances/issue - Stage 2 Compliance: Supplier advance issuance with capital integration
+purchasesRouter.post("/advances/issue",
+  isAuthenticated,
+  requireRole(["admin", "finance", "purchasing"]),
+  purchasePeriodGuard,
+  requireApproval("supplier_advance_issue"),
+  async (req, res) => {
+    try {
+      // Stage 2 Compliance: Validate advance issue request
+      const validatedData = supplierAdvanceIssueSchema.parse(req.body);
+      
+      // Generate advance ID for tracking
+      const advanceId = await configurationService.generateEntityNumber('supplier_advance', {
+        prefix: 'ADV',
+        suffix: new Date().getFullYear().toString().slice(-2)
+      });
+      
+      // Issue the supplier advance using supplier enhancement service
+      const advanceResult = await supplierEnhancementService.issueSupplierAdvance(
+        {
+          ...validatedData,
+          advanceId,
+        },
+        (req.user as any)?.claims?.sub || 'unknown'
+      );
+      
+      // Create audit log for the advance issue operation
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'supplier_advance',
+          severity: 'info',
+        },
+        {
+          entityType: 'supplier_advances',
+          entityId: advanceId,
+          action: 'create',
+          operationType: 'advance_issue',
+          description: `Issued supplier advance ${advanceId}: $${validatedData.amountUsd}`,
+          newValues: validatedData,
+          financialImpact: validatedData.amountUsd,
+          currency: 'USD'
+        }
+      );
+      
+      res.status(201).json({
+        advanceId: advanceId,
+        status: 'issued',
+        advanceRequest: validatedData,
+        processingResult: advanceResult
+      });
+    } catch (error) {
+      console.error("Error issuing supplier advance:", error);
+      res.status(500).json({ message: "Failed to issue supplier advance" });
+    }
+  }
+);
+
+// POST /api/purchases/advances/consume - Stage 2 Compliance: Supplier advance consumption with purchase linking
+purchasesRouter.post("/advances/consume",
+  isAuthenticated,
+  requireRole(["admin", "finance", "purchasing"]),
+  purchasePeriodGuard,
+  requireApproval("supplier_advance_consume"),
+  async (req, res) => {
+    try {
+      // Stage 2 Compliance: Validate advance consume request
+      const validatedData = supplierAdvanceConsumeSchema.parse(req.body);
+      
+      // Generate consumption ID for tracking
+      const consumptionId = await configurationService.generateEntityNumber('supplier_advance', {
+        prefix: 'CON',
+        suffix: new Date().getFullYear().toString().slice(-2)
+      });
+      
+      // Consume the supplier advance using supplier enhancement service
+      const consumeResult = await supplierEnhancementService.consumeSupplierAdvance(
+        {
+          ...validatedData,
+          consumptionId,
+        },
+        (req.user as any)?.claims?.sub || 'unknown'
+      );
+      
+      // Create audit log for the advance consume operation
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'supplier_advance',
+          severity: 'info',
+        },
+        {
+          entityType: 'supplier_advances',
+          entityId: consumptionId,
+          action: 'consume',
+          operationType: 'advance_consume',
+          description: `Consumed supplier advance ${consumptionId}: $${validatedData.amountUsd}`,
+          newValues: validatedData,
+          financialImpact: -validatedData.amountUsd,
+          currency: 'USD'
+        }
+      );
+      
+      res.status(201).json({
+        consumptionId: consumptionId,
+        status: 'consumed',
+        consumeRequest: validatedData,
+        processingResult: consumeResult
+      });
+    } catch (error) {
+      console.error("Error consuming supplier advance:", error);
+      res.status(500).json({ message: "Failed to consume supplier advance" });
     }
   }
 );
