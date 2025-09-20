@@ -2755,6 +2755,15 @@ export const costRedistributionValidationSchema = z.object({
   validateCostCalculation: z.boolean().default(true),
 });
 
+// Stage 3: Warehouse cost validation request schemas
+export const warehouseCostValidationSchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+}).strict();
+
+export const warehouseCostCorrectionSchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+}).strict();
+
 export const insertWarehouseStockSchema = createInsertSchema(warehouseStock).omit({
   id: true,
   createdAt: true,
