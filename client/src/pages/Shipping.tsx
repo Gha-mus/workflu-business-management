@@ -45,6 +45,10 @@ export default function Shipping() {
   const [createShipmentOpen, setCreateShipmentOpen] = useState(false);
   const [addCostOpen, setAddCostOpen] = useState(false);
   const [addTrackingOpen, setAddTrackingOpen] = useState(false);
+  const [addLegOpen, setAddLegOpen] = useState(false);
+  const [addArrivalCostOpen, setAddArrivalCostOpen] = useState(false);
+  const [startInspectionOpen, setStartInspectionOpen] = useState(false);
+  const [viewCommissionsOpen, setViewCommissionsOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -75,6 +79,20 @@ export default function Shipping() {
 
   const { data: analytics } = useQuery<ShippingAnalyticsResponse>({
     queryKey: ['/api/shipping/analytics'],
+  });
+
+  const { data: shipmentLegs } = useQuery({
+    queryKey: ['/api/shipping/legs', selectedShipment],
+    enabled: !!selectedShipment,
+  });
+
+  const { data: arrivalCosts } = useQuery({
+    queryKey: ['/api/shipping/arrival-costs', selectedShipment],
+    enabled: !!selectedShipment,
+  });
+
+  const { data: inspections } = useQuery({
+    queryKey: ['/api/shipping/inspections'],
   });
 
   const { data: shipmentDetails } = useQuery<ShipmentWithDetailsResponse>({
@@ -143,10 +161,12 @@ export default function Shipping() {
           </div>
 
           <Tabs defaultValue="shipments" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="shipments" data-testid="tab-shipments">Shipments</TabsTrigger>
               <TabsTrigger value="carriers" data-testid="tab-carriers">Carriers</TabsTrigger>
+              <TabsTrigger value="legs" data-testid="tab-legs">Multi-Leg</TabsTrigger>
               <TabsTrigger value="costs" data-testid="tab-costs">Costs</TabsTrigger>
+              <TabsTrigger value="inspections" data-testid="tab-inspections">Inspections</TabsTrigger>
               <TabsTrigger value="tracking" data-testid="tab-tracking">Tracking</TabsTrigger>
               <TabsTrigger value="analytics" data-testid="tab-analytics">Analytics</TabsTrigger>
             </TabsList>
@@ -169,6 +189,7 @@ export default function Shipping() {
                     <CreateShipmentForm 
                       carriers={carriers || []}
                       availableStock={availableStock || []}
+                      carriersLoading={carriersLoading}
                       onClose={() => setCreateShipmentOpen(false)}
                     />
                   </DialogContent>
@@ -288,6 +309,87 @@ export default function Shipping() {
               </div>
             </TabsContent>
 
+            {/* Multi-Leg Shipping Tab */}
+            <TabsContent value="legs" className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-semibold">Multi-Leg Shipping</h2>
+                <div className="flex space-x-2">
+                  <Dialog open={addLegOpen} onOpenChange={setAddLegOpen}>
+                    <DialogTrigger asChild>
+                      <Button data-testid="button-add-leg">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Shipping Leg
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Add Shipping Leg</DialogTitle>
+                      </DialogHeader>
+                      <AddShippingLegForm 
+                        shipments={shipments || []}
+                        onClose={() => setAddLegOpen(false)}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                  <Dialog open={viewCommissionsOpen} onOpenChange={setViewCommissionsOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" data-testid="button-view-commissions">
+                        <DollarSign className="h-4 w-4 mr-2" />
+                        View Commissions
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl">
+                      <DialogHeader>
+                        <DialogTitle>Commission Summary</DialogTitle>
+                      </DialogHeader>
+                      <CommissionSummaryView 
+                        shipments={shipments || []}
+                        onClose={() => setViewCommissionsOpen(false)}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+
+              {selectedShipment && shipmentLegs && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Shipping Legs for {shipments?.find(s => s.id === selectedShipment)?.shipmentNumber}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {shipmentLegs.length === 0 ? (
+                        <div className="text-center text-gray-500">No shipping legs found. Add the first leg to get started.</div>
+                      ) : (
+                        shipmentLegs.map((leg: any) => (
+                          <div key={leg.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg" data-testid={`leg-item-${leg.id}`}>
+                            <div>
+                              <h4 className="font-medium">Leg {leg.legNumber}: {leg.originPort} → {leg.destinationPort}</h4>
+                              <p className="text-sm text-gray-600">Carrier: {leg.carrierName} | Weight: {leg.chargeableWeightKg}kg</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">${leg.ratePerKg}/kg</p>
+                              <p className="text-sm text-gray-600">Commission: {leg.transferCommissionPercent}%</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {!selectedShipment && (
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-center text-gray-500">
+                      Select a shipment from the Shipments tab to view and manage its shipping legs.
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
             {/* Carriers Tab */}
             <TabsContent value="carriers" className="space-y-6">
               <div className="flex justify-between items-center">
@@ -377,6 +479,88 @@ export default function Shipping() {
               </div>
             </TabsContent>
 
+            {/* Inspections Tab */}
+            <TabsContent value="inspections" className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-semibold">Shipment Inspections</h2>
+                <div className="flex space-x-2">
+                  <Dialog open={startInspectionOpen} onOpenChange={setStartInspectionOpen}>
+                    <DialogTrigger asChild>
+                      <Button data-testid="button-start-inspection">
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        Start Inspection
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Start Shipment Inspection</DialogTitle>
+                      </DialogHeader>
+                      <StartInspectionForm 
+                        shipments={shipments || []}
+                        onClose={() => setStartInspectionOpen(false)}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                  <Dialog open={addArrivalCostOpen} onOpenChange={setAddArrivalCostOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" data-testid="button-add-arrival-cost">
+                        <DollarSign className="h-4 w-4 mr-2" />
+                        Add Arrival Cost
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Add Arrival Cost</DialogTitle>
+                      </DialogHeader>
+                      <AddArrivalCostForm 
+                        shipments={shipments || []}
+                        onClose={() => setAddArrivalCostOpen(false)}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {inspections && inspections.length > 0 ? (
+                  inspections.map((inspection: any) => (
+                    <Card key={inspection.id} className="hover:shadow-md transition-shadow">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold" data-testid={`inspection-number-${inspection.id}`}>
+                              {inspection.inspectionNumber}
+                            </h3>
+                            <p className="text-sm text-gray-600">Location: {inspection.inspectionLocation}</p>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <Badge 
+                              className={`${
+                                inspection.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                inspection.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}
+                              data-testid={`inspection-status-${inspection.id}`}
+                            >
+                              {inspection.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="text-center text-gray-500">
+                        No inspections found. Start your first inspection to get started.
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </TabsContent>
+
             {/* Costs Tab */}
             <TabsContent value="costs" className="space-y-6">
               <div className="flex justify-between items-center">
@@ -400,27 +584,60 @@ export default function Shipping() {
                 </Dialog>
               </div>
 
-              {analytics?.costBreakdown && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {analytics.costBreakdown.map((cost) => (
-                    <Card key={cost.costType}>
-                      <CardContent className="p-4">
-                        <div className="text-center">
-                          <p className="text-sm text-gray-600 dark:text-gray-400 capitalize">
-                            {cost.costType.replace('_', ' ')}
-                          </p>
-                          <p className="text-xl font-bold" data-testid={`text-cost-${cost.costType}`}>
-                            ${cost.totalUsd.toFixed(2)}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {cost.percentage.toFixed(1)}% of total
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                      <div className="grid grid-cols-1 gap-6">
+                {analytics?.costBreakdown && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Cost Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {analytics.costBreakdown.map((cost) => (
+                          <div key={cost.costType} className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <p className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                              {cost.costType.replace('_', ' ')}
+                            </p>
+                            <p className="text-xl font-bold" data-testid={`text-cost-${cost.costType}`}>
+                              ${cost.totalUsd.toFixed(2)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {cost.percentage.toFixed(1)}% of total
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {selectedShipment && arrivalCosts && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Arrival Costs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {arrivalCosts.length === 0 ? (
+                          <div className="text-center text-gray-500">No arrival costs recorded for this shipment.</div>
+                        ) : (
+                          arrivalCosts.map((cost: any) => (
+                            <div key={cost.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg" data-testid={`arrival-cost-${cost.id}`}>
+                              <div>
+                                <h4 className="font-medium capitalize">{cost.costType.replace('_', ' ')}</h4>
+                                <p className="text-sm text-gray-600">{cost.vendorName} | {cost.description}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold">${cost.amount} {cost.currency}</p>
+                                <p className="text-sm text-gray-600">{cost.documentReference}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </TabsContent>
 
             {/* Tracking Tab */}
@@ -640,10 +857,12 @@ function CreateCarrierForm({ onClose }: { onClose: () => void }) {
 function CreateShipmentForm({ 
   carriers, 
   availableStock, 
+  carriersLoading,
   onClose 
 }: { 
   carriers: Carrier[];
   availableStock: WarehouseStock[];
+  carriersLoading: boolean;
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -657,6 +876,10 @@ function CreateShipmentForm({
     estimatedArrivalDate: '',
     notes: '',
     warehouseStockItems: [] as { warehouseStockId: string; quantity: string; packingDetails?: string }[],
+    totalWeight: '',
+    cartonsCount: '',
+    trackingNumber: '',
+    totalVolume: '',
   });
 
   const createShipmentMutation = useMutation({
@@ -698,7 +921,20 @@ function CreateShipmentForm({
       toast({ title: "Please add at least one warehouse stock item", variant: "destructive" });
       return;
     }
-    createShipmentMutation.mutate(formData);
+    if (!formData.totalWeight) {
+      toast({ title: "Please enter total weight", variant: "destructive" });
+      return;
+    }
+    
+    // Prepare data for submission
+    const submitData = {
+      ...formData,
+      totalWeight: parseFloat(formData.totalWeight),
+      cartonsCount: formData.cartonsCount ? parseInt(formData.cartonsCount) : 0,
+      totalVolume: formData.totalVolume ? parseFloat(formData.totalVolume) : undefined,
+    };
+    
+    createShipmentMutation.mutate(submitData);
   };
 
   return (
@@ -720,18 +956,74 @@ function CreateShipmentForm({
             value={formData.carrierId} 
             onValueChange={(value) => setFormData({ ...formData, carrierId: value })}
             required
+            disabled={carriersLoading || !carriers?.length}
           >
             <SelectTrigger data-testid="select-carrier">
-              <SelectValue placeholder="Select carrier" />
+              <SelectValue placeholder={
+                carriersLoading 
+                  ? "Loading carriers..." 
+                  : !carriers?.length 
+                    ? "No carriers available" 
+                    : "Select carrier"
+              } />
             </SelectTrigger>
             <SelectContent>
-              {carriers.map((carrier) => (
+              {carriers?.map((carrier) => (
                 <SelectItem key={carrier.id} value={carrier.id}>
                   {carrier.name}
                 </SelectItem>
-              ))}
+              )) || []}
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="totalWeight">Total Weight (kg)</Label>
+          <Input
+            id="totalWeight"
+            type="number"
+            step="0.01"
+            value={formData.totalWeight}
+            onChange={(e) => setFormData({ ...formData, totalWeight: e.target.value })}
+            required
+            data-testid="input-total-weight"
+          />
+        </div>
+        <div>
+          <Label htmlFor="cartonsCount">Cartons Count</Label>
+          <Input
+            id="cartonsCount"
+            type="number"
+            value={formData.cartonsCount}
+            onChange={(e) => setFormData({ ...formData, cartonsCount: e.target.value })}
+            required
+            data-testid="input-cartons-count"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="trackingNumber">Tracking Number (Optional)</Label>
+          <Input
+            id="trackingNumber"
+            value={formData.trackingNumber || ''}
+            onChange={(e) => setFormData({ ...formData, trackingNumber: e.target.value })}
+            data-testid="input-tracking-number"
+          />
+        </div>
+        <div>
+          <Label htmlFor="totalVolume">Total Volume (m³)</Label>
+          <Input
+            id="totalVolume"
+            type="number"
+            step="0.01"
+            value={formData.totalVolume || ''}
+            onChange={(e) => setFormData({ ...formData, totalVolume: e.target.value })}
+            data-testid="input-total-volume"
+          />
         </div>
       </div>
 
@@ -1343,5 +1635,512 @@ function ShipmentDetailsView({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Component for adding shipping legs (multi-leg workflow)
+function AddShippingLegForm({ 
+  shipments, 
+  onClose 
+}: { 
+  shipments: Shipment[];
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [formData, setFormData] = useState({
+    shipmentId: '',
+    legNumber: '',
+    carrierName: '',
+    vesselName: '',
+    originPort: '',
+    destinationPort: '',
+    chargeableWeightKg: '',
+    ratePerKg: '',
+    legBaseCost: '',
+    transferCommissionPercent: '',
+    estimatedDepartureDate: '',
+    estimatedArrivalDate: '',
+    notes: '',
+  });
+
+  const addLegMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/shipping/legs', { method: 'POST', body: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/shipping/legs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/shipping', 'commission-summary'] });
+      toast({ title: "Shipping leg added successfully" });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Failed to add shipping leg", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    addLegMutation.mutate(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <Label htmlFor="shipment">Shipment</Label>
+        <Select 
+          value={formData.shipmentId} 
+          onValueChange={(value) => setFormData({ ...formData, shipmentId: value })}
+          required
+        >
+          <SelectTrigger data-testid="select-leg-shipment">
+            <SelectValue placeholder="Select shipment" />
+          </SelectTrigger>
+          <SelectContent>
+            {shipments.map((shipment) => (
+              <SelectItem key={shipment.id} value={shipment.id}>
+                {shipment.shipmentNumber} - {shipment.originAddress} → {shipment.destinationAddress}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="legNumber">Leg Number</Label>
+          <Input
+            id="legNumber"
+            type="number"
+            value={formData.legNumber}
+            onChange={(e) => setFormData({ ...formData, legNumber: e.target.value })}
+            required
+            data-testid="input-leg-number"
+          />
+        </div>
+        <div>
+          <Label htmlFor="carrierName">Carrier Name</Label>
+          <Input
+            id="carrierName"
+            value={formData.carrierName}
+            onChange={(e) => setFormData({ ...formData, carrierName: e.target.value })}
+            required
+            data-testid="input-carrier-name"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="originPort">Origin Port</Label>
+          <Input
+            id="originPort"
+            value={formData.originPort}
+            onChange={(e) => setFormData({ ...formData, originPort: e.target.value })}
+            required
+            data-testid="input-origin-port"
+          />
+        </div>
+        <div>
+          <Label htmlFor="destinationPort">Destination Port</Label>
+          <Input
+            id="destinationPort"
+            value={formData.destinationPort}
+            onChange={(e) => setFormData({ ...formData, destinationPort: e.target.value })}
+            required
+            data-testid="input-destination-port"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="chargeableWeightKg">Chargeable Weight (kg)</Label>
+          <Input
+            id="chargeableWeightKg"
+            type="number"
+            step="0.01"
+            value={formData.chargeableWeightKg}
+            onChange={(e) => setFormData({ ...formData, chargeableWeightKg: e.target.value })}
+            required
+            data-testid="input-chargeable-weight"
+          />
+        </div>
+        <div>
+          <Label htmlFor="ratePerKg">Rate per Kg (USD)</Label>
+          <Input
+            id="ratePerKg"
+            type="number"
+            step="0.0001"
+            value={formData.ratePerKg}
+            onChange={(e) => setFormData({ ...formData, ratePerKg: e.target.value })}
+            required
+            data-testid="input-rate-per-kg"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="legBaseCost">Leg Base Cost (USD)</Label>
+          <Input
+            id="legBaseCost"
+            type="number"
+            step="0.01"
+            value={formData.legBaseCost}
+            onChange={(e) => setFormData({ ...formData, legBaseCost: e.target.value })}
+            required
+            data-testid="input-leg-base-cost"
+          />
+        </div>
+        <div>
+          <Label htmlFor="transferCommissionPercent">Commission (%)</Label>
+          <Input
+            id="transferCommissionPercent"
+            type="number"
+            step="0.01"
+            value={formData.transferCommissionPercent}
+            onChange={(e) => setFormData({ ...formData, transferCommissionPercent: e.target.value })}
+            data-testid="input-commission-percent"
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea
+          id="notes"
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          data-testid="input-leg-notes"
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={addLegMutation.isPending}
+          data-testid="button-submit-leg"
+        >
+          {addLegMutation.isPending ? 'Adding...' : 'Add Leg'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// Component for commission summary view
+function CommissionSummaryView({ 
+  shipments, 
+  onClose 
+}: { 
+  shipments: Shipment[];
+  onClose: () => void;
+}) {
+  const [selectedShipmentId, setSelectedShipmentId] = useState('');
+  
+  const { data: commissionSummary } = useQuery({
+    queryKey: ['/api/shipping', selectedShipmentId, 'commission-summary'],
+    enabled: !!selectedShipmentId,
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <Label htmlFor="shipment">Select Shipment</Label>
+        <Select 
+          value={selectedShipmentId} 
+          onValueChange={setSelectedShipmentId}
+        >
+          <SelectTrigger data-testid="select-commission-shipment">
+            <SelectValue placeholder="Select shipment to view commissions" />
+          </SelectTrigger>
+          <SelectContent>
+            {shipments.map((shipment) => (
+              <SelectItem key={shipment.id} value={shipment.id}>
+                {shipment.shipmentNumber} - {shipment.originAddress} → {shipment.destinationAddress}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {commissionSummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Commission Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Total Commission</p>
+                  <p className="text-xl font-bold">${commissionSummary.totalCommissionUsd?.toFixed(2) || '0.00'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Average Rate</p>
+                  <p className="text-xl font-bold">${commissionSummary.averageRatePerKg?.toFixed(4) || '0.0000'}/kg</p>
+                </div>
+              </div>
+              <div className="text-center text-gray-500">
+                Full commission calculation details would be displayed here with leg-by-leg breakdown.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      <div className="flex justify-end">
+        <Button onClick={onClose}>Close</Button>
+      </div>
+    </div>
+  );
+}
+
+// Component for starting inspections
+function StartInspectionForm({ 
+  shipments, 
+  onClose 
+}: { 
+  shipments: Shipment[];
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [formData, setFormData] = useState({
+    shipmentId: '',
+    inspectionLocation: '',
+    notes: '',
+  });
+
+  const startInspectionMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/shipping/inspections/start', { method: 'POST', body: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/shipping/inspections'] });
+      toast({ title: "Inspection started successfully" });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Failed to start inspection", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    startInspectionMutation.mutate(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <Label htmlFor="shipment">Shipment</Label>
+        <Select 
+          value={formData.shipmentId} 
+          onValueChange={(value) => setFormData({ ...formData, shipmentId: value })}
+          required
+        >
+          <SelectTrigger data-testid="select-inspection-shipment">
+            <SelectValue placeholder="Select shipment" />
+          </SelectTrigger>
+          <SelectContent>
+            {shipments.map((shipment) => (
+              <SelectItem key={shipment.id} value={shipment.id}>
+                {shipment.shipmentNumber} - {shipment.originAddress} → {shipment.destinationAddress}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label htmlFor="inspectionLocation">Inspection Location</Label>
+        <Input
+          id="inspectionLocation"
+          value={formData.inspectionLocation}
+          onChange={(e) => setFormData({ ...formData, inspectionLocation: e.target.value })}
+          required
+          data-testid="input-inspection-location"
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea
+          id="notes"
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          data-testid="input-inspection-notes"
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={startInspectionMutation.isPending}
+          data-testid="button-submit-inspection"
+        >
+          {startInspectionMutation.isPending ? 'Starting...' : 'Start Inspection'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// Component for adding arrival costs
+function AddArrivalCostForm({ 
+  shipments, 
+  onClose 
+}: { 
+  shipments: Shipment[];
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [formData, setFormData] = useState({
+    shipmentId: '',
+    costType: '',
+    amount: '',
+    currency: 'USD' as 'USD' | 'ETB',
+    description: '',
+    vendorName: '',
+    documentReference: '',
+  });
+
+  const addArrivalCostMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/shipping/arrival-costs', { method: 'POST', body: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/shipping/arrival-costs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/shipping/analytics'] });
+      toast({ title: "Arrival cost added successfully" });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Failed to add arrival cost", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    addArrivalCostMutation.mutate(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <Label htmlFor="shipment">Shipment</Label>
+        <Select 
+          value={formData.shipmentId} 
+          onValueChange={(value) => setFormData({ ...formData, shipmentId: value })}
+          required
+        >
+          <SelectTrigger data-testid="select-arrival-cost-shipment">
+            <SelectValue placeholder="Select shipment" />
+          </SelectTrigger>
+          <SelectContent>
+            {shipments.map((shipment) => (
+              <SelectItem key={shipment.id} value={shipment.id}>
+                {shipment.shipmentNumber} - {shipment.originAddress} → {shipment.destinationAddress}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="costType">Cost Type</Label>
+          <Select 
+            value={formData.costType} 
+            onValueChange={(value) => setFormData({ ...formData, costType: value })}
+            required
+          >
+            <SelectTrigger data-testid="select-arrival-cost-type">
+              <SelectValue placeholder="Select cost type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="broker">Broker</SelectItem>
+              <SelectItem value="delivery">Delivery</SelectItem>
+              <SelectItem value="customs">Customs</SelectItem>
+              <SelectItem value="inspection">Inspection</SelectItem>
+              <SelectItem value="handling">Handling</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="vendorName">Vendor Name</Label>
+          <Input
+            id="vendorName"
+            value={formData.vendorName}
+            onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })}
+            data-testid="input-vendor-name"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="amount">Amount</Label>
+          <Input
+            id="amount"
+            type="number"
+            step="0.01"
+            value={formData.amount}
+            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            required
+            data-testid="input-arrival-amount"
+          />
+        </div>
+        <div>
+          <Label htmlFor="currency">Currency</Label>
+          <Select 
+            value={formData.currency} 
+            onValueChange={(value: any) => setFormData({ ...formData, currency: value })}
+          >
+            <SelectTrigger data-testid="select-arrival-currency">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="ETB">ETB</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="description">Description</Label>
+        <Textarea
+          id="description"
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          data-testid="input-arrival-description"
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="documentReference">Document Reference</Label>
+        <Input
+          id="documentReference"
+          value={formData.documentReference}
+          onChange={(e) => setFormData({ ...formData, documentReference: e.target.value })}
+          data-testid="input-document-reference"
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={addArrivalCostMutation.isPending}
+          data-testid="button-submit-arrival-cost"
+        >
+          {addArrivalCostMutation.isPending ? 'Adding...' : 'Add Arrival Cost'}
+        </Button>
+      </div>
+    </form>
   );
 }
