@@ -30,6 +30,11 @@ export const sessions = pgTable(
 // User roles enum
 export const userRoleEnum = pgEnum('user_role', ['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker']);
 
+// User role update schema for role change operations
+export const userRoleUpdateSchema = z.object({
+  role: z.enum(['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker'])
+});
+
 // Quality grades enum for coffee grading
 export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']);
 

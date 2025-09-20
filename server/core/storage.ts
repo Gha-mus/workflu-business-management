@@ -248,9 +248,9 @@ import {
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
 import Decimal from "decimal.js";
-import { auditService } from "./auditService";
-import { approvalWorkflowService } from "./approvalWorkflowService";
-import { ConfigurationService } from "./configurationService";
+import { auditService } from "../auditService";
+import { approvalWorkflowService } from "../approvalWorkflowService";
+import { ConfigurationService } from "../configurationService";
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
