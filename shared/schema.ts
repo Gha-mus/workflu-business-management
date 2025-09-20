@@ -347,6 +347,121 @@ export const deliveryTracking = pgTable("delivery_tracking", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Shipment legs table - Multi-leg shipping support (Stage 4)
+export const shipmentLegs = pgTable("shipment_legs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  legNumber: integer("leg_number").notNull(), // 1, 2, 3... for sequence
+  carrierId: varchar("carrier_id").notNull().references(() => carriers.id),
+  method: shipmentMethodEnum("method").notNull(),
+  status: shipmentStatusEnum("status").notNull().default('pending'),
+  
+  // Weight details per workflow_reference.json lines 622-624
+  netWeightKg: decimal("net_weight_kg", { precision: 10, scale: 2 }).notNull(), // Actual product weight
+  cartonWeightKg: decimal("carton_weight_kg", { precision: 10, scale: 2 }).notNull(), // Packaging weight
+  grossWeightKg: decimal("gross_weight_kg", { precision: 10, scale: 2 }).notNull(), // Net + carton
+  chargeableWeightKg: decimal("chargeable_weight_kg", { precision: 10, scale: 2 }).notNull(), // Carrier billing weight
+  
+  // Addresses and routing
+  originAddress: text("origin_address").notNull(),
+  destinationAddress: text("destination_address").notNull(),
+  intermediateLocation: text("intermediate_location"), // For multi-leg routing
+  
+  // Pricing per workflow_reference.json lines 625-629
+  ratePerKg: decimal("rate_per_kg", { precision: 10, scale: 4 }).notNull(), // Rate per kg
+  legBaseCost: decimal("leg_base_cost", { precision: 12, scale: 2 }).notNull(), // rate_per_kg × chargeable_weight
+  transferCommissionPercent: decimal("transfer_commission_percent", { precision: 5, scale: 2 }).default('0.00'), // Commission %
+  transferCommissionUsd: decimal("transfer_commission_usd", { precision: 10, scale: 2 }).default('0.00'), // Commission amount
+  legTotalCost: decimal("leg_total_cost", { precision: 12, scale: 2 }).notNull(), // Base + commission
+  
+  // Dates and tracking
+  estimatedDepartureDate: timestamp("estimated_departure_date"),
+  actualDepartureDate: timestamp("actual_departure_date"),
+  estimatedArrivalDate: timestamp("estimated_arrival_date"),
+  actualArrivalDate: timestamp("actual_arrival_date"),
+  trackingNumber: varchar("tracking_number"),
+  
+  // Funding and payment
+  fundingSource: varchar("funding_source").notNull(), // capital, external
+  paymentCurrency: varchar("payment_currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  
+  // Status tracking
+  isConfirmed: boolean("is_confirmed").notNull().default(false), // Confirmation per workflow_reference.json line 610
+  confirmedBy: varchar("confirmed_by").references(() => users.id),
+  confirmedAt: timestamp("confirmed_at"),
+  
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_shipment_legs_shipment_id").on(table.shipmentId),
+  index("idx_shipment_legs_leg_number").on(table.shipmentId, table.legNumber),
+  index("idx_shipment_legs_confirmed").on(table.isConfirmed),
+  uniqueIndex("unique_shipment_leg_number").on(table.shipmentId, table.legNumber),
+]);
+
+// Arrival costs table - Separate from leg costs per workflow_reference.json lines 631-632  
+export const arrivalCosts = pgTable("arrival_costs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  costType: varchar("cost_type").notNull(), // broker, delivery, customs, inspection, handling, other
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  amountUsd: decimal("amount_usd", { precision: 12, scale: 2 }).notNull(),
+  description: text("description").notNull(),
+  
+  // Funding and payment
+  fundingSource: varchar("funding_source").notNull(), // capital, external  
+  paymentMethod: varchar("payment_method"), // cash, advance, credit
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
+  remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
+  paidDate: timestamp("paid_date"),
+  
+  invoiceReference: varchar("invoice_reference"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_arrival_costs_shipment_id").on(table.shipmentId),
+  index("idx_arrival_costs_cost_type").on(table.costType),
+]);
+
+// Shipment inspections table - Final inspection per workflow_reference.json lines 634-636
+export const shipmentInspections = pgTable("shipment_inspections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  inspectionNumber: varchar("inspection_number").notNull().unique(),
+  
+  // Inspection results per workflow_reference.json line 635
+  expectedWeightKg: decimal("expected_weight_kg", { precision: 10, scale: 2 }).notNull(), // Net weight expected
+  receivedWeightKg: decimal("received_weight_kg", { precision: 10, scale: 2 }).notNull(), // Total received
+  cleanWeightKg: decimal("clean_weight_kg", { precision: 10, scale: 2 }).notNull(), // Good condition
+  damagedWeightKg: decimal("damaged_weight_kg", { precision: 10, scale: 2 }).notNull(), // Damaged/loss
+  
+  // Inspection status and actions
+  status: varchar("status").notNull().default('pending'), // pending, completed, requires_settlement
+  inspectionDate: timestamp("inspection_date").notNull().defaultNow(),
+  
+  // Settlement options per workflow_reference.json lines 597-600
+  settlementRequired: boolean("settlement_required").notNull().default(false),
+  settlementAction: varchar("settlement_action"), // accept_difference, request_correction, write_off
+  settlementNotes: text("settlement_notes"),
+  
+  // Final warehouse transfer per workflow_reference.json line 636
+  finalWarehouseTransferred: boolean("final_warehouse_transferred").notNull().default(false),
+  transferredAt: timestamp("transferred_at"),
+  
+  inspectedBy: varchar("inspected_by").notNull().references(() => users.id),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("idx_shipment_inspections_shipment_id").on(table.shipmentId),
+  index("idx_shipment_inspections_status").on(table.status),
+]);
+
 // Advanced Warehouse Operations Tables
 
 // Quality standards table
@@ -2578,6 +2693,26 @@ export const insertDeliveryTrackingSchema = createInsertSchema(deliveryTracking)
   createdAt: true,
 });
 
+// Stage 4: Multi-leg shipping insert schemas
+export const insertShipmentLegSchema = createInsertSchema(shipmentLegs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  confirmedAt: true,
+});
+
+export const insertArrivalCostSchema = createInsertSchema(arrivalCosts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertShipmentInspectionSchema = createInsertSchema(shipmentInspections).omit({
+  id: true,
+  inspectionNumber: true,
+  createdAt: true,
+  completedAt: true,
+});
+
 // Advanced warehouse insert schemas
 export const insertQualityStandardSchema = createInsertSchema(qualityStandards).omit({
   id: true,
@@ -2865,6 +3000,16 @@ export type InsertShipmentItem = z.infer<typeof insertShipmentItemSchema>;
 
 export type ShippingCost = typeof shippingCosts.$inferSelect;
 export type InsertShippingCost = z.infer<typeof insertShippingCostSchema>;
+
+// Stage 4: Multi-leg shipping types
+export type ShipmentLeg = typeof shipmentLegs.$inferSelect;
+export type InsertShipmentLeg = z.infer<typeof insertShipmentLegSchema>;
+
+export type ArrivalCost = typeof arrivalCosts.$inferSelect;
+export type InsertArrivalCost = z.infer<typeof insertArrivalCostSchema>;
+
+export type ShipmentInspection = typeof shipmentInspections.$inferSelect;
+export type InsertShipmentInspection = z.infer<typeof insertShipmentInspectionSchema>;
 
 export type DeliveryTracking = typeof deliveryTracking.$inferSelect;
 export type InsertDeliveryTracking = z.infer<typeof insertDeliveryTrackingSchema>;

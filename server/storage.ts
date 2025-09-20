@@ -1217,6 +1217,16 @@ export interface IStorage {
   deleteCarrier(id: string): Promise<void>;
   updateCarrierRating(carrierId: string, rating: number): Promise<Carrier>;
   
+  // Shipment legs operations
+  getShipmentLegs(shipmentId: string): Promise<ShipmentLeg[]>;
+  getShipmentLeg(id: string): Promise<ShipmentLeg | undefined>;
+  createShipmentLeg(leg: InsertShipmentLeg, auditContext?: AuditContext): Promise<ShipmentLeg>;
+  updateShipmentLeg(id: string, updates: Partial<InsertShipmentLeg>, auditContext?: AuditContext): Promise<ShipmentLeg>;
+  
+  // Arrival costs operations
+  getArrivalCosts(shipmentId: string): Promise<ArrivalCost[]>;
+  createArrivalCost(cost: InsertArrivalCost, auditContext?: AuditContext): Promise<ArrivalCost>;
+  
   // Shipment operations
   getShipments(filter?: ShipmentFilter): Promise<Shipment[]>;
   getShipment(id: string): Promise<Shipment | undefined>;
@@ -5024,6 +5034,97 @@ export class DatabaseStorage implements IStorage {
       .set({ rating: rating.toString(), updatedAt: new Date() })
       .where(eq(carriers.id, carrierId))
       .returning();
+    return result;
+  }
+
+  // Shipment legs operations
+  async getShipmentLegs(shipmentId: string): Promise<ShipmentLeg[]> {
+    return await db
+      .select()
+      .from(shipmentLegs)
+      .where(eq(shipmentLegs.shipmentId, shipmentId))
+      .orderBy(asc(shipmentLegs.legNumber));
+  }
+
+  async getShipmentLeg(id: string): Promise<ShipmentLeg | undefined> {
+    const [result] = await db
+      .select()
+      .from(shipmentLegs)
+      .where(eq(shipmentLegs.id, id))
+      .limit(1);
+    return result;
+  }
+
+  async createShipmentLeg(leg: InsertShipmentLeg, auditContext?: AuditContext): Promise<ShipmentLeg> {
+    const [result] = await db.insert(shipmentLegs).values(leg).returning();
+    
+    // CRITICAL SECURITY: Audit logging for shipment leg creation
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'shipment_legs',
+        result.id,
+        'create',
+        'shipment_leg_create',
+        null,
+        result
+      );
+    }
+    
+    return result;
+  }
+
+  async updateShipmentLeg(id: string, updates: Partial<InsertShipmentLeg>, auditContext?: AuditContext): Promise<ShipmentLeg> {
+    // CRITICAL SECURITY: Capture before state for audit logging
+    const beforeState = await this.getShipmentLeg(id);
+    
+    const [result] = await db
+      .update(shipmentLegs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(shipmentLegs.id, id))
+      .returning();
+    
+    // CRITICAL SECURITY: Audit logging for shipment leg updates
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'shipment_legs',
+        result.id,
+        'update',
+        'shipment_leg_update',
+        beforeState,
+        result
+      );
+    }
+    
+    return result;
+  }
+
+  // Arrival costs operations
+  async getArrivalCosts(shipmentId: string): Promise<ArrivalCost[]> {
+    return await db
+      .select()
+      .from(arrivalCosts)
+      .where(eq(arrivalCosts.shipmentId, shipmentId))
+      .orderBy(asc(arrivalCosts.createdAt));
+  }
+
+  async createArrivalCost(cost: InsertArrivalCost, auditContext?: AuditContext): Promise<ArrivalCost> {
+    const [result] = await db.insert(arrivalCosts).values(cost).returning();
+    
+    // CRITICAL SECURITY: Audit logging for arrival cost creation
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'arrival_costs',
+        result.id,
+        'create',
+        'arrival_cost_create',
+        null,
+        result
+      );
+    }
+    
     return result;
   }
 
