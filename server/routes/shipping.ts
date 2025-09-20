@@ -43,18 +43,17 @@ shippingRouter.post("/shipments",
       const validatedData = insertShipmentSchema.parse(req.body);
       const shipment = await storage.createShipment({
         ...validatedData,
-        userId: req.user!.id
+        userId: (req.user as any)?.claims?.sub
       });
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "shipment",
+      const auditContext = auditService.extractRequestContext(req);
+      await auditService.logOperation(auditContext, {
+        entityType: "shipments",
         entityId: shipment.id,
-        description: `Created shipment: ${shipment.containerNumber}`,
-        previousState: null,
-        newState: shipment
+        action: "create",
+        description: `Created shipment: ${shipment.containerNumber || shipment.id}`,
+        newValues: shipment
       });
 
       res.status(201).json(shipment);
@@ -73,17 +72,19 @@ shippingRouter.post("/commission-calculation",
     try {
       // Validate request data
       const validatedData = commissionCalculationSchema.parse(req.body);
-      const calculation = await commissionCalculationService.calculateTransferCommission(validatedData);
+      const calculation = await commissionCalculationService.calculateAndApplyCommission(
+        validatedData,
+        (req.user as any)?.claims?.sub || 'unknown'
+      );
       
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "commission_calculation",
-        entityId: calculation.id || 'N/A',
-        description: `Calculated commission: ${calculation.commissionAmount}`,
-        previousState: null,
-        newState: calculation
+      const auditContext = auditService.extractRequestContext(req);
+      await auditService.logOperation(auditContext, {
+        entityType: "shipment_legs",
+        entityId: calculation.shipmentLegId,
+        action: "update",
+        description: `Calculated commission: ${calculation.commissionUsd}`,
+        newValues: calculation
       });
       
       res.json(calculation);
@@ -102,20 +103,25 @@ shippingRouter.post("/inspection",
     try {
       // Validate request data
       const validatedData = insertShipmentInspectionSchema.parse(req.body);
-      const inspection = await inspectionWorkflowService.createInspection(validatedData, req.user!.id);
+      const inspectionRequest = {
+        shipmentId: validatedData.shipmentId,
+        inspectorUserId: (req.user as any)?.claims?.sub || 'unknown',
+        inspectionLocation: validatedData.inspectionLocation || 'Default Location',
+        notes: validatedData.notes
+      };
+      const inspectionId = await inspectionWorkflowService.startInspection(inspectionRequest);
       
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "shipment_inspection",
-        entityId: inspection.id,
-        description: `Created inspection: ${inspection.inspectionNumber}`,
-        previousState: null,
-        newState: inspection
+      const auditContext = auditService.extractRequestContext(req);
+      await auditService.logOperation(auditContext, {
+        entityType: "shipment_inspections",
+        entityId: inspectionId,
+        action: "create",
+        description: `Started inspection for shipment: ${validatedData.shipmentId}`,
+        newValues: inspectionRequest
       });
       
-      res.status(201).json(inspection);
+      res.status(201).json({ id: inspectionId, ...inspectionRequest });
     } catch (error) {
       console.error("Error creating inspection:", error);
       res.status(500).json({ message: "Failed to create inspection" });
@@ -131,20 +137,19 @@ shippingRouter.post("/landed-cost",
     try {
       // Validate request data
       const validatedData = landedCostCalculationSchema.parse(req.body);
-      const landedCost = await landedCostService.calculateLandedCost(validatedData);
+      const landedCostResults = await landedCostService.calculateLandedCost(validatedData);
       
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "landed_cost",
-        entityId: landedCost.id || 'N/A',
-        description: `Calculated landed cost: ${landedCost.totalCost}`,
-        previousState: null,
-        newState: landedCost
+      const auditContext = auditService.extractRequestContext(req);
+      await auditService.logOperation(auditContext, {
+        entityType: "landed_cost_calculations",
+        entityId: validatedData.orderId || validatedData.shipmentId || 'unknown',
+        action: "create",
+        description: `Calculated landed cost for ${landedCostResults.length} order(s)`,
+        newValues: { calculationRequest: validatedData, resultCount: landedCostResults.length }
       });
       
-      res.json(landedCost);
+      res.json({ results: landedCostResults });
     } catch (error) {
       console.error("Error calculating landed cost:", error);
       res.status(500).json({ message: "Failed to calculate landed cost" });
@@ -163,18 +168,17 @@ shippingRouter.post("/inspections/:id/settlement",
       const validatedData = inspectionSettlementSchema.parse(req.body);
       const settlementId = await shippingEnhancementService.processInspectionSettlement(
         { ...validatedData, inspectionId: req.params.id },
-        req.user!.id
+        (req.user as any)?.claims?.sub || 'unknown'
       );
       
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "UPDATE",
-        entityType: "shipment_inspection",
+      const auditContext = auditService.extractRequestContext(req);
+      await auditService.logOperation(auditContext, {
+        entityType: "shipment_inspections",
         entityId: req.params.id,
+        action: "update",
         description: `Processed settlement: ${validatedData.settlementType}`,
-        previousState: null,
-        newState: { settlementId, ...validatedData }
+        newValues: { settlementId, ...validatedData }
       });
       
       res.status(201).json({ settlementId, status: 'settlement_processed' });
