@@ -1609,6 +1609,7 @@ export interface IStorage {
   getDocumentsByOrder(orderId: string): Promise<Document[]>;
   getDocumentsByShipment(shipmentId: string): Promise<Document[]>;
   getDocumentsByTags(tags: string[]): Promise<Document[]>;
+  getDocuments(options?: { limit?: number; offset?: number }): Promise<Document[]>;
   
   // Document version control
   getDocumentVersions(documentId: string): Promise<DocumentVersion[]>;
@@ -10621,6 +10622,28 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('Error updating revenue balance summary:', error);
       throw new Error('Failed to update revenue balance summary');
+    }
+  }
+
+  // ===== DOCUMENT OPERATIONS =====
+
+  async getDocuments(options?: { limit?: number; offset?: number }): Promise<Document[]> {
+    try {
+      let query = db.select().from(documents);
+      
+      if (options?.limit) {
+        query = query.limit(options.limit);
+      }
+      
+      if (options?.offset) {
+        query = query.offset(options.offset);
+      }
+      
+      const result = await query;
+      return result;
+    } catch (error) {
+      console.error('Error getting documents:', error);
+      return [];
     }
   }
 
