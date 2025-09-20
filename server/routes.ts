@@ -6509,6 +6509,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== STAGE 9: COMPLIANCE MONITORING ROUTES =====
+  
+  // GET /api/compliance/dashboard - Compliance dashboard overview
+  app.get('/api/compliance/dashboard', isAuthenticated, requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const dashboard = await storage.getComplianceDashboard(userId);
+      res.json(dashboard);
+    } catch (error) {
+      console.error("Error fetching compliance dashboard:", error);
+      res.status(500).json({ message: "Failed to fetch compliance dashboard" });
+    }
+  });
+
+  // GET /api/compliance/alerts - Compliance alerts with filtering
+  app.get('/api/compliance/alerts', isAuthenticated, requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { priority } = req.query;
+      const filter = priority ? { priority } : undefined;
+      const alerts = await storage.getComplianceAlerts(filter);
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching compliance alerts:", error);
+      res.status(500).json({ message: "Failed to fetch compliance alerts" });
+    }
+  });
+
+  // GET /api/compliance/expiring - Expiring compliance items
+  app.get('/api/compliance/expiring', isAuthenticated, requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { days } = req.query;
+      const daysParam = days ? parseInt(days as string) : 30;
+      const expiringItems = await storage.getExpiringCompliance(daysParam);
+      res.json(expiringItems);
+    } catch (error) {
+      console.error("Error fetching expiring compliance items:", error);
+      res.status(500).json({ message: "Failed to fetch expiring compliance items" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
