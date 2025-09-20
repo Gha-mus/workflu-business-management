@@ -168,7 +168,7 @@ export default function Sales() {
   });
 
   const { data: salesOrders, isLoading: ordersLoading } = useQuery<SalesOrder[]>({
-    queryKey: ['/api/sales-orders'],
+    queryKey: ['/api/sales/orders'],
     enabled: !!user,
   });
 
@@ -210,11 +210,11 @@ export default function Sales() {
 
   const createSalesOrderMutation = useMutation({
     mutationFn: async (orderData: InsertSalesOrder) => {
-      return await apiRequest('POST', '/api/sales-orders', orderData);
+      return await apiRequest('POST', '/api/sales/orders', orderData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Sales order created successfully" });
-      queryClient.invalidateQueries({ queryKey: ['/api/sales-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sales/orders'] });
       setShowNewOrderModal(false);
     },
     onError: () => {
@@ -246,11 +246,12 @@ export default function Sales() {
     return <IconComponent className="w-4 h-4" />;
   };
 
-  const filteredCustomers = customers?.filter(customer =>
-    customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-    customer.email.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-    customer.contactPerson.toLowerCase().includes(customerSearchQuery.toLowerCase())
-  ) || [];
+  const filteredCustomers = customers?.filter(customer => {
+    const query = customerSearchQuery.toLowerCase();
+    return (customer.name || '').toLowerCase().includes(query) ||
+           (customer.email || '').toLowerCase().includes(query) ||
+           (customer.contactPerson || '').toLowerCase().includes(query);
+  }) || [];
 
   const filteredOrders = salesOrders?.filter(order =>
     orderStatusFilter === "all" || order.status === orderStatusFilter
@@ -793,7 +794,15 @@ function NewCustomerForm({ onSubmit, isLoading }: { onSubmit: (data: InsertCusto
       form.setError('contactPerson', { message: 'Contact person is required' });
       return;
     }
-    onSubmit(data);
+    
+    // Convert empty fields to null for database foreign key constraints
+    const processedData = {
+      ...data,
+      creditLimit: data.creditLimit === '' ? null : data.creditLimit,
+      salesRepId: data.salesRepId === '' ? null : data.salesRepId,
+    };
+    
+    onSubmit(processedData);
   };
 
   return (

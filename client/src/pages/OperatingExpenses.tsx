@@ -99,7 +99,7 @@ export default function OperatingExpenses() {
 
   // Queries
   const { data: supplies } = useQuery({
-    queryKey: ['/api/supplies'],
+    queryKey: ['/api/operating-expenses/supplies'],
     select: (data: any[]) => data || []
   });
 
@@ -161,7 +161,7 @@ export default function OperatingExpenses() {
   // Mutations
   const createSupplyMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/supplies', {
+      const response = await fetch('/api/operating-expenses/supplies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -171,7 +171,7 @@ export default function OperatingExpenses() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/supplies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/operating-expenses/supplies'] });
       supplyForm.reset();
       toast({ title: 'Success', description: 'Supply created successfully' });
     },
@@ -203,7 +203,7 @@ export default function OperatingExpenses() {
 
   const createPurchaseMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/supply-purchases', {
+      const response = await fetch('/api/operating-expenses/supply-purchases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -213,7 +213,7 @@ export default function OperatingExpenses() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/supplies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/operating-expenses/supplies'] });
       purchaseForm.reset();
       toast({ title: 'Success', description: 'Supply purchase recorded successfully' });
     },
@@ -224,7 +224,7 @@ export default function OperatingExpenses() {
 
   const recordConsumptionMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/supply-consumption', {
+      const response = await fetch('/api/operating-expenses/supply-consumption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -234,7 +234,7 @@ export default function OperatingExpenses() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/supplies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/operating-expenses/supplies'] });
       consumptionForm.reset();
       toast({ title: 'Success', description: 'Supply consumption recorded successfully' });
     },
