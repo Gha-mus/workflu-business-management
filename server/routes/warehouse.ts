@@ -9,7 +9,9 @@ import {
   warehouseStatusUpdateSchema,
   warehouseFilterOperationSchema,
   warehouseMoveToFinalSchema,
-  warehouseStockFilterSchema
+  warehouseStockFilterSchema,
+  warehouseCostValidationSchema,
+  warehouseCostCorrectionSchema
 } from "@shared/schema";
 import { warehousePeriodGuard } from "../periodGuard";
 import { requireApproval } from "../approvalMiddleware";
@@ -158,14 +160,11 @@ warehouseRouter.post("/validate-cost-redistribution",
   isAuthenticated,
   requireRole(["admin", "warehouse", "finance"]),
   warehousePeriodGuard,
-  requireApproval("warehouse_cost_validation"),
+  requireApproval("warehouse_operation"),
   async (req, res) => {
     try {
-      const { orderId } = req.body;
-      
-      if (!orderId) {
-        return res.status(400).json({ message: "orderId is required" });
-      }
+      const validatedData = warehouseCostValidationSchema.parse(req.body);
+      const { orderId } = validatedData;
       
       const validation = await warehouseEnhancementService.validateCostRedistribution(orderId);
       
@@ -209,14 +208,12 @@ warehouseRouter.post("/auto-correct-cost-redistribution",
   isAuthenticated,
   requireRole(["admin", "warehouse", "finance"]),
   warehousePeriodGuard,
-  requireApproval("warehouse_cost_correction"),
+  requireApproval("warehouse_operation"),
+  requireWarehouseScope,
   async (req, res) => {
     try {
-      const { orderId } = req.body;
-      
-      if (!orderId) {
-        return res.status(400).json({ message: "orderId is required" });
-      }
+      const validatedData = warehouseCostCorrectionSchema.parse(req.body);
+      const { orderId } = validatedData;
       
       const success = await warehouseEnhancementService.autoCorrectCostRedistribution(
         orderId,
