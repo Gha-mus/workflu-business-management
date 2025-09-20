@@ -2,6 +2,7 @@ import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole, validateSalesReturn } from "../core/auth/replitAuth";
 import { auditService } from "../auditService";
+import { salesEnhancementService } from "../salesEnhancementService";
 import { 
   insertSalesOrderSchema,
   insertCustomerSchema,
@@ -32,19 +33,26 @@ salesRouter.post("/orders",
       const validatedData = insertSalesOrderSchema.parse(req.body);
       const order = await storage.createSalesOrder({
         ...validatedData,
-        userId: req.user!.id
+        userId: (req.user as any).claims?.sub || 'unknown'
       });
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "sales_order",
-        entityId: order.id,
-        description: `Created sales order: ${order.orderNumber}`,
-        previousState: null,
-        newState: order
-      });
+      await auditService.logOperation(
+        {
+          userId: (req.user as any).claims?.sub || 'unknown',
+          userName: (req.user as any).claims?.email || 'Unknown',
+          source: 'sales',
+          severity: 'info',
+        },
+        {
+          entityType: 'sales_orders',
+          entityId: order.id,
+          action: 'create',
+          operationType: 'sale_order',
+          description: `Created sales order: ${order.orderNumber}`,
+          newValues: order
+        }
+      );
 
       res.status(201).json(order);
     } catch (error) {
@@ -75,15 +83,22 @@ salesRouter.post("/customers",
       const customer = await storage.createCustomer(validatedData);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "customer",
-        entityId: customer.id,
-        description: `Created customer: ${customer.name}`,
-        previousState: null,
-        newState: customer
-      });
+      await auditService.logOperation(
+        {
+          userId: (req.user as any).claims?.sub || 'unknown',
+          userName: (req.user as any).claims?.email || 'Unknown',
+          source: 'sales',
+          severity: 'info',
+        },
+        {
+          entityType: 'customers',
+          entityId: customer.id,
+          action: 'create',
+          operationType: 'customer_create',
+          description: `Created customer: ${customer.name}`,
+          newValues: customer
+        }
+      );
 
       res.status(201).json(customer);
     } catch (error) {
@@ -103,15 +118,22 @@ salesRouter.post("/return",
       const result = await storage.processSalesReturn(req.body);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "sales_return",
-        entityId: result.id,
-        description: `Processed sales return: ${req.body.returnReason}`,
-        previousState: null,
-        newState: result
-      });
+      await auditService.logOperation(
+        {
+          userId: (req.user as any).claims?.sub || 'unknown',
+          userName: (req.user as any).claims?.email || 'Unknown',
+          source: 'sales',
+          severity: 'info',
+        },
+        {
+          entityType: 'sales_returns',
+          entityId: result.id,
+          action: 'create',
+          operationType: 'sales_return',
+          description: `Processed sales return: ${req.body.returnReason}`,
+          newValues: result
+        }
+      );
 
       res.json(result);
     } catch (error) {
