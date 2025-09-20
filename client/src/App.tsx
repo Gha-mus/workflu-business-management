@@ -13,7 +13,7 @@ import Warehouse from "@/pages/Warehouse";
 import Shipping from "@/pages/Shipping";
 import Orders from "@/pages/Orders";
 import Reports from "@/pages/Reports";
-import Settings from "@/pages/Settings";
+import SettingsManagement from "@/pages/SettingsManagement";
 import Sales from "@/pages/Sales";
 import Users from "@/pages/Users";
 import DocumentManagement from "@/pages/DocumentManagement";
@@ -46,7 +46,7 @@ function Router() {
           <Route path="/documents" component={DocumentManagement} />
           <Route path="/compliance" component={Compliance} />
           <Route path="/users" component={Users} />
-          <Route path="/settings" component={Settings} />
+          <Route path="/settings" component={SettingsManagement} />
         </>
       )}
       <Route component={NotFound} />
