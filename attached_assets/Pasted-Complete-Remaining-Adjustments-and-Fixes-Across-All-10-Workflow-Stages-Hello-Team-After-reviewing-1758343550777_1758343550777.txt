@@ -1,0 +1,127 @@
+Complete Remaining Adjustments and Fixes Across All 10 Workflow Stages
+
+Hello Team,
+
+After reviewing the current project and comparing it with workflow_reference.json, here is the full breakdown of what is still missing or incomplete across the ten workflow stages. Please make sure that everything is implemented end-to-end without pausing, and that all fixes and features are fully integrated with OpenAI (validations, compliance checks).
+
+Stage 1: Working Capital
+
+✅ Core structure is working.
+
+Missing: Ensure all references (order_id, purchase_id, shipping_leg_id, expense_id) are correctly linked in ledger entries. Add automatic validation that amounts must exactly match linked operations.
+
+Stage 2: Purchases
+
+✅ Suppliers, advances, and payments are covered.
+
+Missing: In the UI, require that every purchase has an Order ID. Add a supplier notes/quality field (e.g., high/medium/low).
+
+Stage 3: Warehouse
+
+✅ FIRST/FINAL types and statuses exist.
+
+Missing:
+
+Full tab views for Awaiting Decision, Ready to Ship, Awaiting Filter, Non-Clean, Ready for Sale.
+
+Enforce rule: clean + non-clean = total input qty.
+
+Implement redistribution logic (non-clean = zero cost, clean absorbs full cost).
+
+Supplier quality reports (filter yield %).
+
+Stage 4: Shipping
+
+✅ Multi-leg system exists.
+
+Missing:
+
+Auto-deduct stock when shipment is confirmed.
+
+Dedicated arrival costs screen (broker/handling/delivery) with historical FX.
+
+Inspection workflow: record gross/net/clean/damaged weights + settlement actions (accept/claim/discount/return).
+
+Final landed cost = purchase cost + shipping legs + arrival costs + packing, with per-kg and 8kg carton cost calculations.
+
+Stage 5: Operating Expenses
+
+✅ Expenses table exists.
+
+Missing:
+
+Sub-categories: salaries, rent/utilities, supplies (cartons/tape), bank/transfer fees.
+
+Supplies inventory + automatic deduction during packing (Stage 3).
+
+Ensure central FX rate with historical storage.
+
+Stage 6: Sales
+
+✅ Customers and invoices exist.
+
+Missing:
+
+Enforce: non-clean sales only from FIRST warehouse, clean from FINAL.
+
+Show automatic profit margin per invoice.
+
+Report: average selling price per carton vs landed cost.
+
+Stage 7: Revenues
+
+✅ Revenue ledger exists.
+
+Missing:
+
+Live calculation of withdrawable balance (collections – withdrawals – transfers – fees).
+
+Partner withdrawals must validate available balance before approval.
+
+Reinvestment to capital must always create the triple impact (Revenue – Capital – Expenses).
+
+Stage 8: Users & Permissions
+
+✅ Roles exist.
+
+Missing:
+
+Sensitive change policies: one-time edits, ±% price caps, manager approval required.
+
+Optional hide/show cost & margin in UI (admin decision).
+
+Stage 9: Reports
+
+✅ Reporting system exists.
+
+Missing:
+
+Stage-specific reports for all stages (1–8).
+
+Period summaries (monthly, quarterly, annual).
+
+Operational KPIs: avg cost/kg, damage %, profit margin %, collection rate, DSO.
+
+PDF/Excel export fully working with role-based access.
+
+Stage 10: Settings
+
+✅ Settings panel exists.
+
+Missing:
+
+Historical FX log + alerts on updates.
+
+Full warehouse setup screen (type, city, country, status).
+
+Numbering settings (prefix, reset policy).
+
+Draft → Publish workflow with audit logs & configuration snapshots.
+
+General Tasks
+
+Tests: Add unit/integration tests for each stage (filtering rules, landed cost, expense allocation, withdrawable balance, profit margin).
+
+Documentation: Add README with setup instructions + developer guide. Move workflow_reference.json into /docs.
+
+⚠️ Important: Do not stop midway. After reorganizing the project structure, continue directly to implement all missing details until all ten workflow stages are fully complete and compliant.

@@ -15,7 +15,7 @@ export const aiRouter = Router();
 aiRouter.post("/purchase-recommendation", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiPurchaseRecommendationRequestSchema.parse(req.body);
-    const recommendation = await aiService.getPurchaseRecommendation(validatedData);
+    const recommendation = await aiService.getPurchaseRecommendations(validatedData.historicalPurchases, validatedData.currentMarketConditions, validatedData.availableCapital);
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting purchase recommendation:", error);
@@ -27,7 +27,7 @@ aiRouter.post("/purchase-recommendation", isAuthenticated, async (req, res) => {
 aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiSupplierRecommendationRequestSchema.parse(req.body);
-    const recommendation = await aiService.getSupplierRecommendation(validatedData);
+    const recommendation = await aiService.getSupplierRecommendations(validatedData.suppliers, validatedData.supplierPerformance, validatedData.currentNeeds);
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting supplier recommendation:", error);
@@ -39,7 +39,7 @@ aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
 aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiCapitalOptimizationRequestSchema.parse(req.body);
-    const optimization = await aiService.getCapitalOptimization(validatedData);
+    const optimization = await aiService.getCapitalOptimizationSuggestions(validatedData.capitalEntries, validatedData.financialSummary, validatedData.upcomingPayments);
     res.json(optimization);
   } catch (error) {
     console.error("Error getting capital optimization:", error);
@@ -51,7 +51,7 @@ aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
 aiRouter.post("/chat", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiChatRequestSchema.parse(req.body);
-    const response = await aiService.chat(validatedData);
+    const response = await aiService.chatAssistant(validatedData.message, validatedData.businessContext, validatedData.conversationHistory);
     res.json(response);
   } catch (error) {
     console.error("Error in AI chat:", error);
@@ -63,7 +63,7 @@ aiRouter.post("/chat", isAuthenticated, async (req, res) => {
 aiRouter.post("/contextual-help", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiContextualHelpRequestSchema.parse(req.body);
-    const help = await aiService.getContextualHelp(validatedData);
+    const help = await aiService.getContextualHelp(validatedData.currentPage, validatedData.userRole, validatedData.currentData);
     res.json(help);
   } catch (error) {
     console.error("Error getting contextual help:", error);
@@ -74,7 +74,7 @@ aiRouter.post("/contextual-help", isAuthenticated, async (req, res) => {
 // GET /api/ai/executive-summary
 aiRouter.get("/executive-summary", isAuthenticated, async (req, res) => {
   try {
-    const summary = await aiService.getExecutiveSummary();
+    const summary = await aiService.generateExecutiveSummary({}, {}, {}, {});
     res.json(summary);
   } catch (error) {
     console.error("Error getting executive summary:", error);
@@ -85,7 +85,7 @@ aiRouter.get("/executive-summary", isAuthenticated, async (req, res) => {
 // GET /api/ai/anomaly-detection
 aiRouter.get("/anomaly-detection", isAuthenticated, async (req, res) => {
   try {
-    const anomalies = await aiService.detectAnomalies();
+    const anomalies = await aiService.detectAnomalies([], []);
     res.json(anomalies);
   } catch (error) {
     console.error("Error detecting anomalies:", error);
@@ -96,7 +96,7 @@ aiRouter.get("/anomaly-detection", isAuthenticated, async (req, res) => {
 // GET /api/ai/market-timing
 aiRouter.get("/market-timing", isAuthenticated, async (req, res) => {
   try {
-    const timing = await aiService.getMarketTiming();
+    const timing = await aiService.getMarketTimingAnalysis({}, [], 0);
     res.json(timing);
   } catch (error) {
     console.error("Error getting market timing:", error);
