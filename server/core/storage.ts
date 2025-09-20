@@ -2386,17 +2386,39 @@ export class DatabaseStorage implements IStorage {
     if (!entry.reference) return;
 
     const referenceId = entry.reference;
-    const entryAmountUSD = new Decimal(entry.amount);
     const config = ConfigurationService.getInstance();
+
+    // STAGE 1 COMPLIANCE: Validate currency domain
+    if (entry.paymentCurrency && !['USD', 'ETB'].includes(entry.paymentCurrency)) {
+      throw new Error(`Unsupported payment currency: ${entry.paymentCurrency}. Only USD and ETB are supported.`);
+    }
+
+    // STAGE 1 COMPLIANCE: Normalize entry amount to USD for consistent comparisons
+    let entryAmountUSD = new Decimal(entry.amount);
+    if (entry.paymentCurrency === 'ETB') {
+      const rate = entry.exchangeRate ? parseFloat(entry.exchangeRate) : await config.getCentralExchangeRate();
+      if (!Number.isFinite(rate) || rate <= 0) {
+        throw new Error(`Invalid exchange rate for capital entry: ${rate}. Must be a positive finite number.`);
+      }
+      entryAmountUSD = entryAmountUSD.div(rate);
+    }
 
     // Check if reference is a purchase
     const [purchase] = await db.select().from(purchases).where(eq(purchases.id, referenceId));
     if (purchase) {
+      // STAGE 1 COMPLIANCE: Validate purchase currency domain
+      if (purchase.currency && !['USD', 'ETB'].includes(purchase.currency)) {
+        throw new Error(`Unsupported purchase currency: ${purchase.currency}. Only USD and ETB are supported.`);
+      }
+      
       let expectedAmount = new Decimal(purchase.amountPaid);
       
       // Convert from purchase currency to USD if needed
       if (purchase.currency === 'ETB') {
         const rate = purchase.exchangeRate ? parseFloat(purchase.exchangeRate) : await config.getCentralExchangeRate();
+        if (!Number.isFinite(rate) || rate <= 0) {
+          throw new Error(`Invalid exchange rate for purchase: ${rate}. Must be a positive finite number.`);
+        }
         expectedAmount = expectedAmount.div(rate);
       }
       
@@ -2410,7 +2432,90 @@ export class DatabaseStorage implements IStorage {
       return;
     }
 
-    // TODO: Add validation for shipping and expense references when those are implemented
+    // Check if reference is an operating expense
+    const [expense] = await db.select().from(operatingExpenses).where(eq(operatingExpenses.id, referenceId));
+    if (expense) {
+      let expectedAmount = new Decimal(expense.amountUsd);
+      
+      // Allow 1% tolerance for rounding differences
+      const tolerance = expectedAmount.mul(0.01);
+      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      
+      if (difference.gt(tolerance)) {
+        throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked expense amount ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
+      }
+      return;
+    }
+
+    // Check if reference is a shipment leg
+    const [shipmentLeg] = await db.select().from(shipmentLegs).where(eq(shipmentLegs.id, referenceId));
+    if (shipmentLeg) {
+      // STAGE 1 COMPLIANCE: Validate shipment leg currency domain
+      if (shipmentLeg.paymentCurrency && !['USD', 'ETB'].includes(shipmentLeg.paymentCurrency)) {
+        throw new Error(`Unsupported shipment leg currency: ${shipmentLeg.paymentCurrency}. Only USD and ETB are supported.`);
+      }
+      
+      let expectedAmount = new Decimal(shipmentLeg.legTotalCost);
+      
+      // Convert from leg currency to USD if needed
+      if (shipmentLeg.paymentCurrency === 'ETB') {
+        const rate = shipmentLeg.exchangeRate ? parseFloat(shipmentLeg.exchangeRate) : await config.getCentralExchangeRate();
+        if (!Number.isFinite(rate) || rate <= 0) {
+          throw new Error(`Invalid exchange rate for shipment leg: ${rate}. Must be a positive finite number.`);
+        }
+        expectedAmount = expectedAmount.div(rate);
+      }
+      
+      // Allow 1% tolerance for rounding differences
+      const tolerance = expectedAmount.mul(0.01);
+      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      
+      if (difference.gt(tolerance)) {
+        throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked shipping leg cost ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
+      }
+      return;
+    }
+
+    // Check if reference is a sales order (for order_id references)
+    const [salesOrder] = await db.select().from(salesOrders).where(eq(salesOrders.id, referenceId));
+    if (salesOrder) {
+      // STAGE 1 COMPLIANCE: Validate sales order currency domain
+      if (salesOrder.currency && !['USD', 'ETB'].includes(salesOrder.currency)) {
+        throw new Error(`Unsupported sales order currency: ${salesOrder.currency}. Only USD and ETB are supported.`);
+      }
+      
+      // STAGE 1 COMPLIANCE: Validate against amount paid for partial payments, not total
+      let expectedAmount = new Decimal(salesOrder.amountPaid);
+      
+      // Convert from sales order currency to USD if needed
+      if (salesOrder.currency === 'ETB') {
+        const rate = salesOrder.exchangeRate ? parseFloat(salesOrder.exchangeRate) : await config.getCentralExchangeRate();
+        if (!Number.isFinite(rate) || rate <= 0) {
+          throw new Error(`Invalid exchange rate for sales order: ${rate}. Must be a positive finite number.`);
+        }
+        expectedAmount = expectedAmount.div(rate);
+      }
+      
+      // Allow 1% tolerance for rounding differences
+      const tolerance = expectedAmount.mul(0.01);
+      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      
+      if (difference.gt(tolerance)) {
+        throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked sales order amount paid ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
+      }
+      return;
+    }
+
+    // Check if reference is a basic order
+    const [order] = await db.select().from(orders).where(eq(orders.id, referenceId));
+    if (order) {
+      // Basic orders table doesn't have amounts, so we validate the reference exists
+      // but don't do amount matching - this ensures referential integrity
+      return;
+    }
+
+    // If we get here, the reference doesn't match any known operation type
+    throw new Error(`Capital entry reference '${referenceId}' does not match any known operation (purchase, expense, shipping leg, sales order, or order)`);
   }
 
   // STAGE 1 COMPLIANCE: Linked deletion protection for capital entries
