@@ -2679,6 +2679,49 @@ export const multiOrderCapitalEntrySchema = z.object({
   })).min(1),
 });
 
+// Stage 2: Supplier enhancement schemas
+export const supplierQualityAssessmentSchema = z.object({
+  supplierId: z.string().min(1),
+  qualityGrade: z.enum(['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']),
+  qualityScore: z.number().min(0).max(5), // Align with service threshold logic
+  assessmentDate: z.string().datetime().optional().transform((s) => s ? new Date(s) : new Date()),
+  assessmentCriteria: z.object({
+    consistency: z.number().min(0).max(5),
+    defectRate: z.number().min(0).max(5),
+    deliveryTimeliness: z.number().min(0).max(5),
+    packaging: z.number().min(0).max(5),
+    overall: z.number().min(0).max(5),
+  }),
+  assessedBy: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const purchaseReturnSchema = z.object({
+  originalPurchaseId: z.string().min(1),
+  returnQuantityKg: z.number().positive(),
+  returnAmountUsd: z.number().positive(),
+  returnReason: z.enum(['quality_defect', 'delivery_delay', 'specification_mismatch', 'damage', 'other']),
+  returnDate: z.string().datetime().transform(d => new Date(d)),
+  approvedBy: z.string().min(1),
+  refundMethod: z.enum(['credit_balance', 'capital_refund', 'advance_credit']),
+  qualityIssues: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+}).strict();
+
+// Stage 3: Warehouse enhancement schemas  
+export const filteringDelayThresholdSchema = z.object({
+  thresholdDays: z.number().positive().default(7),
+  priorityLevel: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+});
+
+export const costRedistributionValidationSchema = z.object({
+  orderId: z.string().min(1),
+  inputQuantityKg: z.number().positive(),
+  cleanOutputKg: z.number().positive(), 
+  nonCleanOutputKg: z.number().positive(),
+  validateCostCalculation: z.boolean().default(true),
+});
+
 export const insertWarehouseStockSchema = createInsertSchema(warehouseStock).omit({
   id: true,
   createdAt: true,

@@ -28,8 +28,12 @@ import crypto from "crypto";
 import { commissionCalculationService } from "./commissionCalculationService";
 import { inspectionWorkflowService } from "./inspectionWorkflowService";
 import { landedCostService } from "./landedCostService";
+import { db } from "./db";
 // Stage 1: Capital Enhancement Service
 import { capitalEnhancementService } from "./capitalEnhancementService";
+// Stage 2-3: Supplier and Warehouse Enhancement Services
+import { supplierEnhancementService } from "./supplierEnhancementService";
+import { warehouseEnhancementService } from "./warehouseEnhancementService";
 import { 
   insertSupplierSchema,
   insertOrderSchema,
@@ -76,6 +80,10 @@ import {
   updateSalesOrderItemSchema,
   insertCustomerCommunicationSchema,
   multiOrderCapitalEntrySchema,
+  supplierQualityAssessmentSchema,
+  purchaseReturnSchema,
+  filteringDelayThresholdSchema,
+  costRedistributionValidationSchema,
   insertRevenueTransactionSchema,
   insertCustomerCreditLimitSchema,
   insertPricingRuleSchema,
@@ -1445,6 +1453,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to validate capital entry" });
+    }
+  });
+
+  // Stage 2: Supplier Enhancement Routes - Making features functional for users
+  app.post('/api/suppliers/quality-assessment', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+    try {
+      const assessmentData = supplierQualityAssessmentSchema.parse(req.body);
+      await supplierEnhancementService.assessSupplierQuality(assessmentData, req.user.claims.sub);
+      res.status(204).send(); // No content - assessment completed successfully
+    } catch (error) {
+      console.error("Error creating supplier quality assessment:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create supplier quality assessment" });
+    }
+  });
+
+  app.get('/api/suppliers/overdue-advances', requireRole(['admin', 'purchasing', 'finance']), async (req: any, res) => {
+    try {
+      const alerts = await supplierEnhancementService.checkOverdueAdvances();
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching overdue advance alerts:", error);
+      res.status(500).json({ message: "Failed to fetch overdue advance alerts" });
+    }
+  });
+
+  app.post('/api/purchases/return', requireRole(['admin', 'purchasing', 'warehouse']), async (req: any, res) => {
+    try {
+      const returnData = purchaseReturnSchema.parse(req.body);
+      // Transaction wrapping for multi-entity operation
+      const result = await db.transaction(async (tx) => {
+        return await supplierEnhancementService.processPurchaseReturn(returnData, req.user.claims.sub, tx);
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing purchase return:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to process purchase return" });
+    }
+  });
+
+  // Stage 3: Warehouse Enhancement Routes - Making features functional for users
+  app.get('/api/warehouse/filtering-alerts', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const alerts = await warehouseEnhancementService.checkFilteringAlerts();
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching filtering alerts:", error);
+      res.status(500).json({ message: "Failed to fetch filtering alerts" });
+    }
+  });
+
+  app.get('/api/warehouse/supplier-filtering-reports', requireRole(['admin', 'warehouse', 'purchasing']), async (req: any, res) => {
+    try {
+      const reports = await warehouseEnhancementService.generateSupplierFilteringReports();
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching supplier filtering reports:", error);
+      res.status(500).json({ message: "Failed to fetch supplier filtering reports" });
+    }
+  });
+
+  app.post('/api/warehouse/validate-cost-redistribution', requireRole(['admin', 'warehouse', 'finance']), async (req: any, res) => {
+    try {
+      const { orderId } = costRedistributionValidationSchema.parse(req.body);
+      const result = await warehouseEnhancementService.validateCostRedistribution(orderId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error validating cost redistribution:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to validate cost redistribution" });
+    }
+  });
+
+  app.post('/api/warehouse/cost-redistribution/validate', requireRole(['admin', 'warehouse', 'purchasing']), async (req: any, res) => {
+    try {
+      const { orderId } = costRedistributionValidationSchema.parse(req.body);
+      const result = await warehouseEnhancementService.validateCostRedistribution(orderId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error validating cost redistribution:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to validate cost redistribution" });
     }
   });
 
