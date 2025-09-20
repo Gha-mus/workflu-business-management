@@ -73,6 +73,21 @@ salesRouter.get("/customers", isAuthenticated, async (req, res) => {
   }
 });
 
+// GET /api/sales/analytics  
+salesRouter.get("/analytics", isAuthenticated, async (req, res) => {
+  try {
+    const orders = await storage.getSalesOrders();
+    const totalRevenueUsd = orders?.reduce((sum, order) => {
+      return sum + (parseFloat(order.totalAmountUsd?.toString() || '0'));
+    }, 0) || 0;
+    
+    res.json({ totalRevenueUsd });
+  } catch (error) {
+    console.error("Error fetching sales analytics:", error);
+    res.status(500).json({ message: "Failed to fetch sales analytics" });
+  }
+});
+
 // POST /api/sales/customers
 salesRouter.post("/customers",
   isAuthenticated,

@@ -1796,7 +1796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== OPERATING EXPENSES SYSTEM ROUTES (STAGE 5) =====
 
   // Supply routes
-  app.get('/api/supplies', requireRole(['admin', 'purchasing', 'warehouse']), async (req, res) => {
+  app.get('/api/supplies', isAuthenticated, async (req, res) => {
     try {
       const supplies = await storage.getSupplies();
       res.json(supplies);
@@ -1819,32 +1819,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/supplies', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+  app.post('/api/supplies', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
-      const supplyData = insertSupplySchema.parse({
-        ...req.body,
-        createdBy: req.user.claims.sub,
-      });
+      const validatedData = insertSupplySchema.parse(req.body);
+      const supply = await storage.createSupply(validatedData);
 
-      const supply = await storage.createSupply(supplyData, {
-        userId: req.user.claims.sub,
-        userName: req.user.claims.email,
-        userRole: req.user.role,
-        source: 'api_supplies',
-        businessContext: `Create supply: ${supplyData.name}`
-      });
-
-      res.json(supply);
+      res.status(201).json(supply);
     } catch (error) {
       console.error("Error creating supply:", error);
-      
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation error",
-          errors: error.errors
-        });
-      }
-      
       res.status(500).json({ message: "Failed to create supply" });
     }
   });
@@ -1868,16 +1850,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Compatibility shims for Stage 5 - delegate to operating expenses router
-  app.get('/api/supplies', isAuthenticated, requireRole(['admin', 'warehouse']), async (req, res) => {
-    try {
-      const supplies = await storage.getSupplies();
-      res.json(supplies);
-    } catch (error) {
-      console.error("Error fetching supplies:", error);
-      res.status(500).json({ message: "Failed to fetch supplies" });
-    }
-  });
 
   app.get('/api/operating-expense-categories', isAuthenticated, requireRole(['admin', 'finance']), async (req, res) => {
     try {
