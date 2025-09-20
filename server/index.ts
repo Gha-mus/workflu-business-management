@@ -1,5 +1,9 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+// Temporarily disable legacy routes
+// import { registerRoutes } from "./routes";
+import { setupModuleRoutes } from "./routes/index"; 
+import { setupAuth } from "./core/auth/replitAuth";
+import { createServer } from "http";
 import { setupVite, serveStatic, log } from "./vite";
 import { databaseSecurityService } from "./databaseSecurityService";
 import { approvalStartupValidator } from "./approvalStartupValidator";
@@ -68,7 +72,21 @@ app.use((req, res, next) => {
     await notificationSchedulerService.initialize();
     log("✅ Notification scheduler initialized successfully");
 
-    const server = await registerRoutes(app);
+    // Set up authentication first
+    await setupAuth(app);
+    
+    // Set up new modular routes
+    setupModuleRoutes(app);
+    
+    // Set up HTTP server
+    const server = createServer(app);
+    
+    // Set up Vite in development, static serving in production
+    if (process.env.NODE_ENV === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
 
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
