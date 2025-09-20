@@ -23,7 +23,7 @@ export function setupModuleRoutes(app: Express): void {
   app.use("/api/shipping", shippingRouter);
   app.use("/api/operating-expenses", operatingExpensesRouter);
   app.use("/api/sales", salesRouter);
-  app.use("/api/revenues", revenuesRouter);
+  app.use("/api/revenue", revenuesRouter);
   
   // Cross-cutting modules
   app.use("/api/approvals", approvalsRouter);
