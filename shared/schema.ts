@@ -156,16 +156,24 @@ export const configurationSnapshots = pgTable("configuration_snapshots", {
   createdAtIdx: index("idx_config_snapshots_created_at").on(table.createdAt),
 }));
 
-// Suppliers table
+// Suppliers table - Enhanced with missing fields per Stage 2 requirements
 export const suppliers = pgTable("suppliers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(),
   tradeName: varchar("trade_name"),
+  country: varchar("country"), // Missing: country of purchase field
   notes: text("notes"),
+  qualityGrading: qualityGradeEnum("quality_grading").default('ungraded'), // Missing: quality grading integration
+  qualityScore: decimal("quality_score", { precision: 5, scale: 2 }),
+  advanceBalance: decimal("advance_balance", { precision: 12, scale: 2 }).notNull().default('0'),
+  creditBalance: decimal("credit_balance", { precision: 12, scale: 2 }).notNull().default('0'),
+  lastAdvanceDate: timestamp("last_advance_date"),
+  paymentTerms: varchar("payment_terms").default('cash'), // cash, advance, credit
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
 
 // Orders table
 export const orders = pgTable("orders", {
@@ -220,12 +228,12 @@ export const warehouseStock = pgTable("warehouse_stock", {
   purchaseId: varchar("purchase_id").notNull().references(() => purchases.id),
   orderId: varchar("order_id").notNull().references(() => orders.id),
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
-  batchId: varchar("batch_id").references(() => warehouseBatches.id), // Link to batch for traceability
+  batchId: varchar("batch_id"), // Link to batch for traceability - foreign key added later
   warehouse: varchar("warehouse").notNull(), // FIRST, FINAL
   status: varchar("status").notNull().default('AWAITING_DECISION'),
   qualityGrade: qualityGradeEnum("quality_grade").default('ungraded'),
   qualityScore: decimal("quality_score", { precision: 5, scale: 2 }),
-  lastInspectionId: varchar("last_inspection_id").references(() => qualityInspections.id),
+  lastInspectionId: varchar("last_inspection_id"), // Foreign key added later
   qtyKgTotal: decimal("qty_kg_total", { precision: 10, scale: 2 }).notNull(),
   qtyKgClean: decimal("qty_kg_clean", { precision: 10, scale: 2 }).notNull(),
   qtyKgNonClean: decimal("qty_kg_non_clean", { precision: 10, scale: 2 }).notNull().default('0'),
@@ -738,11 +746,31 @@ export const supplyConsumption = pgTable("supply_consumption", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Supply inventory table - Missing supply inventory management system (Stage 5)
+export const supplyInventory = pgTable("supply_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemType: varchar("item_type").notNull(), // cartons, tape, labels
+  itemName: varchar("item_name").notNull(),
+  itemDescription: text("item_description"),
+  unitOfMeasure: varchar("unit_of_measure").notNull(), // pieces, kg, meters
+  currentStock: decimal("current_stock", { precision: 10, scale: 2 }).notNull().default('0'),
+  minimumLevel: decimal("minimum_level", { precision: 10, scale: 2 }).notNull().default('0'),
+  reorderLevel: decimal("reorder_level", { precision: 10, scale: 2 }).notNull().default('0'),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 4 }).notNull(),
+  totalValue: decimal("total_value", { precision: 12, scale: 2 }).notNull().default('0'),
+  lastPurchaseDate: timestamp("last_purchase_date"),
+  lastUsageDate: timestamp("last_usage_date"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Supply purchases table - Track supply purchases (separate from goods purchases)
 export const supplyPurchases = pgTable("supply_purchases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseNumber: varchar("purchase_number").notNull().unique(),
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
+  supplyInventoryId: varchar("supply_inventory_id").notNull().references(() => supplyInventory.id),
   
   // Purchase details
   supplyId: varchar("supply_id").notNull().references(() => supplies.id),
