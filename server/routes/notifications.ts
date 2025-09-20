@@ -8,8 +8,8 @@ export const notificationsRouter = Router();
 // GET /api/notifications
 notificationsRouter.get("/", isAuthenticated, async (req, res) => {
   try {
-    const notifications = await storage.getNotifications(req.user!.id);
-    res.json(notifications);
+    const result = await storage.getUserNotifications(req.user!.id);
+    res.json(result.notifications);
   } catch (error) {
     console.error("Error fetching notifications:", error);
     res.status(500).json({ message: "Failed to fetch notifications" });

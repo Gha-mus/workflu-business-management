@@ -113,7 +113,8 @@ export class WorkFluAIService {
       const response = await openaiClient.chat.completions.create({
         model: OPENAI_CONFIG.model,
         messages,
-        ...(useJson && { response_format: { type: "json_object" } }),
+        // Note: response_format json_object removed due to model compatibility issues
+        // Instead, we rely on the system prompt to request JSON format
       });
 
       return response.choices[0].message.content;

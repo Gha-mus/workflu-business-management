@@ -759,7 +759,9 @@ export interface IStorage {
   
   // Settings operations
   getSetting(key: string): Promise<Setting | undefined>;
+  getSettings(): Promise<Setting[]>;
   setSetting(setting: InsertSetting, auditContext?: AuditContext): Promise<Setting>;
+  updateSetting(setting: InsertSetting, auditContext?: AuditContext): Promise<Setting>;
   getExchangeRate(): Promise<number>;
 
   // Approval chain operations
@@ -1964,6 +1966,76 @@ export class DatabaseStorage implements IStorage {
         undefined,
         undefined,
         `${oldSetting ? 'Updated' : 'Created'} system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+      );
+    }
+    
+    return result;
+  }
+
+  async getSettings(): Promise<Setting[]> {
+    return await db.select().from(settings).where(eq(settings.isActive, true)).orderBy(desc(settings.createdAt));
+  }
+
+  async updateSetting(setting: InsertSetting, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Setting> {
+    // Get old setting for audit trail
+    const [oldSetting] = await db.select().from(settings).where(eq(settings.key, setting.key));
+    
+    if (!oldSetting) {
+      throw new Error(`Setting with key '${setting.key}' not found`);
+    }
+    
+    // CRITICAL SECURITY FIX: Enforce approval requirement for critical system settings
+    const criticalSettings = [
+      'PREVENT_NEGATIVE_BALANCE',
+      'USD_ETB_RATE',
+      'MAX_PURCHASE_AMOUNT',
+      'AUTO_APPROVAL_THRESHOLD',
+      'REQUIRE_APPROVAL_ABOVE',
+      'ADMIN_EMAIL_ALERTS',
+      'SECURITY_MODE',
+      'AUDIT_RETENTION_DAYS'
+    ];
+    
+    const isCriticalSetting = criticalSettings.includes(setting.key);
+    
+    if (approvalContext && isCriticalSetting) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'system_setting_change',
+        operationData: { 
+          key: setting.key, 
+          oldValue: oldSetting.value, 
+          newValue: setting.value 
+        },
+        businessContext: `Critical system setting update: ${setting.key} from '${oldSetting.value}' to '${setting.value}'`
+      });
+    }
+    
+    const [result] = await db
+      .update(settings)
+      .set({
+        value: setting.value,
+        description: setting.description,
+        category: setting.category,
+        requiresApproval: setting.requiresApproval,
+        updatedAt: new Date(),
+      })
+      .where(eq(settings.id, oldSetting.id))
+      .returning();
+    
+    // CRITICAL SECURITY: Audit logging for system setting changes
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'settings',
+        result.id,
+        'update',
+        'system_setting_change',
+        { value: oldSetting.value },
+        { value: setting.value },
+        undefined,
+        undefined,
+        `Updated system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
       );
     }
     
