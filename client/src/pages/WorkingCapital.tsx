@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus, Lock, History } from "lucide-react";
 
 export default function WorkingCapital() {
   const { toast } = useToast();
@@ -151,6 +151,7 @@ export default function WorkingCapital() {
       return;
     }
 
+    // Stage 1 Compliance: Do not send exchangeRate - backend will use central rate only
     addEntryMutation.mutate({
       amount,
       type,
@@ -360,11 +361,17 @@ export default function WorkingCapital() {
                               {new Date(entry.date).toLocaleDateString()}
                             </td>
                             <td className="px-4 py-4">
-                              <Badge 
-                                variant={entry.type === 'CapitalIn' ? 'default' : 'secondary'}
-                              >
-                                {entry.type === 'CapitalIn' ? 'Capital In' : 'Capital Out'}
-                              </Badge>
+                              <div className="flex items-center space-x-2">
+                                <Badge 
+                                  variant={entry.type === 'CapitalIn' ? 'default' : 'secondary'}
+                                >
+                                  {entry.type === 'CapitalIn' ? 'Capital In' : entry.type === 'CapitalOut' ? 'Capital Out' : entry.type}
+                                </Badge>
+                                {/* Stage 1 Compliance: Lock icon for linked entries (immutable) */}
+                                {entry.reference && (
+                                  <Lock className="w-4 h-4 text-muted-foreground" data-testid="icon-locked-entry" />
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-4 text-sm">
                               {entry.description}
@@ -375,12 +382,19 @@ export default function WorkingCapital() {
                               </span>
                             </td>
                             <td className="px-4 py-4 text-sm">
-                              {entry.paymentCurrency}
-                              {entry.exchangeRate && entry.paymentCurrency === 'ETB' && (
-                                <span className="text-muted-foreground ml-2">
-                                  (Rate: {parseFloat(entry.exchangeRate).toFixed(2)})
-                                </span>
-                              )}
+                              <div className="flex items-center space-x-2">
+                                <span>{entry.paymentCurrency}</span>
+                                {/* Stage 1 Compliance: Historical FX display */}
+                                {entry.exchangeRate && entry.paymentCurrency === 'ETB' && (
+                                  <div className="flex items-center text-muted-foreground" data-testid="historical-fx-rate">
+                                    <History className="w-3 h-3 mr-1" />
+                                    <span className="text-xs">
+                                      Rate: {parseFloat(entry.exchangeRate).toFixed(4)} 
+                                      <span className="ml-1 text-xs">(Historical)</span>
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))

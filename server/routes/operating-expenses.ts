@@ -3,6 +3,7 @@ import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
 import { auditService } from "../auditService";
 import { supplyInventoryService } from "../supplyInventoryService";
+import { configurationService } from "../configurationService";
 import { 
   insertOperatingExpenseSchema,
   insertOperatingExpenseCategorySchema,
@@ -161,19 +162,27 @@ operatingExpensesRouter.post("/supply-purchases",
   async (req, res) => {
     try {
       const validatedData = insertSupplyPurchaseSchema.parse(req.body);
+      // Stage 1 Compliance: Enforce central FX only - strip any client-provided FX
+      const { exchangeRate: clientFx, ...sanitizedData } = validatedData;
+      
+      // Get central exchange rate from settings for non-USD currencies
+      const centralExchangeRate = (sanitizedData.currency && sanitizedData.currency !== 'USD') 
+        ? await configurationService.getCentralExchangeRate()
+        : undefined;
+      
       const purchaseRequest = {
-        supplierId: validatedData.supplierId,
+        supplierId: sanitizedData.supplierId,
         items: [{
           itemType: 'other' as const,
-          itemName: validatedData.supplyId,
-          quantity: parseFloat(validatedData.quantity),
+          itemName: sanitizedData.supplyId,
+          quantity: parseFloat(sanitizedData.quantity),
           unitOfMeasure: 'unit',
-          unitCost: parseFloat(validatedData.unitPrice)
+          unitCost: parseFloat(sanitizedData.unitPrice)
         }],
-        currency: validatedData.currency || 'USD',
-        exchangeRate: validatedData.exchangeRate ? parseFloat(validatedData.exchangeRate) : undefined,
-        fundingSource: validatedData.fundingSource as 'capital' | 'external',
-        notes: `Purchase for supply ${validatedData.supplyId}`
+        currency: sanitizedData.currency || 'USD',
+        exchangeRate: centralExchangeRate,
+        fundingSource: sanitizedData.fundingSource as 'capital' | 'external',
+        notes: `Purchase for supply ${sanitizedData.supplyId}`
       };
       const purchaseId = await supplyInventoryService.purchaseSupplies(purchaseRequest, req.user!.id);
 

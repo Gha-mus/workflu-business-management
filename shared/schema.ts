@@ -50,7 +50,7 @@ export const approvalOperationTypeEnum = pgEnum('approval_operation_type', [
 
 // Capital entry types enum for Stage 1 Working Capital
 export const capitalEntryTypeEnum = pgEnum('capital_entry_type', [
-  'CapitalIn', 'CapitalOut', 'Reverse', 'Reclass'
+  'CapitalIn', 'CapitalOut', 'Reverse', 'Reclass', 'Opening'
 ]);
 
 // Revenue entry types enum for Stage 7 Revenue Management
@@ -3056,6 +3056,7 @@ export const insertSupplyPurchaseSchema = createInsertSchema(supplyPurchases).om
   totalAmount: true,
   amountUsd: true,
   remaining: true,
+  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
   receivedDate: true,
   createdAt: true,
   updatedAt: true,
