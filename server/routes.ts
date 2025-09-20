@@ -24,6 +24,10 @@ import { DocumentService, upload } from "./documentService";
 import { z } from "zod";
 import Decimal from "decimal.js";
 import crypto from "crypto";
+// Stage 4: Multi-leg shipping services
+import { commissionCalculationService } from "./commissionCalculationService";
+import { inspectionWorkflowService } from "./inspectionWorkflowService";
+import { landedCostService } from "./landedCostService";
 import { 
   insertSupplierSchema,
   insertOrderSchema,
@@ -72,6 +76,10 @@ import {
   insertRevenueTransactionSchema,
   insertCustomerCreditLimitSchema,
   insertPricingRuleSchema,
+  // Stage 4: Multi-leg shipping schemas
+  insertShipmentLegSchema,
+  insertArrivalCostSchema,
+  insertShipmentInspectionSchema,
   // Financial reporting schemas
   financialPeriodFilterSchema,
   financialAnalysisRequestSchema,
@@ -4276,6 +4284,314 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error validating shipping workflow:", error);
       res.status(500).json({ message: "Failed to validate shipping workflow" });
+    }
+  });
+
+  // Stage 4: Multi-leg Shipping and Commission Routes
+  // Commission calculation routes
+  app.post('/api/shipping/commission/calculate', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const request = z.object({
+        shipmentLegId: z.string(),
+        ratePerKg: z.number().positive(),
+        chargeableWeightKg: z.number().positive(),
+        commissionPercent: z.number().min(0).max(100).optional(),
+        currency: z.string().default('USD'),
+        fundingSource: z.enum(['capital', 'operational', 'supplier']).default('operational')
+      }).parse(req.body);
+      
+      const userId = req.user.claims.sub;
+      const result = await commissionCalculationService.calculateAndApplyCommission(request, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error calculating commission:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to calculate commission" });
+    }
+  });
+
+  app.get('/api/shipping/:shipmentId/commission-summary', requireRole(['admin', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const { shipmentId } = req.params;
+      const summary = await commissionCalculationService.getShipmentCommissionSummary(shipmentId);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching commission summary:", error);
+      res.status(500).json({ message: "Failed to fetch commission summary" });
+    }
+  });
+
+  // Inspection workflow routes  
+  app.post('/api/shipping/inspections/start', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const request = z.object({
+        shipmentId: z.string(),
+        inspectionLocation: z.string(),
+        notes: z.string().optional()
+      }).parse(req.body);
+      
+      const inspectionData = {
+        ...request,
+        inspectorUserId: req.user.claims.sub
+      };
+      
+      const inspectionId = await inspectionWorkflowService.startInspection(inspectionData);
+      res.json({ inspectionId, message: "Inspection started successfully" });
+    } catch (error) {
+      console.error("Error starting inspection:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to start inspection" });
+    }
+  });
+
+  app.post('/api/shipping/inspections/:inspectionId/results', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+    try {
+      const { inspectionId } = req.params;
+      const request = z.object({
+        grossWeightKg: z.number().positive(),
+        netWeightKg: z.number().positive(),
+        cleanWeightKg: z.number().positive(),
+        damagedWeightKg: z.number().min(0),
+        qualityGrade: z.enum(['A', 'B', 'C', 'Reject']),
+        damageDescription: z.string().optional(),
+        qualityNotes: z.string().optional(),
+        photosAttached: z.boolean().optional()
+      }).parse(req.body);
+      
+      const resultData = { ...request, inspectionId };
+      const userId = req.user.claims.sub;
+      
+      const result = await inspectionWorkflowService.recordInspectionResults(resultData, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error recording inspection results:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to record inspection results" });
+    }
+  });
+
+  app.post('/api/shipping/inspections/:inspectionId/settlement', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { inspectionId } = req.params;
+      const request = z.object({
+        settlementOption: z.enum(['accept', 'claim', 'return', 'discount']),
+        justification: z.string(),
+        discountPercent: z.number().min(0).max(100).optional(),
+        claimAmountUsd: z.number().positive().optional(),
+        returnShippingCost: z.number().positive().optional()
+      }).parse(req.body);
+      
+      const settlementData = { ...request, inspectionId };
+      const userId = req.user.claims.sub;
+      
+      const result = await inspectionWorkflowService.requestSettlement(settlementData, userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing settlement:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to process settlement" });
+    }
+  });
+
+  app.get('/api/shipping/inspections/:inspectionId/status', requireRole(['admin', 'warehouse', 'finance']), async (req, res) => {
+    try {
+      const { inspectionId } = req.params;
+      const status = await inspectionWorkflowService.getInspectionStatus(inspectionId);
+      if (!status) {
+        return res.status(404).json({ message: "Inspection not found" });
+      }
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching inspection status:", error);
+      res.status(500).json({ message: "Failed to fetch inspection status" });
+    }
+  });
+
+  // Shipment legs CRUD routes
+  app.get('/api/shipping/legs/:shipmentId', requireRole(['admin', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const { shipmentId } = req.params;
+      const legs = await storage.getShipmentLegs(shipmentId);
+      res.json(legs);
+    } catch (error) {
+      console.error("Error fetching shipment legs:", error);
+      res.status(500).json({ message: "Failed to fetch shipment legs" });
+    }
+  });
+
+  app.post('/api/shipping/legs', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const legData = insertShipmentLegSchema.parse(req.body);
+      
+      // Validate leg sequencing - ensure previous legs exist and are confirmed for sequential confirmation
+      const existingLegs = await storage.getShipmentLegs(legData.shipmentId);
+      const duplicateLeg = existingLegs.find(leg => leg.legNumber === legData.legNumber);
+      
+      if (duplicateLeg) {
+        return res.status(400).json({ 
+          message: `Leg number ${legData.legNumber} already exists for this shipment` 
+        });
+      }
+      
+      const leg = await storage.createShipmentLeg(legData);
+      res.status(201).json(leg);
+    } catch (error) {
+      console.error("Error creating shipment leg:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create shipment leg" });
+    }
+  });
+
+  // Arrival costs CRUD routes
+  app.get('/api/shipping/arrival-costs/:shipmentId', requireRole(['admin', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const { shipmentId } = req.params;
+      const costs = await storage.getArrivalCosts(shipmentId);
+      res.json(costs);
+    } catch (error) {
+      console.error("Error fetching arrival costs:", error);
+      res.status(500).json({ message: "Failed to fetch arrival costs" });
+    }
+  });
+
+  app.post('/api/shipping/arrival-costs', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const request = z.object({
+        ...insertArrivalCostSchema.omit({ amount: true }).shape,
+        amount: z.number().positive(),
+        currency: z.string().default('USD'),
+        exchangeRate: z.number().positive().optional()
+      }).parse(req.body);
+      
+      // Normalize to USD for consistent calculations
+      const exchangeRate = request.currency === 'USD' ? 1 : 
+                          request.exchangeRate || await storage.getExchangeRate();
+      const amountUsd = request.currency === 'USD' ? 
+                       request.amount : 
+                       request.amount * exchangeRate;
+      
+      const costData = {
+        ...request,
+        amount: amountUsd, // Store in USD
+        paymentCurrency: request.currency,
+        exchangeRateUsed: exchangeRate
+      };
+      
+      const cost = await storage.createArrivalCost(costData);
+      res.status(201).json(cost);
+    } catch (error) {
+      console.error("Error creating arrival cost:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create arrival cost" });
+    }
+  });
+
+  // Landed cost calculation routes
+  app.get('/api/shipping/landed-cost', requireRole(['admin', 'finance', 'warehouse']), async (req, res) => {
+    try {
+      const request = z.object({
+        orderId: z.string().optional(),
+        shipmentId: z.string().optional(),
+        purchaseId: z.string().optional()
+      }).parse(req.query);
+      
+      if (!request.orderId && !request.shipmentId && !request.purchaseId) {
+        return res.status(400).json({ message: "At least one of orderId, shipmentId, or purchaseId is required" });
+      }
+      
+      const result = await landedCostService.calculateLandedCost(request);
+      res.json(result);
+    } catch (error) {
+      console.error("Error calculating landed cost:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to calculate landed cost" });
+    }
+  });
+
+  app.post('/api/shipping/landed-cost/summary', requireRole(['admin', 'finance']), async (req, res) => {
+    try {
+      const { orderIds } = z.object({
+        orderIds: z.array(z.string())
+      }).parse(req.body);
+      
+      const summary = await landedCostService.getLandedCostSummary(orderIds);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error calculating landed cost summary:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to calculate landed cost summary" });
+    }
+  });
+
+  // Confirmation approval workflow
+  app.post('/api/shipping/legs/:id/confirm', requireRole(['admin', 'finance']), requireApproval('shipping_operation'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { justification } = z.object({
+        justification: z.string().min(1)
+      }).parse(req.body);
+      
+      const userId = req.user.claims.sub;
+      
+      // Validate leg sequencing before confirmation
+      const leg = await storage.getShipmentLeg(id);
+      if (!leg) {
+        return res.status(404).json({ message: "Shipment leg not found" });
+      }
+      
+      if (leg.isConfirmed) {
+        return res.status(400).json({ message: "Shipment leg already confirmed" });
+      }
+      
+      // Enforce sequential confirmation - cannot confirm leg N unless leg N-1 is confirmed
+      const allLegs = await storage.getShipmentLegs(leg.shipmentId);
+      const previousLeg = allLegs.find(l => l.legNumber === (leg.legNumber - 1));
+      
+      if (leg.legNumber > 1 && previousLeg && !previousLeg.isConfirmed) {
+        return res.status(400).json({ 
+          message: `Cannot confirm leg ${leg.legNumber} until leg ${leg.legNumber - 1} is confirmed` 
+        });
+      }
+      
+      await storage.updateShipmentLeg(id, {
+        isConfirmed: true,
+        confirmedBy: userId,
+        confirmedAt: new Date()
+      });
+      
+      // Audit the confirmation
+      await auditService.logOperation({
+        userId,
+        action: 'confirm',
+        entityType: 'shipment_legs',
+        entityId: id,
+        description: `Confirmed shipment leg: ${justification}`,
+        metadata: { justification }
+      });
+      
+      res.json({ message: "Shipment leg confirmed successfully" });
+    } catch (error) {
+      console.error("Error confirming shipment leg:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to confirm shipment leg" });
     }
   });
 
