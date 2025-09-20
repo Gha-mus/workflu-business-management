@@ -12,6 +12,7 @@ import {
   integer,
   boolean,
   pgEnum,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -4962,7 +4963,7 @@ export interface DocumentWithMetadata extends Document {
   metadata?: DocumentMetadata[];
   compliance?: DocumentCompliance[];
   currentVersionInfo?: DocumentVersion;
-  accessLevel: string;
+  accessLevel: 'public' | 'internal' | 'confidential' | 'restricted' | 'classified';
   canEdit: boolean;
   canDelete: boolean;
   canDownload: boolean;
@@ -5595,6 +5596,42 @@ export const configurationSnapshotCreateSchema = z.object({
   description: z.string().optional(),
   snapshotType: z.enum(['manual', 'periodic', 'pre_change']).default('manual')
 });
+
+// ===== APPROVAL GUARDS TABLE =====
+// Approval guards table for operation-specific approval requirements
+export const approvalGuards = pgTable("approval_guards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  operationType: approvalOperationTypeEnum("operation_type").notNull(),
+  minimumAmount: decimal("minimum_amount", { precision: 15, scale: 2 }),
+  maximumAmount: decimal("maximum_amount", { precision: 15, scale: 2 }),
+  currencyCode: varchar("currency_code").notNull().default('USD'),
+  requiredApprovals: integer("required_approvals").notNull().default(1),
+  timeoutHours: integer("timeout_hours").default(24),
+  escalationEnabled: boolean("escalation_enabled").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  priority: integer("priority").notNull().default(100),
+  description: text("description"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_approval_guards_operation_type").on(table.operationType),
+  index("idx_approval_guards_active").on(table.isActive),
+]);
+
+// Approval guard schemas
+export const insertApprovalGuardSchema = createInsertSchema(approvalGuards).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const updateApprovalGuardSchema = insertApprovalGuardSchema.partial();
+
+// Approval guard types
+export type ApprovalGuard = typeof approvalGuards.$inferSelect;
+export type InsertApprovalGuard = z.infer<typeof insertApprovalGuardSchema>;
+export type UpdateApprovalGuard = z.infer<typeof updateApprovalGuardSchema>;
 
 // Settings category responses
 export interface EnhancedSettingsResponse {
