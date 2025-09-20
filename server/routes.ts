@@ -1679,8 +1679,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // STAGE 2 COMPLIANCE: Purchase advances settlement route
+  // STAGE 2 COMPLIANCE: Purchase payment settlement route
   app.post('/api/purchases/:id/settle', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      // CRITICAL SECURITY: Validate settlement data with Zod schema  
+      const settlementSchema = z.object({
+        amount: z.number().positive("Settlement amount must be positive"),
+        currency: z.enum(['USD', 'ETB'], { message: "Currency must be USD or ETB" }),
+        settlementNotes: z.string().optional(),
+      });
+
+      const settlementData = settlementSchema.parse(req.body);
+
+      // STAGE 2 SECURITY: Funding source is derived from purchase record - no client input allowed
+      // STAGE 2 SECURITY: Central FX rate enforcement handled in storage layer
+
+      const userId = req.user.claims.sub;
+
+      const result = await storage.settlePurchasePayment(id, settlementData, {
+        userId,
+        action: 'update',
+        entityType: 'purchases',
+        entityId: id
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error settling purchase payment:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      
+      // Business validation errors should return 400, not 500
+      if (error instanceof Error && (error as any).code === 'VALIDATION_ERROR') {
+        return res.status(400).json({
+          message: error.message,
+          type: "business_validation"
+        });
+      }
+      
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to settle payment" });
+    }
+  });
+
+  // STAGE 2 COMPLIANCE: Purchase advances settlement route (for weight/price adjustments)
+  app.post('/api/purchases/:id/settle-advance', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { id } = req.params;
       
@@ -1701,7 +1750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await storage.settlePurchaseAdvance(id, settlementData, {
         userId,
-        action: 'settle_advance',
+        action: 'update',
         entityType: 'purchases',
         entityId: id
       });
