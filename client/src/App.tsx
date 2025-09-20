@@ -16,7 +16,7 @@ import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import Sales from "@/pages/Sales";
 import Users from "@/pages/Users";
-import Documents from "@/pages/Documents";
+import DocumentManagement from "@/pages/DocumentManagement";
 import Compliance from "@/pages/Compliance";
 import OperatingExpenses from "@/pages/OperatingExpenses";
 import WarehouseOperations from "@/pages/WarehouseOperations";
@@ -43,7 +43,7 @@ function Router() {
           <Route path="/warehouse-operations" component={WarehouseOperations} />
           <Route path="/revenue-management" component={RevenueManagement} />
           <Route path="/reports" component={ReportsManagement} />
-          <Route path="/documents" component={Documents} />
+          <Route path="/documents" component={DocumentManagement} />
           <Route path="/compliance" component={Compliance} />
           <Route path="/users" component={Users} />
           <Route path="/settings" component={Settings} />
