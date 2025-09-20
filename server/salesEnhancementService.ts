@@ -179,11 +179,10 @@ class SalesEnhancementService {
           .insert(salesOrderItems)
           .values({
             salesOrderId: salesOrder.id,
-            warehouseStockId: item.warehouseStockId,
             productDescription: item.description || `Coffee - ${warehouseStockRecord.qualityGrade}`,
             qualityGrade: warehouseStockRecord.qualityGrade,
             quantityKg: item.quantityKg.toString(),
-            unitPrice: (item.pricePerCarton / (parseFloat(item.cartonSize) || 8)).toString(),
+            unitPriceUsd: (item.pricePerCarton / (parseFloat(item.cartonSize) || 8)).toString(),
             totalPrice: totalRevenue.toString(),
             unitCost: unitCost.toString(),
             totalCost: totalCost.toString(),
@@ -227,7 +226,6 @@ class SalesEnhancementService {
             totalAmount: totalUsd,
             orderIds: invoiceData.orderItems.map(item => item.orderId),
           },
-          businessContext: `Multi-order invoice: ${salesOrderNumber} for customer ${invoiceData.customerId}`,
         }
       );
 
@@ -379,7 +377,7 @@ class SalesEnhancementService {
         }
 
         // Calculate refund amount
-        const unitPrice = parseFloat(originalItem.unitPrice || '0');
+        const unitPrice = parseFloat(originalItem.unitPriceUsd || '0');
         const refundAmount = unitPrice * returnItem.returnQuantityKg;
         totalRefundAmount += refundAmount;
 
@@ -395,7 +393,7 @@ class SalesEnhancementService {
           targetStatus = 'NON_SELLABLE';
         } else {
           // Return to original warehouse
-          targetWarehouse = originalItem.sourceWarehouse || 'FINAL';
+          targetWarehouse = 'FINAL'; // Default to FINAL warehouse
           targetStatus = 'READY_FOR_SALE';
         }
 
@@ -435,7 +433,7 @@ class SalesEnhancementService {
           await db
             .update(customers)
             .set({
-              creditBalance: sql`CAST(${customers.creditBalance} AS DECIMAL) + ${totalRefundAmount}`,
+              currentCredit: sql`CAST(${customers.currentCredit} AS DECIMAL) + ${totalRefundAmount}`,
               updatedAt: new Date(),
             })
             .where(eq(customers.id, originalOrder.customerId));
@@ -446,7 +444,9 @@ class SalesEnhancementService {
           await db
             .insert(revenueTransactions)
             .values({
-              transactionNumber: `${returnId}-REFUND`,
+              customerId: originalOrder.customerId,
+              salesOrderId: returnData.originalSalesOrderId,
+              type: 'customer_refund',
               customerId: originalOrder.customerId,
               salesOrderId: returnData.originalSalesOrderId,
               transactionType: 'customer_refund',
@@ -464,7 +464,7 @@ class SalesEnhancementService {
           await db
             .update(customers)
             .set({
-              totalOutstanding: sql`CAST(${customers.totalOutstanding} AS DECIMAL) - ${totalRefundAmount}`,
+              currentCredit: sql`CAST(${customers.currentCredit} AS DECIMAL) + ${totalRefundAmount}`,
               updatedAt: new Date(),
             })
             .where(eq(customers.id, originalOrder.customerId));
@@ -502,7 +502,6 @@ class SalesEnhancementService {
             returnItems,
             approvedBy: returnData.approvedBy,
           },
-          businessContext: `Sales return: ${returnItems.length} items totaling $${totalRefundAmount}`,
         }
       );
 
