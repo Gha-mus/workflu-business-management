@@ -209,7 +209,7 @@ export const orders = pgTable("orders", {
 // Capital entries table
 export const capitalEntries = pgTable("capital_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  entryId: varchar("entry_id").notNull().unique(),
+  entryId: varchar("entry_id").notNull().unique().$defaultFn(() => `CAP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   date: timestamp("date").notNull().defaultNow(),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   type: capitalEntryTypeEnum("type").notNull(),
@@ -2678,6 +2678,8 @@ export const insertPurchaseSchema = createInsertSchema(purchases).omit({
 
 export const insertCapitalEntrySchema = createInsertSchema(capitalEntries).omit({
   id: true,
+  entryId: true, // Stage 1 Compliance: Server-generated CAP- prefixed IDs only
+  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
   createdAt: true,
 });
 

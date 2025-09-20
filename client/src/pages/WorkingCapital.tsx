@@ -35,7 +35,7 @@ export default function WorkingCapital() {
   const queryClient = useQueryClient();
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
   const [amount, setAmount] = useState("");
-  const [type, setType] = useState<"CapitalIn" | "CapitalOut" | "Reverse" | "Reclass">("CapitalIn");
+  const [type, setType] = useState<"CapitalIn" | "CapitalOut" | "Reverse" | "Reclass" | "Opening">("CapitalIn");
   const [description, setDescription] = useState("");
   const [currency, setCurrency] = useState<"USD" | "ETB">("USD");
   const [reference, setReference] = useState("");
@@ -68,14 +68,11 @@ export default function WorkingCapital() {
 
   const addEntryMutation = useMutation({
     mutationFn: async (data: any) => {
-      const exchangeRate = currency === "ETB" ? String(settings?.exchangeRate) : undefined;
       return await apiRequest('POST', '/api/capital/entries', {
-        entryId: `CAP-${Date.now()}`,
         amount: data.amount,
         type: data.type,
         description: data.description,
         paymentCurrency: data.currency,
-        exchangeRate: exchangeRate,
         reference: data.reference || undefined,
       });
     },
@@ -195,7 +192,7 @@ export default function WorkingCapital() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="type">Type</Label>
-                    <Select value={type} onValueChange={(value: "CapitalIn" | "CapitalOut" | "Reverse" | "Reclass") => setType(value)}>
+                    <Select value={type} onValueChange={(value: "CapitalIn" | "CapitalOut" | "Reverse" | "Reclass" | "Opening") => setType(value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -204,6 +201,7 @@ export default function WorkingCapital() {
                         <SelectItem value="CapitalOut">Capital Out (Withdrawal)</SelectItem>
                         <SelectItem value="Reverse">Reverse Entry</SelectItem>
                         <SelectItem value="Reclass">Reclassification</SelectItem>
+                        <SelectItem value="Opening">Opening Balance</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
