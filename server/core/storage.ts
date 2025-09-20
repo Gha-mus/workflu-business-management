@@ -1973,7 +1973,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSettings(): Promise<Setting[]> {
-    return await db.select().from(settings).where(eq(settings.isActive, true)).orderBy(desc(settings.createdAt));
+    return await db.select().from(settings).where(eq(settings.isActive, true)).orderBy(desc(settings.updatedAt));
   }
 
   async updateSetting(setting: InsertSetting, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Setting> {

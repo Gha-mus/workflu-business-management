@@ -193,7 +193,26 @@ Please provide strategic purchase recommendations considering:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
@@ -261,7 +280,26 @@ Rank suppliers considering:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
@@ -328,7 +366,26 @@ Provide recommendations for:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
@@ -395,7 +452,26 @@ Recommend actions considering:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   // Financial Insights and Analytics
@@ -468,7 +544,26 @@ Analyze trends in:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   // Trading Decision Support
@@ -533,7 +628,26 @@ Provide timing analysis considering:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   // Intelligent Reporting and Alerts
@@ -606,7 +720,26 @@ Create executive summary covering:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
@@ -669,7 +802,26 @@ Identify anomalies in:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
@@ -727,7 +879,26 @@ Provide:
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
@@ -773,7 +944,26 @@ Provide a helpful response with actionable suggestions and any relevant action i
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   // ======================================
@@ -831,7 +1021,26 @@ Ensure comprehensive coverage of all operational aspects mentioned in the docume
     if (!result) {
       throw new Error('No response received from AI service');
     }
-    return JSON.parse(result);
+    
+    try {
+      return JSON.parse(result);
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+      console.error('Raw AI response:', result);
+      
+      // Try to extract JSON from the response if it's embedded in text
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (secondError) {
+          console.error('Failed to parse extracted JSON:', secondError);
+        }
+      }
+      
+      // Return a structured error response
+      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    }
   }
 
   /**
