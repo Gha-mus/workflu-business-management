@@ -5622,6 +5622,64 @@ export const configurationSnapshotCreateSchema = z.object({
   snapshotType: z.enum(['manual', 'periodic', 'pre_change']).default('manual')
 });
 
+// STAGE 4 SHIPPING LOGISTICS VALIDATION SCHEMAS
+export const commissionCalculationSchema = z.object({
+  shipmentLegId: z.string().min(1),
+  chargeableWeightKg: z.coerce.number().positive(),
+  ratePerKg: z.coerce.number().positive(),
+  baseCost: z.coerce.number().positive(),
+  commissionPercent: z.coerce.number().min(0).max(100).optional().default(0),
+  fundingSource: z.enum(['capital', 'operational', 'supplier']).default('capital'),
+  notes: z.string().optional()
+});
+
+export const landedCostCalculationSchema = z.object({
+  shipmentId: z.string().min(1),
+  includeShippingCosts: z.boolean().default(true),
+  includeArrivalCosts: z.boolean().default(true),
+  currency: z.string().default('USD'),
+  exchangeRate: z.coerce.number().positive().optional()
+});
+
+export const inspectionSettlementSchema = z.discriminatedUnion('settlementType', [
+  z.object({
+    settlementType: z.literal('accept'),
+    settlementReason: z.string().min(1),
+    approvedBy: z.string().min(1),
+    settlementDate: z.string().datetime().optional().transform((s) => s ? new Date(s) : new Date())
+  }),
+  z.object({
+    settlementType: z.literal('claim'),
+    settlementReason: z.string().min(1),
+    claimDetails: z.object({
+      claimAmount: z.coerce.number().positive(),
+      claimReason: z.string().min(1),
+      supportingDocuments: z.array(z.string()).optional()
+    }),
+    approvedBy: z.string().min(1),
+    settlementDate: z.string().datetime().optional().transform((s) => s ? new Date(s) : new Date())
+  }),
+  z.object({
+    settlementType: z.literal('return'),
+    settlementReason: z.string().min(1),
+    returnDetails: z.object({
+      returnCost: z.coerce.number().positive(),
+      returnMethod: z.string().min(1),
+      returnSchedule: z.string().datetime().transform((s) => new Date(s))
+    }),
+    approvedBy: z.string().min(1),
+    settlementDate: z.string().datetime().optional().transform((s) => s ? new Date(s) : new Date())
+  }),
+  z.object({
+    settlementType: z.literal('discount'),
+    settlementReason: z.string().min(1),
+    discountPercent: z.coerce.number().min(0).max(100),
+    negotiatedAmount: z.coerce.number().positive().optional(),
+    approvedBy: z.string().min(1),
+    settlementDate: z.string().datetime().optional().transform((s) => s ? new Date(s) : new Date())
+  })
+]);
+
 // ===== APPROVAL GUARDS TABLE =====
 // Approval guards table for operation-specific approval requirements
 export const approvalGuards = pgTable("approval_guards", {
