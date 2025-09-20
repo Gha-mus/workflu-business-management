@@ -919,7 +919,11 @@ export default function OperatingExpenses() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {expenseCategories?.filter((cat: any) => cat.categoryName.toLowerCase().includes('labor')).map((category: any) => (
+                                {expenseCategories?.filter((cat: any) => 
+                                  cat.categoryName.toLowerCase().includes('labor') && 
+                                  cat.id && 
+                                  cat.id.trim() !== ''
+                                ).map((category: any) => (
                                   <SelectItem key={category.id} value={category.id}>
                                     {category.categoryName}
                                   </SelectItem>
@@ -1028,8 +1032,8 @@ export default function OperatingExpenses() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">Manual allocation later</SelectItem>
-                                {orders?.map((order: any) => (
+                                <SelectItem value="manual">Manual allocation later</SelectItem>
+                                {orders?.filter((order: any) => order.id && order.id.trim() !== '').map((order: any) => (
                                   <SelectItem key={order.id} value={order.id}>
                                     {order.orderNumber}
                                   </SelectItem>
