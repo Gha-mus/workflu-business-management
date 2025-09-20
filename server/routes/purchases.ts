@@ -3,7 +3,7 @@ import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
 import { auditService } from "../auditService";
 import { supplierEnhancementService } from "../modules/purchases/supplierService";
-import { insertPurchaseSchema, insertSupplierSchema } from "@shared/schema";
+import { insertPurchaseSchema, insertSupplierSchema, insertSupplierQualityAssessmentSchema } from "@shared/schema";
 import { purchasePeriodGuard } from "../periodGuard";
 import { requireApproval } from "../approvalMiddleware";
 
@@ -98,9 +98,11 @@ purchasesRouter.post("/quality-assessment",
   requireRole(["admin", "purchasing", "warehouse"]),
   async (req, res) => {
     try {
+      // STAGE 2 COMPLIANCE: Validate request body against quality assessment schema
+      const validatedData = insertSupplierQualityAssessmentSchema.parse(req.body);
       const assessment = await supplierEnhancementService.assessSupplierQuality(
-        req.body,
-        req.user!.id
+        validatedData,
+        req.user!.claims.sub
       );
       res.status(201).json(assessment);
     } catch (error) {
@@ -116,7 +118,7 @@ purchasesRouter.get("/overdue-advances",
   requireRole(["admin", "purchasing", "finance"]),
   async (req, res) => {
     try {
-      const alerts = await supplierEnhancementService.getOverdueAdvanceAlerts();
+      const alerts = await supplierEnhancementService.checkOverdueAdvances();
       res.json(alerts);
     } catch (error) {
       console.error("Error fetching overdue advances:", error);

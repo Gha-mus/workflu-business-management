@@ -180,6 +180,22 @@ export const suppliers = pgTable("suppliers", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Supplier quality assessments table - STAGE 2 COMPLIANCE: Quality assessment history tracking
+export const supplierQualityAssessments = pgTable("supplier_quality_assessments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
+  qualityGrade: qualityGradeEnum("quality_grade").notNull(),
+  qualityScore: decimal("quality_score", { precision: 5, scale: 2 }).notNull(),
+  assessmentDate: timestamp("assessment_date").notNull().defaultNow(),
+  consistencyScore: decimal("consistency_score", { precision: 5, scale: 2 }).notNull(),
+  defectRateScore: decimal("defect_rate_score", { precision: 5, scale: 2 }).notNull(),
+  deliveryTimelinessScore: decimal("delivery_timeliness_score", { precision: 5, scale: 2 }).notNull(),
+  packagingScore: decimal("packaging_score", { precision: 5, scale: 2 }).notNull(),
+  overallScore: decimal("overall_score", { precision: 5, scale: 2 }).notNull(),
+  assessedBy: varchar("assessed_by").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 // Orders table
 export const orders = pgTable("orders", {
@@ -2297,6 +2313,7 @@ export const pricingRulesRelations = relations(pricingRules, ({ one }) => ({
 export const suppliersRelations = relations(suppliers, ({ many }) => ({
   purchases: many(purchases),
   warehouseStock: many(warehouseStock),
+  qualityAssessments: many(supplierQualityAssessments),
 }));
 
 export const ordersRelations = relations(orders, ({ many }) => ({
@@ -3060,6 +3077,14 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+
+// STAGE 2 COMPLIANCE: Quality assessment types
+export type SupplierQualityAssessment = typeof supplierQualityAssessments.$inferSelect;
+export const insertSupplierQualityAssessmentSchema = createInsertSchema(supplierQualityAssessments).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupplierQualityAssessment = z.infer<typeof insertSupplierQualityAssessmentSchema>;
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
