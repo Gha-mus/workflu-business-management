@@ -200,17 +200,30 @@ Please provide strategic purchase recommendations considering:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -287,17 +300,30 @@ Rank suppliers considering:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -373,17 +399,30 @@ Provide recommendations for:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -459,17 +498,30 @@ Recommend actions considering:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -551,17 +603,30 @@ Analyze trends in:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -635,17 +700,30 @@ Provide timing analysis considering:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -727,17 +805,30 @@ Create executive summary covering:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -809,17 +900,30 @@ Identify anomalies in:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -886,17 +990,30 @@ Provide:
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -951,17 +1068,30 @@ Provide a helpful response with actionable suggestions and any relevant action i
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
@@ -1028,17 +1158,30 @@ Ensure comprehensive coverage of all operational aspects mentioned in the docume
       console.error('Failed to parse AI JSON response:', error);
       console.error('Raw AI response:', result);
       
-      // Try to extract JSON from the response if it's embedded in text
-      const jsonMatch = result.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (secondError) {
-          console.error('Failed to parse extracted JSON:', secondError);
+      // Enhanced JSON extraction - try multiple patterns
+      const patterns = [
+        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
+        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
+        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
+        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
+      ];
+      
+      for (const pattern of patterns) {
+        const match = result.match(pattern);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[1]);
+            console.log('Successfully extracted JSON with pattern:', pattern.source);
+            return parsed;
+          } catch (parseError) {
+            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
+            continue;
+          }
         }
       }
       
-      // Return a structured error response
+      // Return a structured error response with fallback data
+      console.error('All JSON extraction patterns failed, returning fallback');
       throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
     }
   }
