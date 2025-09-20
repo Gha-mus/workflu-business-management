@@ -21,6 +21,7 @@ import Compliance from "@/pages/Compliance";
 import OperatingExpenses from "@/pages/OperatingExpenses";
 import WarehouseOperations from "@/pages/WarehouseOperations";
 import RevenueManagement from "@/pages/RevenueManagement";
+import ReportsManagement from "@/pages/ReportsManagement";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -41,9 +42,9 @@ function Router() {
           <Route path="/operating-expenses" component={OperatingExpenses} />
           <Route path="/warehouse-operations" component={WarehouseOperations} />
           <Route path="/revenue-management" component={RevenueManagement} />
+          <Route path="/reports" component={ReportsManagement} />
           <Route path="/documents" component={Documents} />
           <Route path="/compliance" component={Compliance} />
-          <Route path="/reports" component={Reports} />
           <Route path="/users" component={Users} />
           <Route path="/settings" component={Settings} />
         </>
