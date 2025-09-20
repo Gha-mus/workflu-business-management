@@ -247,13 +247,17 @@ class SupplierEnhancementService {
    */
   async processPurchaseReturn(
     returnRequest: PurchaseReturn,
-    userId: string
+    userId: string,
+    tx?: any
   ): Promise<string> {
     try {
       console.log(`Processing return for purchase ${returnRequest.originalPurchaseId}`);
+      
+      // Use transaction if provided, otherwise use global db
+      const dbClient = tx || db;
 
       // Get original purchase
-      const [originalPurchase] = await db
+      const [originalPurchase] = await dbClient
         .select()
         .from(purchases)
         .where(eq(purchases.id, returnRequest.originalPurchaseId));
@@ -275,7 +279,7 @@ class SupplierEnhancementService {
       switch (returnRequest.refundMethod) {
         case 'credit_balance':
           // Add to supplier credit balance
-          await db
+          await dbClient
             .update(suppliers)
             .set({
               creditBalance: sql`CAST(${suppliers.creditBalance} AS DECIMAL) + ${returnRequest.returnAmountUsd}`,
@@ -288,7 +292,7 @@ class SupplierEnhancementService {
         case 'capital_refund':
           // Create capital entry to refund the amount
           if (originalPurchase.fundingSource === 'capital') {
-            await db
+            await dbClient
               .insert(capitalEntries)
               .values({
                 entryId: `${returnId}-REFUND`,
@@ -310,7 +314,7 @@ class SupplierEnhancementService {
 
         case 'advance_credit':
           // Apply to supplier advance balance
-          await db
+          await dbClient
             .update(suppliers)
             .set({
               advanceBalance: sql`CAST(${suppliers.advanceBalance} AS DECIMAL) - ${returnRequest.returnAmountUsd}`,
