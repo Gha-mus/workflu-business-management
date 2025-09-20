@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "../../core/db";
 import { 
   approvalChains, 
   approvalRequests, 
@@ -10,7 +10,7 @@ import {
   type User
 } from "@shared/schema";
 import { eq, and, or, desc, asc, inArray, isNotNull } from "drizzle-orm";
-import { auditService } from "./auditService";
+import { auditService } from "../../auditService";
 import crypto from "crypto";
 
 // Approval workflow configuration and state management

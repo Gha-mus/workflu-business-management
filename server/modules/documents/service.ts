@@ -5,8 +5,8 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import mime from 'mime-types';
-import { storage } from './storage';
-import { auditService } from './auditService';
+import { storage } from '../../core/storage';
+import { auditService } from '../../auditService';
 import type { 
   Document, 
   InsertDocument, 

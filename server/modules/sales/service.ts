@@ -8,7 +8,7 @@
  * - Strict warehouse source rules (FIRST = non-clean only, FINAL = clean only)
  */
 
-import { db } from "./db";
+import { db } from "../../core/db";
 import { 
   salesOrders,
   salesOrderItems,
@@ -19,9 +19,9 @@ import {
 } from "@shared/schema";
 import { eq, and, sum, sql, gte, lte, lt } from "drizzle-orm";
 import Decimal from "decimal.js";
-import { notificationService } from "./notificationService";
-import { auditService } from "./auditService";
-import { configurationService } from "./configurationService";
+import { notificationService } from "../../notificationService";
+import { auditService } from "../../auditService";
+import { configurationService } from "../../configurationService";
 import { nanoid } from "nanoid";
 
 export interface MultiOrderInvoice {

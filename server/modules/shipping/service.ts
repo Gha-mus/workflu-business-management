@@ -8,7 +8,7 @@
  * - Weight mismatch alerts
  */
 
-import { db } from "./db";
+import { db } from "../../core/db";
 import { 
   arrivalCosts, 
   shipmentInspections,
@@ -19,11 +19,11 @@ import {
 } from "@shared/schema";
 import { eq, and, sum, sql, gte, lte } from "drizzle-orm";
 import Decimal from "decimal.js";
-import { notificationService } from "./notificationService";
-import { auditService } from "./auditService";
-import { configurationService } from "./configurationService";
-import { commissionCalculationService } from "./commissionCalculationService";
-import { inspectionWorkflowService } from "./inspectionWorkflowService";
+import { notificationService } from "../../notificationService";
+import { auditService } from "../../auditService";
+import { configurationService } from "../../configurationService";
+import { commissionCalculationService } from "../../commissionCalculationService";
+import { inspectionWorkflowService } from "../../inspectionWorkflowService";
 import { nanoid } from "nanoid";
 
 export interface ExtendedArrivalCost {

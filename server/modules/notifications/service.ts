@@ -1,5 +1,5 @@
-import { storage } from "./storage";
-import { auditService } from "./auditService";
+import { storage } from "../../core/storage";
+import { auditService } from "../../auditService";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import type {
