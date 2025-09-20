@@ -39,7 +39,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       maxAge: sessionTtl,
     },
   });
@@ -199,7 +199,7 @@ export function validateWarehouseSource(): RequestHandler {
       
       // Stage 6: Validate warehouse source rules from workflow_reference.json
       if (body.warehouseStockId) {
-        const warehouseStock = await storage.getWarehouseStockItem(body.warehouseStockId);
+        const warehouseStock = await storage.getWarehouseStockById(body.warehouseStockId);
         if (!warehouseStock) {
           return res.status(404).json({ message: "Warehouse stock item not found" });
         }
@@ -247,7 +247,7 @@ export function validateWarehouseSource(): RequestHandler {
         }
         
         // Store validated warehouse info for downstream use
-        req.warehouseInfo = { warehouse, status };
+        (req as any).warehouseInfo = { warehouse, status };
       }
 
       next();
@@ -309,7 +309,7 @@ export function validateSalesReturn(): RequestHandler {
           return res.status(404).json({ message: "Original sales order item not found" });
         }
         
-        const warehouseStock = await storage.getWarehouseStockItem(originalItem.warehouseStockId);
+        const warehouseStock = await storage.getWarehouseStockById(originalItem.warehouseStockId);
         if (warehouseStock) {
           originalWarehouse = warehouseStock.warehouse;
         }
