@@ -16,8 +16,8 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-// Using local schemas for form validation - will align with shared schemas in future refactor
-// import { insertSupplySchema, insertOperatingExpenseSchema, insertSupplyPurchaseSchema, insertSupplyConsumptionSchema } from '../../../shared/schema';
+// Using shared schemas for proper validation
+import { insertSupplySchema, insertOperatingExpenseSchema, insertSupplyPurchaseSchema, insertSupplyConsumptionSchema, type InsertSupply } from '@shared/schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -43,16 +43,13 @@ import {
   Activity
 } from 'lucide-react';
 
-// Form schemas
-const supplySchema = z.object({
-  name: z.string().min(1, 'Supply name is required'),
-  supplyType: z.string().min(1, 'Supply type is required'),
-  unitOfMeasure: z.string().min(1, 'Unit of measure is required'),
-  conversionFactor: z.number().positive().optional(),
-  reorderPoint: z.number().min(0),
-  unitCostUsd: z.number().positive(),
-  quantityOnHand: z.number().min(0).default(0),
-  description: z.string().optional()
+// Form schemas using shared schema with numeric coercion 
+const supplySchema = insertSupplySchema.extend({
+  reorderPoint: z.coerce.number().min(0).transform(val => val.toString()),
+  unitCostUsd: z.coerce.number().positive().transform(val => val.toString()),
+  quantityOnHand: z.coerce.number().min(0).default(0).transform(val => val.toString()),
+  minimumStock: z.coerce.number().min(0).default(0).transform(val => val.toString()),
+  conversionFactor: z.coerce.number().positive().optional().transform(val => val ? val.toString() : undefined)
 });
 
 const operatingExpenseSchema = z.object({
@@ -127,9 +124,14 @@ export default function OperatingExpenses() {
   const supplyForm = useForm({
     resolver: zodResolver(supplySchema),
     defaultValues: {
-      quantityOnHand: 0,
-      reorderPoint: 10,
-      currency: 'USD'
+      name: '',
+      supplyType: '',
+      unitOfMeasure: '',
+      quantityOnHand: '0',
+      reorderPoint: '10',
+      minimumStock: '0',
+      unitCostUsd: '0',
+      description: ''
     }
   });
 
@@ -471,11 +473,11 @@ export default function OperatingExpenses() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="packaging">Packaging</SelectItem>
-                                <SelectItem value="labeling">Labeling</SelectItem>
-                                <SelectItem value="cleaning">Cleaning</SelectItem>
-                                <SelectItem value="office">Office</SelectItem>
-                                <SelectItem value="maintenance">Maintenance</SelectItem>
+                                <SelectItem value="cartons_8kg">8kg Cartons</SelectItem>
+                                <SelectItem value="cartons_20kg">20kg Cartons</SelectItem>
+                                <SelectItem value="labels">Labels</SelectItem>
+                                <SelectItem value="wraps">Wraps</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormMessage />

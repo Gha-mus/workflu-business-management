@@ -44,8 +44,8 @@ export const approvalStatusEnum = pgEnum('approval_status', ['pending', 'approve
 export const approvalOperationTypeEnum = pgEnum('approval_operation_type', [
   'capital_entry', 'purchase', 'sale_order', 'warehouse_operation', 'shipping_operation', 
   'financial_adjustment', 'user_role_change', 'system_setting_change', 'system_startup', 'system_diagnostics',
-  'operating_expense', 'supply_purchase', 'revenue_management', 'notification_delivery', 
-  'monitoring_check', 'hourly_stats', 'notification_configuration'
+  'operating_expense', 'supply_purchase', 'supply_create', 'supply_consumption', 'expense_category_create',
+  'revenue_management', 'notification_delivery', 'monitoring_check', 'hourly_stats', 'notification_configuration'
 ]);
 
 // Capital entry types enum for Stage 1 Working Capital
