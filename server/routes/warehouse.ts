@@ -152,3 +152,110 @@ warehouseRouter.get("/supplier-reports",
     }
   }
 );
+
+// POST /api/warehouse/validate-cost-redistribution - Stage 3 Compliance: Cost redistribution validation
+warehouseRouter.post("/validate-cost-redistribution",
+  isAuthenticated,
+  requireRole(["admin", "warehouse", "finance"]),
+  warehousePeriodGuard,
+  requireApproval("warehouse_cost_validation"),
+  async (req, res) => {
+    try {
+      const { orderId } = req.body;
+      
+      if (!orderId) {
+        return res.status(400).json({ message: "orderId is required" });
+      }
+      
+      const validation = await warehouseEnhancementService.validateCostRedistribution(orderId);
+      
+      // Create audit log for cost redistribution validation
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'warehouse_enhancement',
+          severity: validation.isValid ? 'info' : 'warning',
+        },
+        {
+          entityType: 'warehouse_stock',
+          entityId: orderId,
+          action: 'validate',
+          operationType: 'cost_redistribution_validation',
+          description: `Cost redistribution validation: ${validation.isValid ? 'PASSED' : 'FAILED'}`,
+          newValues: {
+            validationResult: validation,
+            errorsCount: validation.errors.length,
+            isValid: validation.isValid
+          },
+          businessContext: `Cost redistribution validation for order ${orderId}`,
+        }
+      );
+      
+      res.json({
+        orderId,
+        validationResult: validation,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error validating cost redistribution:", error);
+      res.status(500).json({ message: "Failed to validate cost redistribution" });
+    }
+  }
+);
+
+// POST /api/warehouse/auto-correct-cost-redistribution - Stage 3 Compliance: Auto-correction of cost redistribution
+warehouseRouter.post("/auto-correct-cost-redistribution",
+  isAuthenticated,
+  requireRole(["admin", "warehouse", "finance"]),
+  warehousePeriodGuard,
+  requireApproval("warehouse_cost_correction"),
+  async (req, res) => {
+    try {
+      const { orderId } = req.body;
+      
+      if (!orderId) {
+        return res.status(400).json({ message: "orderId is required" });
+      }
+      
+      const success = await warehouseEnhancementService.autoCorrectCostRedistribution(
+        orderId,
+        (req.user as any)?.claims?.sub || 'unknown'
+      );
+      
+      // Create audit log for auto-correction attempt
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'warehouse_enhancement',
+          severity: success ? 'info' : 'error',
+        },
+        {
+          entityType: 'warehouse_stock',
+          entityId: orderId,
+          action: 'auto_correct',
+          operationType: 'cost_redistribution_correction',
+          description: `Auto-correction attempt: ${success ? 'SUCCESS' : 'FAILED'}`,
+          newValues: {
+            correctionSuccess: success,
+            orderId,
+          },
+          businessContext: `Auto-correction attempt for order ${orderId}`,
+        }
+      );
+      
+      res.json({
+        orderId,
+        success,
+        message: success 
+          ? 'Cost redistribution corrected successfully' 
+          : 'Auto-correction failed - manual intervention required',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error auto-correcting cost redistribution:", error);
+      res.status(500).json({ message: "Failed to auto-correct cost redistribution" });
+    }
+  }
+);
