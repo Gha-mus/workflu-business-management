@@ -2665,6 +2665,20 @@ export const insertCapitalEntrySchema = createInsertSchema(capitalEntries).omit(
   createdAt: true,
 });
 
+// Stage 1: Multi-order capital entry schema for enhancement features
+export const multiOrderCapitalEntrySchema = z.object({
+  amount: z.number().positive(),
+  currency: z.string().min(1),
+  exchangeRate: z.number().positive().optional(),
+  description: z.string().min(1),
+  fundingSource: z.enum(['external', 'reinvestment']),
+  orderAllocations: z.array(z.object({
+    orderId: z.string().min(1),
+    amount: z.number().positive(),
+    description: z.string().optional(),
+  })).min(1),
+});
+
 export const insertWarehouseStockSchema = createInsertSchema(warehouseStock).omit({
   id: true,
   createdAt: true,
