@@ -63,6 +63,20 @@ reportsRouter.get("/suppliers/performance",
   }
 );
 
+// GET /api/reports/inventory/analytics (frontend compatibility alias)
+reportsRouter.get("/inventory/analytics",
+  isAuthenticated,
+  async (req, res) => {
+    try {
+      const analytics = await storage.getInventoryStatus();
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching inventory analytics:", error);
+      res.status(500).json({ message: "Failed to fetch inventory analytics" });
+    }
+  }
+);
+
 // GET /api/reports/capital/utilization
 reportsRouter.get("/capital/utilization",
   isAuthenticated,
@@ -74,6 +88,67 @@ reportsRouter.get("/capital/utilization",
     } catch (error) {
       console.error("Error fetching capital utilization:", error);
       res.status(500).json({ message: "Failed to fetch capital utilization" });
+    }
+  }
+);
+
+// GET /api/reports/financial/cashflow
+reportsRouter.get("/financial/cashflow",
+  isAuthenticated,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const { period } = req.query;
+      const cashflow = await storage.getFinancialSummary();
+      res.json(cashflow);
+    } catch (error) {
+      console.error("Error fetching cashflow analysis:", error);
+      res.status(500).json({ message: "Failed to fetch cashflow analysis" });
+    }
+  }
+);
+
+// GET /api/reports/financial/margins
+reportsRouter.get("/financial/margins",
+  isAuthenticated,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const margins = await storage.getFinancialSummary();
+      res.json(margins);
+    } catch (error) {
+      console.error("Error fetching margin analysis:", error);
+      res.status(500).json({ message: "Failed to fetch margin analysis" });
+    }
+  }
+);
+
+// GET /api/reports/financial/roi
+reportsRouter.get("/financial/roi",
+  isAuthenticated,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const roi = await storage.getFinancialSummary();
+      res.json(roi);
+    } catch (error) {
+      console.error("Error fetching ROI analysis:", error);
+      res.status(500).json({ message: "Failed to fetch ROI analysis" });
+    }
+  }
+);
+
+// GET /api/reports/financial/budget
+reportsRouter.get("/financial/budget",
+  isAuthenticated,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const budget = await storage.getFinancialSummary();
+      res.json(budget);
+    } catch (error) {
+      console.error("Error fetching budget tracking:", error);
+      res.status(500).json({ message: "Failed to fetch budget tracking" });
     }
   }
 );
