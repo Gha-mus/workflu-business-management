@@ -28,6 +28,8 @@ import crypto from "crypto";
 import { commissionCalculationService } from "./commissionCalculationService";
 import { inspectionWorkflowService } from "./inspectionWorkflowService";
 import { landedCostService } from "./landedCostService";
+// Stage 1: Capital Enhancement Service
+import { capitalEnhancementService } from "./capitalEnhancementService";
 import { 
   insertSupplierSchema,
   insertOrderSchema,
@@ -73,6 +75,7 @@ import {
   insertSalesOrderItemSchema,
   updateSalesOrderItemSchema,
   insertCustomerCommunicationSchema,
+  multiOrderCapitalEntrySchema,
   insertRevenueTransactionSchema,
   insertCustomerCreditLimitSchema,
   insertPricingRuleSchema,
@@ -1397,6 +1400,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.status(500).json({ message: "Failed to create capital entry" });
+    }
+  });
+
+  // Stage 1 Capital Enhancement Routes - Making features functional for users
+  app.post('/api/capital/multi-order-entry', requireRole(['admin', 'finance']), approvalMiddleware.capitalEntry, capitalEntryPeriodGuard, async (req: any, res) => {
+    try {
+      const entryData = multiOrderCapitalEntrySchema.parse(req.body);
+      const result = await capitalEnhancementService.createMultiOrderCapitalEntry(entryData, req.user.claims.sub);
+      res.json(result);
+    } catch (error) {
+      console.error("Error creating multi-order capital entry:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to create multi-order capital entry" });
+    }
+  });
+
+  app.get('/api/capital/balance-alerts', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const alerts = await capitalEnhancementService.checkBalanceAlerts();
+      res.json(alerts);
+    } catch (error) {
+      console.error("Error fetching capital balance alerts:", error);
+      res.status(500).json({ message: "Failed to fetch capital balance alerts" });
+    }
+  });
+
+  app.post('/api/capital/validate', requireRole(['admin', 'finance']), async (req: any, res) => {
+    try {
+      const entryData = multiOrderCapitalEntrySchema.parse(req.body);
+      const validation = await capitalEnhancementService.validateMultiOrderEntry(entryData);
+      res.json(validation);
+    } catch (error) {
+      console.error("Error validating capital entry:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to validate capital entry" });
     }
   });
 
