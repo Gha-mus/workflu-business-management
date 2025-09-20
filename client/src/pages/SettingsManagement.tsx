@@ -917,7 +917,24 @@ export default function SettingsManagement() {
                         </div>
                       </div>
                       <div className="mt-4 flex gap-2">
-                        <Button size="sm" variant="outline" data-testid="button-update-exchange-rate">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            const newRate = prompt('Enter new exchange rate (ETB per 1 USD):', enhancedSettings?.financial?.exchangeRate?.toString() || '60');
+                            if (newRate && !isNaN(parseFloat(newRate)) && parseFloat(newRate) > 0) {
+                              updateSettingMutation.mutate({
+                                key: 'USD_ETB_RATE',
+                                value: newRate,
+                                description: 'USD to ETB exchange rate',
+                                category: 'financial',
+                                dataType: 'number',
+                                changeReason: 'Exchange rate update'
+                              });
+                            }
+                          }}
+                          data-testid="button-update-exchange-rate"
+                        >
                           <Edit className="mr-1 h-3 w-3" />
                           Update Rate
                         </Button>
