@@ -7,7 +7,7 @@
  * - Triple impact reinvestment workflow (Revenue Ledger: -ReinvestOut -TransferFee, Working Capital: +CapitalIn, Operating Expenses: +TransferFee)
  */
 
-import { db } from "./db";
+import { db } from "../../core/db";
 import { 
   revenueTransactions,
   capitalEntries,
@@ -17,9 +17,9 @@ import {
 } from "@shared/schema";
 import { eq, and, sum, sql, gte, lte } from "drizzle-orm";
 import Decimal from "decimal.js";
-import { notificationService } from "./notificationService";
-import { auditService } from "./auditService";
-import { configurationService } from "./configurationService";
+import { notificationService } from "../../notificationService";
+import { auditService } from "../../auditService";
+import { configurationService } from "../../configurationService";
 import { nanoid } from "nanoid";
 
 export interface DualBalanceReport {

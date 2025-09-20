@@ -7,7 +7,7 @@
  * - Cost redistribution validation and testing
  */
 
-import { db } from "./db";
+import { db } from "../../core/db";
 import { 
   warehouseStock, 
   filterRecords,
@@ -17,9 +17,9 @@ import {
 } from "@shared/schema";
 import { eq, and, sum, sql, gte, lte, lt } from "drizzle-orm";
 import Decimal from "decimal.js";
-import { notificationService } from "./notificationService";
-import { auditService } from "./auditService";
-import { configurationService } from "./configurationService";
+import { notificationService } from "../../notificationService";
+import { auditService } from "../../auditService";
+import { configurationService } from "../../configurationService";
 import { nanoid } from "nanoid";
 
 export interface FilteringAlert {

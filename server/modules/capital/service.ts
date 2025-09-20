@@ -7,7 +7,7 @@
  * - Strict amount-equals-payment validation
  */
 
-import { db } from "./db";
+import { db } from "../../core/db";
 import { 
   capitalEntries, 
   orders, 
@@ -18,9 +18,9 @@ import {
 } from "@shared/schema";
 import { eq, and, sum, sql, gte, lte } from "drizzle-orm";
 import Decimal from "decimal.js";
-import { notificationService } from "./notificationService";
-import { auditService } from "./auditService";
-import { configurationService } from "./configurationService";
+import { notificationService } from "../../notificationService";
+import { auditService } from "../../auditService";
+import { configurationService } from "../../configurationService";
 import { nanoid } from "nanoid";
 
 export interface MultiOrderCapitalEntry {

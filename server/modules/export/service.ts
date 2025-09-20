@@ -5,8 +5,8 @@ import * as csv from 'fast-csv';
 import ExcelJS from 'exceljs';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import archiver from 'archiver';
-import { storage } from './storage';
-import { aiService } from './aiService';
+import { storage } from '../../core/storage';
+import { aiService } from '../../services/openai/aiService';
 import type { 
   ExportHistory, 
   InsertExportHistory,
