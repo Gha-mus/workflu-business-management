@@ -70,8 +70,8 @@ export default function Settings() {
 
   // Update exchange rate when settings data changes
   useEffect(() => {
-    if (settings?.financial?.exchangeRate) {
-      setExchangeRate(settings.financial.exchangeRate.toString());
+    if (settings?.exchangeRate) {
+      setExchangeRate(settings.exchangeRate.toString());
     }
   }, [settings]);
 
