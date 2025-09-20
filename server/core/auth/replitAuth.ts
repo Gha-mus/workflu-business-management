@@ -57,7 +57,7 @@ function updateUserSession(
 
 async function upsertUser(
   claims: any,
-) {
+): Promise<User> {
   const userData = {
     id: claims["sub"],
     email: claims["email"],
@@ -76,13 +76,12 @@ async function upsertUser(
     // Admin Bootstrap: If no admins exist, make this user an admin
     if (adminCount === 0) {
       console.log(`Admin bootstrap: Promoting user ${userData.email} to admin (first user)`);
-      await storage.upsertUser({ ...userData, role: 'admin' });
-      return;
+      return await storage.upsertUser({ ...userData, role: 'admin' });
     }
   }
 
   // Regular user creation/update
-  await storage.upsertUser(userData);
+  return await storage.upsertUser(userData);
 }
 
 export async function setupAuth(app: Express) {
@@ -132,6 +131,41 @@ export async function setupAuth(app: Express) {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
+  });
+
+  // Add the missing /api/auth/user route
+  app.get("/api/auth/user", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const user = req.user as any;
+      const claims = user.claims;
+      
+      if (!claims) {
+        return res.status(401).json({ message: "No user claims found" });
+      }
+
+      // Get or create user in database
+      const dbUser = await upsertUser(claims);
+      
+      // Return user data that matches the frontend User type
+      res.json({
+        id: dbUser.id,
+        email: dbUser.email,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        role: dbUser.role,
+        profileImageUrl: dbUser.profileImageUrl,
+        isActive: dbUser.isActive,
+        createdAt: dbUser.createdAt,
+        lastLoginAt: dbUser.lastLoginAt
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.get("/api/logout", (req, res) => {
