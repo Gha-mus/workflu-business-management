@@ -3,6 +3,7 @@ import { capitalRouter } from "./capital";
 import { purchasesRouter } from "./purchases";
 import { warehouseRouter } from "./warehouse";
 import { shippingRouter } from "./shipping";
+import { operatingExpensesRouter } from "./operating-expenses";
 import { salesRouter } from "./sales";
 import { revenuesRouter } from "./revenues";
 import { approvalsRouter } from "./approvals";
@@ -20,6 +21,7 @@ export function setupModuleRoutes(app: Express): void {
   app.use("/api/purchases", purchasesRouter);
   app.use("/api/warehouse", warehouseRouter);
   app.use("/api/shipping", shippingRouter);
+  app.use("/api/operating-expenses", operatingExpensesRouter);
   app.use("/api/sales", salesRouter);
   app.use("/api/revenues", revenuesRouter);
   

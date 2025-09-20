@@ -83,7 +83,7 @@ class SupplyInventoryService {
   private static instance: SupplyInventoryService;
 
   private constructor() {
-    console.log("SupplyInventoryService initialized for Stage 5 supply inventory management");
+    console.log("OperatingExpenseEnhancementService initialized for Stage 5 operating expenses");
   }
 
   public static getInstance(): SupplyInventoryService {
