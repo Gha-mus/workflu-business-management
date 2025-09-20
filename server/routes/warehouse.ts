@@ -33,6 +33,7 @@ warehouseRouter.post("/stock",
   requireRole(["admin", "warehouse"]),
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
+  requireWarehouseScope,
   async (req, res) => {
     try {
       const validatedData = insertWarehouseStockSchema.parse(req.body);
@@ -64,6 +65,8 @@ warehouseRouter.post("/stock",
 warehouseRouter.post("/filter",
   isAuthenticated,
   requireRole(["admin", "warehouse"]),
+  warehousePeriodGuard,
+  requireApproval("warehouse_operation"),
   requireWarehouseScope,
   async (req, res) => {
     try {
@@ -93,6 +96,9 @@ warehouseRouter.post("/filter",
 warehouseRouter.post("/move-to-final",
   isAuthenticated,
   requireRole(["admin", "warehouse"]),
+  warehousePeriodGuard,
+  requireApproval("warehouse_operation"),
+  requireWarehouseScope,
   async (req, res) => {
     try {
       const validatedData = warehouseMoveToFinalSchema.parse(req.body);
@@ -123,7 +129,7 @@ warehouseRouter.get("/filtering-alerts",
   requireRole(["admin", "warehouse"]),
   async (req, res) => {
     try {
-      const alerts = await warehouseEnhancementService.getFilteringAlerts();
+      const alerts = await warehouseEnhancementService.checkFilteringAlerts();
       res.json(alerts);
     } catch (error) {
       console.error("Error fetching filtering alerts:", error);
@@ -138,7 +144,7 @@ warehouseRouter.get("/supplier-reports",
   requireRole(["admin", "warehouse", "purchasing"]),
   async (req, res) => {
     try {
-      const reports = await warehouseEnhancementService.getSupplierFilteringReports();
+      const reports = await warehouseEnhancementService.generateSupplierFilteringReports();
       res.json(reports);
     } catch (error) {
       console.error("Error fetching supplier reports:", error);
