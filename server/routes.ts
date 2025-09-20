@@ -1819,41 +1819,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Operating expense categories routes
-  app.get('/api/operating-expense-categories', requireRole(['admin', 'finance']), async (req, res) => {
+  // Compatibility shims for Stage 5 - delegate to operating expenses router
+  app.get('/api/supplies', isAuthenticated, requireRole(['admin', 'warehouse']), async (req, res) => {
+    try {
+      const supplies = await storage.getSupplies();
+      res.json(supplies);
+    } catch (error) {
+      console.error("Error fetching supplies:", error);
+      res.status(500).json({ message: "Failed to fetch supplies" });
+    }
+  });
+
+  app.get('/api/operating-expense-categories', isAuthenticated, requireRole(['admin', 'finance']), async (req, res) => {
     try {
       const categories = await storage.getOperatingExpenseCategories();
       res.json(categories);
     } catch (error) {
-      console.error("Error fetching operating expense categories:", error);
-      res.status(500).json({ message: "Failed to fetch operating expense categories" });
-    }
-  });
-
-  app.post('/api/operating-expense-categories', requireRole(['admin', 'finance']), async (req: any, res) => {
-    try {
-      const categoryData = insertOperatingExpenseCategorySchema.parse(req.body);
-
-      const category = await storage.createOperatingExpenseCategory(categoryData, {
-        userId: req.user.claims.sub,
-        userName: req.user.claims.email,
-        userRole: req.user.role,
-        source: 'api_operating_expense_categories',
-        businessContext: `Create expense category: ${categoryData.categoryName}`
-      });
-
-      res.json(category);
-    } catch (error) {
-      console.error("Error creating operating expense category:", error);
-      
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation error",
-          errors: error.errors
-        });
-      }
-      
-      res.status(500).json({ message: "Failed to create operating expense category" });
+      console.error("Error fetching expense categories:", error);
+      res.status(500).json({ message: "Failed to fetch expense categories" });
     }
   });
 

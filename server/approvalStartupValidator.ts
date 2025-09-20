@@ -73,6 +73,20 @@ class ApprovalStartupValidator {
       criticalityLevel: 'medium',
       requiredRoles: ['admin', 'warehouse', 'sales'],
       maxAutoApprovalAmount: 1500 // USD value
+    },
+    {
+      operationType: 'operating_expense',
+      description: 'Operating expense transactions and allocations',
+      criticalityLevel: 'high',
+      requiredRoles: ['admin', 'finance'],
+      maxAutoApprovalAmount: 1000 // USD value
+    },
+    {
+      operationType: 'supply_purchase',
+      description: 'Supply inventory purchases and stock management',
+      criticalityLevel: 'medium',
+      requiredRoles: ['admin', 'warehouse', 'purchasing'],
+      maxAutoApprovalAmount: 2000 // USD value
     }
   ];
 
