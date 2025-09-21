@@ -10,9 +10,10 @@ export function useAuth() {
 
   // Fetch user data from our backend using the session token
   const { data: user, isLoading: isUserLoading } = useQuery<User | null>({
-    queryKey: ["/api/auth/user", session?.access_token],
+    queryKey: ["/api/auth/user"],
     enabled: !!session?.access_token,
     retry: false,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   useEffect(() => {
