@@ -1,6 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-// Temporarily disable legacy routes
-// import { registerRoutes } from "./routes";
+import { registerRoutes } from "./routes";
 import { setupModuleRoutes } from "./routes/index"; 
 import { setupAuth } from "./core/auth";
 import { createServer } from "http";
@@ -74,6 +73,9 @@ app.use((req, res, next) => {
 
     // Set up authentication first
     await setupAuth(app);
+    
+    // Register legacy routes including auth endpoints
+    registerRoutes(app);
     
     // Set up new modular routes
     setupModuleRoutes(app);
