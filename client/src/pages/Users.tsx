@@ -73,20 +73,42 @@ function Users() {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
       
-      return await apiRequest("POST", "/api/users", {
+      const response = await apiRequest("POST", "/api/users", {
         email: data.email,
         temporaryPassword: data.password,
         firstName,
         lastName,
         role: data.role
       });
+      return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({
-        title: "User Created",
-        description: "New user created successfully with Supabase authentication.",
-      });
+      
+      // Display temporary password if returned
+      if (data.temporaryPassword) {
+        toast({
+          title: "User Created Successfully",
+          description: (
+            <div className="space-y-2">
+              <p>User has been created with email: {data.email}</p>
+              <p className="font-mono bg-muted p-2 rounded">
+                Temporary Password: {data.temporaryPassword}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Please save this password securely and share it with the user.
+              </p>
+            </div>
+          ) as any,
+          duration: 30000, // Show for 30 seconds
+        });
+      } else {
+        toast({
+          title: "User Created",
+          description: "New user created successfully with Supabase authentication.",
+        });
+      }
+      
       setCreateUserOpen(false);
       setNewUserEmail("");
       setNewUserPassword("");
