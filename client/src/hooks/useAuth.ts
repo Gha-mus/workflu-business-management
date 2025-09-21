@@ -9,20 +9,40 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
   const [sessionChecked, setSessionChecked] = useState(false);
 
+  // Add logging for auth state transitions
+  useEffect(() => {
+    if (typeof window !== 'undefined' && sessionChecked) {
+      console.info(`Auth state: ${isLoading ? 'loading' : session ? 'authed' : 'unauthed'}→ready`, {
+        timestamp: new Date().toISOString(),
+        hasSession: !!session,
+        hasToken: !!session?.access_token
+      });
+    }
+  }, [isLoading, session, sessionChecked]);
+
   // Fetch user data from our backend using the session token
   const { data: user, isLoading: isUserLoading, refetch } = useQuery<User | null>({
     queryKey: ["/api/auth/user"],
-    enabled: !!session?.access_token && sessionChecked,
+    enabled: !!session?.access_token && sessionChecked && !isLoading,
     retry: false,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     refetchInterval: false,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
+    let mounted = true;
+    
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (!mounted) return;
+      
+      if (error) {
+        console.error('Error getting session:', error);
+      }
+      
       setSession(session);
       setIsLoading(false);
       setSessionChecked(true);
@@ -31,16 +51,24 @@ export function useAuth() {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      
+      console.info(`Auth event: ${event}`, { hasSession: !!session });
+      
       setSession(session);
       setIsLoading(false);
-      // Only refetch user data if session changed
-      if (session) {
+      
+      // Only refetch user data if we got a new session
+      if (event === 'SIGNED_IN' && session) {
         refetch();
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []); // Empty dependency array - run once on mount
 
   const signOut = async () => {
@@ -95,7 +123,7 @@ export function useAuth() {
   return {
     user,
     session,
-    isLoading: isLoading || isUserLoading,
+    isLoading: isLoading || (sessionChecked && !!session && isUserLoading),
     isAuthenticated: !!session && !!user,
     userRole: user?.role,
     hasRole: (role: string) => user?.role === role,

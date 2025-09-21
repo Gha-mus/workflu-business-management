@@ -1,0 +1,126 @@
+Do not stop at the first fix. Validate every item below and only mark DONE when all pass.
+A) Frontend route/auth guards (React/Vite)
+
+Auth loading vs redirect loop
+
+Ensure guards don’t redirect while auth state is still loading.
+
+Pattern:
+
+const session = useSupabaseSession() (or listener)
+
+If loading → render spinner only (no navigate).
+
+If session → render routes; if not → show /auth/login.
+
+Confirm detectSessionInUrl: true is set during password‐reset and that it does not constantly re-run.
+
+Suspense/QueryClient 401 flow
+
+Global axios/fetch interceptor must:
+
+Add Authorization: Bearer <access_token> to API calls
+
+On 401, signOut + navigate('/auth/login') once (no loop), and clear query cache.
+
+Route config
+
+Protected routes must not render nested protected components that each try to redirect. One guard per route tree.
+
+Login form promise chain
+
+After supabase.auth.signInWithPassword, wait for session, then navigate. No race between state update and redirect.
+
+B) Users page hook error (hard failure)
+
+Fix “Rendered more hooks than during the previous render.”
+Root cause: a hook (useQuery, useMutation, useForm, etc.) is being called conditionally.
+
+Ensure all hooks are top-level and unconditional.
+
+If a list is conditionally rendered, keep hooks outside and guard the rendered JSX, not the hook call.
+
+Re-check Users.tsx:79 and the surrounding if (...) { return ... } blocks.
+
+Add a unit test that mounts <Users /> with different props/roles to guarantee hook order remains stable.
+
+C) Supabase session / token propagation
+
+Token retrieval
+
+Frontend must fetch access_token from Supabase and attach it to every API call. Confirm it’s present in Network tab.
+
+Backend validation
+
+Backend must verify token via server SDK (admin.auth.getUser(token)), check expiry & audience, then set req.user.
+
+CORS / Cookies / SameSite
+
+Ensure no mixed cookie/token mode that causes silent 401s in iframe/preview. Prefer Authorization header only.
+
+AUTH_PROVIDER
+
+Log on server start: 🔐 Auth Provider: SUPABASE (already visible) and confirm no Replit code path runs.
+
+D) Environment / config
+
+Confirm VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (frontend) and SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (server) are set and not swapped.
+
+SERVICE_ROLE_KEY never in the browser bundle.
+
+Supabase Redirect URLs include the Replit preview origin (…replit.dev).
+
+No replitAuth.ts throwing at module load when REPLIT envs are absent.
+
+E) API readiness after login
+
+On first dashboard load, the following queries must resolve without 401/500: capital summary, inventory summary, KPIs, notifications.
+
+Add temporary server logs for userId on each dashboard endpoint to verify identity propagation.
+
+F) Race conditions / infinite renders
+
+Check for useEffect with setState that depends on a value that the effect itself changes → infinite loop.
+
+Check for repeated navigate() calls on every render (missing dependency array).
+
+Ensure data fetching keys are stable and not rebuilt each render.
+
+G) Tests (must run & pass)
+
+E2E happy path: login → dashboard renders → open Users → no hook error.
+
+401 flow: expired token → one redirect to login, no loop.
+
+Users page: render with and without admin role → no hook order changes.
+
+Mobile viewport smoke: login + dashboard render (covers the mobile spinner case shown).
+
+H) Instrumentation to prove it’s fixed
+
+Add a one-time console.info on client for: Auth state: loading→authed→ready with timestamps.
+
+Add server log for: GET /api/* userId=<id> while dashboard loads.
+
+Share the short screen capture of a full successful login → dashboard load in Preview.
+
+Deliverables
+
+Bugfix PR that:
+
+Fixes Users.tsx hook order.
+
+Stabilizes auth guard & redirect logic (no loops).
+
+Ensures token attach + clean 401 handling.
+
+Removes any crashing Replit auth imports/side effects.
+
+Checklist with each section A–H ticked and short evidence (screenshot/log line).
+
+E2E video (15–30s) showing: Login → dashboard widgets populated → Users page opens without errors.
+
+Note: Use ChatGPT-5 throughout for static analysis and test generation (as previously required).
+
+Do not mark this done until all checks pass on desktop and mobile.
+Thanks—please start now and keep me posted with the PR and the checklist as you work through each item.
