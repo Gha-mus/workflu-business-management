@@ -82,7 +82,7 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull().default('worker'), // Legacy single role (kept for compatibility)
   roles: jsonb("roles").$type<string[]>().default(sql`'[]'`), // Stage 8: Multiple role combination support
   isActive: boolean("is_active").notNull().default(true),
-  authProvider: authProviderEnum("auth_provider").default('replit'), // Track which auth provider is used
+  authProvider: authProviderEnum("auth_provider").default('supabase'), // Track which auth provider is used
   authProviderUserId: varchar("auth_provider_user_id"), // Provider-specific user ID (Replit sub or Supabase ID)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
