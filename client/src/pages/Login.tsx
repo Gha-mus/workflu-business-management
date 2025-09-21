@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,13 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // If user is already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      setLocation("/");
+    }
+  }, [isAuthenticated, setLocation]);
+
   if (isAuthenticated) {
-    setLocation("/");
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center space-x-2">
@@ -36,10 +41,9 @@ export default function Login() {
 
     try {
       await signIn(email, password);
-      setLocation("/"); // Redirect to dashboard on successful login
+      // Don't redirect here - the useEffect will handle it when isAuthenticated becomes true
     } catch (err: any) {
       setError(err.message || "Failed to sign in");
-    } finally {
       setIsSubmitting(false);
     }
   };
