@@ -78,6 +78,7 @@ export function useNotifications(filters?: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/settings'] });
       toast({
         title: "Success",
         description: "Notification marked as read",
@@ -99,6 +100,7 @@ export function useNotifications(filters?: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/settings'] });
       toast({
         title: "Success",
         description: "Notification dismissed",
@@ -120,6 +122,7 @@ export function useNotifications(filters?: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/settings'] });
       toast({
         title: "Success",
         description: "Notifications marked as read",

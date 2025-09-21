@@ -9630,6 +9630,25 @@ export class DatabaseStorage implements IStorage {
 
   async dismissNotification(id: string, userId: string): Promise<NotificationQueue> {
     try {
+      console.log(`🔍 Dismissing notification: id=${id}, userId=${userId}`);
+      
+      // First, check if the notification exists at all
+      const existingNotification = await db
+        .select()
+        .from(notificationQueue)
+        .where(eq(notificationQueue.id, id))
+        .limit(1);
+      
+      console.log(`📊 Notification exists: ${existingNotification.length > 0}`);
+      if (existingNotification.length > 0) {
+        console.log(`📝 Notification data:`, {
+          id: existingNotification[0].id,
+          userId: existingNotification[0].userId,
+          status: existingNotification[0].status,
+          title: existingNotification[0].title
+        });
+      }
+
       const [updatedNotification] = await db
         .update(notificationQueue)
         .set({ 
@@ -9644,9 +9663,11 @@ export class DatabaseStorage implements IStorage {
         .returning();
 
       if (!updatedNotification) {
+        console.error(`❌ No notification updated. Notification ${id} not found for user ${userId}`);
         throw new Error('Notification not found or access denied');
       }
 
+      console.log(`✅ Successfully dismissed notification ${id}`);
       return updatedNotification;
     } catch (error) {
       console.error('Error dismissing notification:', error);

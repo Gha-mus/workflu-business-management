@@ -8,7 +8,10 @@ export const notificationsRouter = Router();
 // GET /api/notifications
 notificationsRouter.get("/", isAuthenticated, async (req, res) => {
   try {
-    const result = await storage.getUserNotifications(req.user!.id);
+    const userId = (req.user as any)?.claims?.sub;
+    console.log(`🔍 GET /api/notifications for userId: ${userId}`);
+    const result = await storage.getUserNotifications(userId);
+    console.log(`📊 Returned ${result.notifications.length} notifications for user ${userId}`);
     res.json(result.notifications);
   } catch (error) {
     console.error("Error fetching notifications:", error);
@@ -16,11 +19,11 @@ notificationsRouter.get("/", isAuthenticated, async (req, res) => {
   }
 });
 
-// POST /api/notifications/mark-read/:id
-notificationsRouter.post("/mark-read/:id", isAuthenticated, async (req, res) => {
+// PUT /api/notifications/:id/read - Mark individual notification as read
+notificationsRouter.put("/:id/read", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    await storage.markNotificationAsRead(id, req.user!.id);
+    await storage.markNotificationAsRead(id, (req.user as any)?.claims?.sub);
     res.json({ success: true });
   } catch (error) {
     console.error("Error marking notification as read:", error);
@@ -28,10 +31,37 @@ notificationsRouter.post("/mark-read/:id", isAuthenticated, async (req, res) => 
   }
 });
 
+// PUT /api/notifications/:id/dismiss - Dismiss individual notification
+notificationsRouter.put("/:id/dismiss", isAuthenticated, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await storage.dismissNotification(id, (req.user as any)?.claims?.sub);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error dismissing notification:", error);
+    res.status(500).json({ message: "Failed to dismiss notification" });
+  }
+});
+
+// POST /api/notifications/bulk-read - Mark multiple notifications as read
+notificationsRouter.post("/bulk-read", isAuthenticated, async (req, res) => {
+  try {
+    const { notificationIds } = req.body;
+    if (!Array.isArray(notificationIds)) {
+      return res.status(400).json({ message: "notificationIds must be an array" });
+    }
+    const result = await storage.bulkMarkNotificationsAsRead(notificationIds, (req.user as any)?.claims?.sub);
+    res.json({ success: true, updated: result.updated });
+  } catch (error) {
+    console.error("Error bulk marking notifications as read:", error);
+    res.status(500).json({ message: "Failed to mark notifications as read" });
+  }
+});
+
 // GET /api/notifications/settings
 notificationsRouter.get("/settings", isAuthenticated, async (req, res) => {
   try {
-    const settings = await storage.getNotificationSettings(req.user!.id);
+    const settings = await storage.getNotificationSettings((req.user as any)?.claims?.sub);
     res.json(settings);
   } catch (error) {
     console.error("Error fetching notification settings:", error);
@@ -42,7 +72,7 @@ notificationsRouter.get("/settings", isAuthenticated, async (req, res) => {
 // POST /api/notifications/settings
 notificationsRouter.post("/settings", isAuthenticated, async (req, res) => {
   try {
-    const settings = await storage.updateNotificationSettings(req.user!.id, req.body);
+    const settings = await storage.updateNotificationSettings((req.user as any)?.claims?.sub, req.body);
     res.json(settings);
   } catch (error) {
     console.error("Error updating notification settings:", error);
@@ -56,7 +86,7 @@ notificationsRouter.post("/test-email",
   requireRole(["admin"]),
   async (req, res) => {
     try {
-      await notificationService.sendTestEmail(req.user!.email, req.body.message);
+      await notificationService.sendTestEmail((req.user as any).email, req.body.message);
       res.json({ success: true });
     } catch (error) {
       console.error("Error sending test email:", error);
