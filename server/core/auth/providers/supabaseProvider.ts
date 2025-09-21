@@ -52,15 +52,72 @@ export { getSupabaseClient as supabaseClient, getSupabaseAdmin as supabaseAdmin 
 // Secure JWT verification and user mapping
 const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
   try {
-    // Use Supabase's secure user verification instead of JWT decode
+    // First verify the JWT with the admin client
     const admin = getSupabaseAdmin();
+    
+    // Set the JWT token to verify it belongs to a real user
     const { data: { user }, error } = await admin.auth.getUser(token);
     
     if (error || !user) {
-      console.error('Supabase token verification failed:', error);
-      return null;
+      // Fallback: Try using the regular client with the JWT to get the user
+      const client = getSupabaseClient();
+      // Set global headers with the JWT token for this request
+      const response = await client.auth.getSession();
+      
+      if (!response.data.session) {
+        console.error('Supabase token verification failed:', error);
+        return null;
+      }
+      
+      // Create a new client with this specific JWT  
+      const userClient = createClient(
+        process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
+        process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          },
+          auth: {
+            persistSession: false
+          }
+        }
+      );
+      
+      const userResponse = await userClient.auth.getUser();
+      if (userResponse.error || !userResponse.data.user) {
+        console.error('Supabase token verification failed:', userResponse.error);
+        return null;
+      }
+      
+      const verifiedUser = userResponse.data.user;
+      const supabaseUserId = verifiedUser.id;
+      const email = verifiedUser.email;
+      
+      if (!email) return null;
+
+      // Map Supabase user to app user by email
+      const appUser = await storage.getUserByEmail(email);
+      if (!appUser || !appUser.isActive) return null;
+
+      const authUser = {
+        id: appUser.id,
+        email: appUser.email!,
+        firstName: appUser.firstName || undefined,
+        lastName: appUser.lastName || undefined,
+        profileImageUrl: appUser.profileImageUrl || undefined,
+        role: appUser.role,
+        roles: (appUser.roles as User['role'][]) || [],
+        isActive: appUser.isActive,
+        authProvider: 'supabase' as const,
+        authUserId: supabaseUserId
+      };
+
+      return authUser;
     }
 
+    // This path should not be reached anymore but keep as fallback
     const supabaseUserId = user.id;
     const email = user.email;
 
