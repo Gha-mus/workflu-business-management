@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { OrdersResponse, PurchasesResponse } from "@shared/schema";
@@ -30,6 +31,7 @@ import { Plus, Package, Eye } from "lucide-react";
 export default function Orders() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
@@ -43,7 +45,7 @@ export default function Orders() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }
@@ -79,7 +81,7 @@ export default function Orders() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          setLocation("/auth/login");
         }, 500);
         return;
       }

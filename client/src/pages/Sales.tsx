@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -139,6 +140,7 @@ interface RevenueTransaction {
 export default function Sales() {
   const { toast } = useToast();
   const { user, isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
@@ -156,7 +158,7 @@ export default function Sales() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }

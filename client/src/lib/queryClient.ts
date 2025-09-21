@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getCurrentToken } from "./supabase";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -7,16 +8,30 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Helper function to get headers with authentication
+async function getAuthHeaders(additionalHeaders: Record<string, string> = {}) {
+  const token = await getCurrentToken();
+  
+  return {
+    ...additionalHeaders,
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers = await getAuthHeaders(
+    data ? { "Content-Type": "application/json" } : {}
+  );
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
+    credentials: "include", // Keep for backward compatibility with session auth
   });
 
   await throwIfResNotOk(res);
@@ -29,11 +44,15 @@ export async function apiRequestJson<T = any>(
   url: string,
   data?: unknown | undefined,
 ): Promise<T> {
+  const headers = await getAuthHeaders(
+    data ? { "Content-Type": "application/json" } : {}
+  );
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
+    credentials: "include", // Keep for backward compatibility with session auth
   });
 
   await throwIfResNotOk(res);
@@ -46,8 +65,11 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const headers = await getAuthHeaders();
+    
     const res = await fetch(queryKey.join("/") as string, {
-      credentials: "include",
+      headers,
+      credentials: "include", // Keep for backward compatibility with session auth
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

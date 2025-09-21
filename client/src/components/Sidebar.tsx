@@ -41,7 +41,7 @@ const adminNavigation = [
 ];
 
 export function Sidebar() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [location] = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -203,7 +203,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start"
-          onClick={() => window.location.href = '/api/logout'}
+          onClick={signOut}
           data-testid="logout-button"
         >
           <LogOut className="w-4 h-4 mr-3" />

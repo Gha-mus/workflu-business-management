@@ -1,7 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
 
 export default function Landing() {
+  const [, setLocation] = useLocation();
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -25,10 +28,10 @@ export default function Landing() {
             
             <Button 
               className="w-full"
-              onClick={() => window.location.href = '/api/login'}
+              onClick={() => setLocation('/auth/login')}
               data-testid="login-button"
             >
-              Get Started
+              Sign In
             </Button>
           </div>
         </CardContent>

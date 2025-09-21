@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -40,6 +41,7 @@ import {
 export default function Shipping() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [selectedShipment, setSelectedShipment] = useState<string | null>(null);
   const [createCarrierOpen, setCreateCarrierOpen] = useState(false);
   const [createShipmentOpen, setCreateShipmentOpen] = useState(false);
@@ -58,7 +60,7 @@ export default function Shipping() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }

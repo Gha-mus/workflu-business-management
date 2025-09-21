@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CapitalBalanceResponse, CapitalEntriesResponse, SettingsResponse } from "@shared/schema";
@@ -33,6 +34,7 @@ import { BackButton } from '@/components/ui/back-button';
 export default function WorkingCapital() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
   const [amount, setAmount] = useState("");
@@ -49,7 +51,7 @@ export default function WorkingCapital() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }
@@ -97,7 +99,7 @@ export default function WorkingCapital() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          setLocation("/auth/login");
         }, 500);
         return;
       }

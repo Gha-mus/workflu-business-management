@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import type { User } from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Users as UsersIcon, UserCheck, AlertCircle, Check } from "lucide-react";
+import { Shield, Users as UsersIcon, UserCheck, AlertCircle, Check, Plus, UserX, RefreshCw, Edit } from "lucide-react";
 import { BackButton } from '@/components/ui/back-button';
 
 const roleLabels = {
@@ -43,7 +47,15 @@ const roleColors = {
 function Users() {
   const { user: currentUser, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  
+  // New user creation state
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserDisplayName, setNewUserDisplayName] = useState("");
+  const [newUserRole, setNewUserRole] = useState<User['role']>("worker");
 
   // Check if current user is admin
   if (!isAuthenticated || currentUser?.role !== 'admin') {
@@ -66,6 +78,32 @@ function Users() {
   // Fetch all users
   const { data: users, isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
+  });
+
+  // Create user mutation
+  const createUserMutation = useMutation({
+    mutationFn: async (data: { email: string; password: string; displayName: string; role: User['role'] }) => {
+      return await apiRequest("POST", "/api/admin/users", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "User Created",
+        description: "New user created successfully with Supabase authentication.",
+      });
+      setCreateUserOpen(false);
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setNewUserDisplayName("");
+      setNewUserRole("worker");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Creation Failed",
+        description: error.message || "Failed to create user. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   // Update user role mutation
@@ -92,6 +130,69 @@ function Users() {
         variant: "destructive",
       });
       setUpdatingUserId(null);
+    },
+  });
+
+  // Toggle user active status mutation
+  const toggleUserActiveMutation = useMutation({
+    mutationFn: async ({ userId, activate }: { userId: string; activate: boolean }) => {
+      const endpoint = activate ? "activate" : "deactivate";
+      return await apiRequest("PATCH", `/api/admin/users/${userId}/${endpoint}`, {});
+    },
+    onSuccess: (data, { activate }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: activate ? "User Activated" : "User Deactivated",
+        description: `User has been ${activate ? "activated" : "deactivated"} successfully.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update user status.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Reset password mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId }: { userId: string }) => {
+      return await apiRequest("POST", `/api/admin/users/${userId}/reset-password`, {});
+    },
+    onSuccess: () => {
+      toast({
+        title: "Password Reset",
+        description: "Password reset email sent successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Reset Failed",
+        description: error.message || "Failed to send password reset email.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update display name mutation
+  const updateDisplayNameMutation = useMutation({
+    mutationFn: async ({ userId, displayName }: { userId: string; displayName: string }) => {
+      return await apiRequest("PATCH", `/api/admin/users/${userId}/display-name`, { displayName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Display Name Updated",
+        description: "User display name updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update display name.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -133,6 +234,96 @@ function Users() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
+              <Dialog open={createUserOpen} onOpenChange={setCreateUserOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-create-user">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create User
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New User</DialogTitle>
+                    <DialogDescription>
+                      Create a new user with Supabase authentication. They will receive login credentials via email.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email Address</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="user@example.com"
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        data-testid="input-new-user-email"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Minimum 6 characters"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        data-testid="input-new-user-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="displayName">Display Name</Label>
+                      <Input
+                        id="displayName"
+                        placeholder="John Doe"
+                        value={newUserDisplayName}
+                        onChange={(e) => setNewUserDisplayName(e.target.value)}
+                        data-testid="input-new-user-display-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Role</Label>
+                      <Select value={newUserRole} onValueChange={(value: User['role']) => setNewUserRole(value)}>
+                        <SelectTrigger data-testid="select-new-user-role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(roleLabels).map(([role, label]) => (
+                            <SelectItem key={role} value={role}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setCreateUserOpen(false)}
+                        data-testid="button-cancel-create-user"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (newUserEmail && newUserPassword && newUserDisplayName) {
+                            createUserMutation.mutate({
+                              email: newUserEmail,
+                              password: newUserPassword,
+                              displayName: newUserDisplayName,
+                              role: newUserRole,
+                            });
+                          }
+                        }}
+                        disabled={!newUserEmail || !newUserPassword || !newUserDisplayName || createUserMutation.isPending}
+                        data-testid="button-submit-create-user"
+                      >
+                        {createUserMutation.isPending ? "Creating..." : "Create User"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Shield className="w-5 h-5 text-primary" />
               <span className="text-sm font-medium">Admin Panel</span>
             </div>
@@ -254,6 +445,30 @@ function Users() {
                               ))}
                             </SelectContent>
                           </Select>
+                          
+                          {/* Admin Action Buttons */}
+                          <div className="flex items-center space-x-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleUserActiveMutation.mutate({ userId: user.id, activate: !user.isActive })}
+                              disabled={user.id === currentUser?.id || toggleUserActiveMutation.isPending}
+                              data-testid={`button-toggle-active-${user.id}`}
+                            >
+                              {user.isActive ? <UserX className="w-3 h-3" /> : <UserCheck className="w-3 h-3" />}
+                            </Button>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => resetPasswordMutation.mutate({ userId: user.id })}
+                              disabled={resetPasswordMutation.isPending}
+                              data-testid={`button-reset-password-${user.id}`}
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                            </Button>
+                          </div>
+                          
                           {updatingUserId === user.id && (
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
                           )}

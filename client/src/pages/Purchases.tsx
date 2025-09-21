@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -31,6 +32,7 @@ const settlementSchema = z.object({
 export default function Purchases() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [settlementModal, setSettlementModal] = useState<{open: boolean, purchase: any | null}>({open: false, purchase: null});
@@ -51,7 +53,7 @@ export default function Purchases() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }
