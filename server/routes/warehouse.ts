@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
-import { isAuthenticated, requireRole, requireWarehouseScope } from "../core/auth/replitAuth";
+import { isAuthenticated, requireRole, requireWarehouseScope } from "../core/auth";
 import { auditService } from "../auditService";
 import { warehouseEnhancementService } from "../modules/warehouse/service";
 import { 

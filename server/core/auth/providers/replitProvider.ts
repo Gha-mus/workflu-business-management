@@ -38,14 +38,21 @@ const normalizeReplitUser = async (replitUser: any): Promise<AuthUser | null> =>
   }
 };
 
-// Wrap existing isAuthenticated with normalization
+// Wrap existing isAuthenticated with normalization and compatibility shim
 const isAuthenticated: RequestHandler = (req, res, next) => {
   return replitAuth.isAuthenticated(req, res, async () => {
     try {
       // Normalize the user data
       const normalizedUser = await normalizeReplitUser(req.user);
       if (normalizedUser) {
-        req.user = normalizedUser;
+        // Add compatibility shim for legacy req.user.claims.sub access
+        req.user = {
+          ...normalizedUser,
+          claims: {
+            sub: normalizedUser.id,
+            email: normalizedUser.email
+          }
+        } as any;
       }
       next();
     } catch (error) {
@@ -71,7 +78,8 @@ export const replitAuthProvider: AuthProvider = {
   requireWarehouseScopeForResource: replitAuth.requireWarehouseScopeForResource,
   hasWarehouseScope: replitAuth.hasWarehouseScope,
   validateWarehouseSource: replitAuth.validateWarehouseSource,
+  validateSalesReturn: replitAuth.validateSalesReturn,
   requireApproval: replitAuth.requireApproval,
-  configureSession: replitAuth.configureSession,
+  setupAuth: replitAuth.setupAuth,
   providerName: 'replit'
 };

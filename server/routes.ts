@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./replitAuth";
+import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./core/auth";
 import { aiService } from "./aiService";
 import { exportService } from "./exportService";
 import { configurationService } from "./configurationService";
@@ -133,7 +133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {
@@ -177,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get approval statistics for dashboard
   app.get('/api/approvals/statistics', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       // Get pending approvals for user
       const pendingApprovals = await approvalWorkflowService.getPendingApprovals(userId);
@@ -210,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get pending approval requests for current user (as approver)
   app.get('/api/approvals/pending', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { operationType, priority, limit = '50', offset = '0' } = req.query;
       
       const pendingApprovals = await approvalWorkflowService.getPendingApprovals(userId, {
@@ -230,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get approval requests submitted by current user
   app.get('/api/approvals/my-requests', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { status, operationType, limit = '50', offset = '0' } = req.query;
       
       let approvals = [];
@@ -303,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/decision', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const decisionSchema = z.object({
         decision: z.enum(['approve', 'reject', 'escalate', 'delegate']),
@@ -348,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create approval request manually (for exceptional cases)
   app.post('/api/approvals/requests', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const requestSchema = z.object({
         operationType: z.string(),
@@ -417,7 +417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check if operation requires approval
   app.post('/api/approvals/check-requirement', isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const checkSchema = z.object({
         operationType: z.string(),
@@ -614,7 +614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/approve', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { comments } = req.body;
       
       const auditContext = auditService.extractRequestContext(req);
@@ -643,7 +643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/reject', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { comments } = req.body;
       
       const auditContext = auditService.extractRequestContext(req);
@@ -672,7 +672,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/escalate', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { escalateTo, comments } = req.body;
       
       if (!escalateTo) {
@@ -705,7 +705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/delegate', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { delegateTo, comments } = req.body;
       
       if (!delegateTo) {
@@ -738,7 +738,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/cancel', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { comments } = req.body;
       
       // Get the approval request to validate ownership
@@ -787,7 +787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/bulk-actions', requireRole(['admin', 'finance']), async (req, res) => {
     try {
       const { approvalIds, action, comments, targetUserId } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       if (!approvalIds || !Array.isArray(approvalIds) || approvalIds.length === 0) {
         return res.status(400).json({ message: "Approval IDs array is required" });
@@ -853,7 +853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/comments', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { comment } = req.body;
       
       if (!comment || comment.trim() === '') {
@@ -1360,7 +1360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const entryData = insertCapitalEntrySchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
       
       // STAGE 1 COMPLIANCE: Validate Reverse/Reclass entries require reference
@@ -1415,7 +1415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/capital/multi-order-entry', requireRole(['admin', 'finance']), approvalMiddleware.capitalEntry, capitalEntryPeriodGuard, async (req: any, res) => {
     try {
       const entryData = multiOrderCapitalEntrySchema.parse(req.body);
-      const result = await capitalEnhancementService.createMultiOrderCapitalEntry(entryData, req.user.claims.sub);
+      const result = await capitalEnhancementService.createMultiOrderCapitalEntry(entryData, req.user.id);
       res.json(result);
     } catch (error) {
       console.error("Error creating multi-order capital entry:", error);
@@ -1460,7 +1460,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/suppliers/quality-assessment', requireRole(['admin', 'purchasing']), async (req: any, res) => {
     try {
       const assessmentData = supplierQualityAssessmentSchema.parse(req.body);
-      await supplierEnhancementService.assessSupplierQuality(assessmentData, req.user.claims.sub);
+      await supplierEnhancementService.assessSupplierQuality(assessmentData, req.user.id);
       res.status(204).send(); // No content - assessment completed successfully
     } catch (error) {
       console.error("Error creating supplier quality assessment:", error);
@@ -1486,7 +1486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const returnData = purchaseReturnSchema.parse(req.body);
       // Transaction wrapping for multi-entity operation
       const result = await db.transaction(async (tx) => {
-        return await supplierEnhancementService.processPurchaseReturn(returnData, req.user.claims.sub, tx);
+        return await supplierEnhancementService.processPurchaseReturn(returnData, req.user.id, tx);
       });
       res.json(result);
     } catch (error) {
@@ -1619,7 +1619,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const purchaseData = insertPurchaseSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       // STAGE 2 SECURITY: Enforce central FX rate, never trust client-supplied rates (same as Stage 1)
@@ -1653,7 +1653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...purchaseData,
         total: total.toFixed(2),
         remaining: remaining.toFixed(2),
-      }, req.user.claims.sub);
+      }, req.user.id);
 
       res.json(purchase);
     } catch (error) {
@@ -1696,7 +1696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // STAGE 2 SECURITY: Funding source is derived from purchase record - no client input allowed
       // STAGE 2 SECURITY: Central FX rate enforcement handled in storage layer
 
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
 
       const result = await storage.settlePurchasePayment(id, settlementData, {
         userId,
@@ -1746,7 +1746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // STAGE 2 SECURITY: Enforce central FX rate for settlement currency conversion
       // This will be handled in storage layer with proper validation
 
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
 
       const result = await storage.settlePurchaseAdvance(id, settlementData, {
         userId,
@@ -1777,7 +1777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedReturnData = returnSchema.parse(req.body);
       const returnData = { ...validatedReturnData, purchaseId: id };
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
 
       const result = await storage.processSupplierReturn(returnData, {
         userId,
@@ -1836,7 +1836,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const supplyData = req.body;
       
       const supply = await storage.updateSupply(req.params.id, supplyData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_supplies',
@@ -1889,7 +1889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const expenseData = insertOperatingExpenseSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       // Additional validation: ensure exchange rate is provided for non-USD currencies
@@ -1901,7 +1901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const expense = await storage.createOperatingExpense(expenseData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_operating_expenses',
@@ -1937,11 +1937,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const consumptionData = insertSupplyConsumptionSchema.parse({
         ...req.body,
-        consumedBy: req.user.claims.sub,
+        consumedBy: req.user.id,
       });
 
       const consumption = await storage.createSupplyConsumption(consumptionData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_supply_consumption',
@@ -1968,7 +1968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const purchaseData = insertSupplyPurchaseSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       // Additional validation: ensure exchange rate is provided for non-USD currencies
@@ -1988,7 +1988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...purchaseData,
         totalAmount: totalAmount.toFixed(2),
       }, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_supply_purchases',
@@ -2031,7 +2031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      await storage.recordPackingSupplyConsumption(orderId, cartonsProcessed, req.user.claims.sub);
+      await storage.recordPackingSupplyConsumption(orderId, cartonsProcessed, req.user.id);
 
       res.json({ 
         message: "Packing supply consumption recorded successfully",
@@ -2075,11 +2075,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const entryData = insertRevenueLedgerSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       const entry = await storage.createRevenueLedgerEntry(entryData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_revenue_ledger',
@@ -2107,7 +2107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const receiptData = customerReceiptSchema.parse(req.body);
 
       const entry = await storage.createCustomerReceiptEntry(receiptData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_customer_receipt',
@@ -2134,7 +2134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const refundData = customerRefundSchema.parse(req.body);
 
       const entry = await storage.createCustomerRefundEntry(refundData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_customer_refund',
@@ -2185,11 +2185,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const withdrawalData = insertWithdrawalRecordSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       const withdrawal = await storage.createWithdrawalRecord(withdrawalData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_withdrawals',
@@ -2225,7 +2225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const approvalData = withdrawalApprovalSchema.parse(req.body);
       
       const withdrawal = await storage.approveWithdrawal(req.params.id, approvalData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_withdrawal_approval',
@@ -2276,11 +2276,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const reinvestmentData = insertReinvestmentSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       const reinvestment = await storage.createReinvestment(reinvestmentData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_reinvestments',
@@ -2316,7 +2316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const approvalData = reinvestmentApprovalSchema.parse(req.body);
       
       const reinvestment = await storage.approveReinvestment(req.params.id, approvalData, {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userName: req.user.claims.email,
         userRole: req.user.role,
         source: 'api_reinvestment_approval',
@@ -2457,7 +2457,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const statusData = warehouseStatusUpdateSchema.parse(req.body);
-      const stock = await storage.updateWarehouseStockStatus(id, statusData.status, req.user.claims.sub);
+      const stock = await storage.updateWarehouseStockStatus(id, statusData.status, req.user.id);
       
       res.json(stock);
     } catch (error) {
@@ -2486,7 +2486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filterData.purchaseId, 
         filterData.outputCleanKg, 
         filterData.outputNonCleanKg, 
-        req.user.claims.sub
+        req.user.id
       );
       
       res.json(result);
@@ -2512,7 +2512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const moveData = warehouseMoveToFinalSchema.parse(req.body);
       
-      const finalStock = await storage.moveStockToFinalWarehouse(moveData.stockId, req.user.claims.sub);
+      const finalStock = await storage.moveStockToFinalWarehouse(moveData.stockId, req.user.id);
       res.json(finalStock);
     } catch (error) {
       console.error("Error moving stock to final warehouse:", error);
@@ -2547,7 +2547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const filterData = insertFilterRecordSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
 
       // Calculate filter yield
@@ -2679,7 +2679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/periods/:id/close', requireRole(['admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { exchangeRates } = req.body;
       const closedPeriod = await storage.closeFinancialPeriod(id, userId, exchangeRates);
       res.json(closedPeriod);
@@ -2716,7 +2716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/metrics/calculate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const metrics = await storage.calculateAndStoreFinancialMetrics(periodId, userId);
       res.json(metrics);
     } catch (error) {
@@ -2740,7 +2740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/profit-loss/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId, statementType } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const statement = await storage.generateProfitLossStatement(periodId, statementType, userId);
       res.json(statement);
     } catch (error) {
@@ -2775,7 +2775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/cashflow/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId, analysisType, forecastDays } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const analysis = await storage.generateCashFlowAnalysis(periodId, analysisType, userId, forecastDays);
       res.json(analysis);
     } catch (error) {
@@ -2820,7 +2820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/margins/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId, analysisType, filters } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const analyses = await storage.generateMarginAnalysis(periodId, analysisType, filters, userId);
       res.json(analyses);
     } catch (error) {
@@ -2881,7 +2881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const budgetData = insertBudgetTrackingSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub
+        createdBy: req.user.id
       });
       const budget = await storage.createBudgetTracking(budgetData);
       res.json(budget);
@@ -3023,7 +3023,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/purchase-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
     try {
       const requestData = aiPurchaseRecommendationRequestSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       // Create cache key
       const cacheKey = `purchase_recommendations_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
@@ -3072,7 +3072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/supplier-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
     try {
       const requestData = aiSupplierRecommendationRequestSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = `supplier_recommendations_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3115,7 +3115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/capital-optimization', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const requestData = aiCapitalOptimizationRequestSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = `capital_optimization_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3168,7 +3168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/ai/inventory-recommendations', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = 'inventory_recommendations_current';
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3212,7 +3212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Routes - Financial Insights
   app.get('/api/ai/financial-trends', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = 'financial_trends_analysis';
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3262,7 +3262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Routes - Trading Decision Support
   app.get('/api/ai/market-timing', requireRole(['admin', 'purchasing', 'sales']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = 'market_timing_analysis';
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3326,7 +3326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Routes - Intelligent Reporting
   app.get('/api/ai/executive-summary', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = 'executive_summary_current';
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3375,7 +3375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/ai/anomaly-detection', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const cacheKey = 'anomaly_detection_current';
       const cachedResult = await storage.getAiInsightsCache(cacheKey);
@@ -3435,7 +3435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/chat', isAuthenticated, async (req: any, res) => {
     try {
       const requestData = aiChatRequestSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       // Generate session ID if not provided
@@ -3496,7 +3496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/contextual-help', isAuthenticated, async (req: any, res) => {
     try {
       const requestData = aiContextualHelpRequestSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       const result = await aiService.getContextualHelp(
@@ -3519,7 +3519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI conversation history
   app.get('/api/ai/conversations', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       const conversations = await storage.getRecentAiConversations(userId, limit);
@@ -3548,7 +3548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initiate workflow validation against business document
   app.post('/api/ai/validate-workflow', requireRole(['admin']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       // Basic rate limiting: check if validation was run recently
       const recentValidation = await storage.getLatestWorkflowValidation(userId);
@@ -3642,7 +3642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get latest workflow validation results
   app.get('/api/ai/validation/latest', requireRole(['admin', 'finance', 'warehouse']), async (req: any, res) => {
     try {
-      const userId = req.query.global === 'true' ? undefined : req.user.claims.sub;
+      const userId = req.query.global === 'true' ? undefined : req.user.id;
       const validation = await storage.getLatestWorkflowValidation(userId);
       
       if (!validation) {
@@ -3694,7 +3694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { format = 'json' } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const validations = await storage.getWorkflowValidations(undefined, 100);
       const validation = validations.find(v => v.id === id);
@@ -3750,7 +3750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export job management routes
   app.get('/api/export-jobs', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const jobs = await storage.getExportJobs(userId);
       res.json(jobs);
     } catch (error) {
@@ -3761,7 +3761,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/export-jobs', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const jobData = {
         ...req.body,
         userId
@@ -3818,7 +3818,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced export routes with real file generation
   app.post('/api/exports', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const exportParams = {
         ...req.body,
         userId
@@ -3842,7 +3842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/exports/history', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const limit = req.query.limit ? parseInt(req.query.limit) : 50;
       const history = await storage.getExportHistory(userId, limit);
       res.json(history);
@@ -3904,7 +3904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/periods/:id/close', requireRole(['admin']), strictPeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { adjustments, requireCompliance = true } = req.body;
 
       // Compliance validation - require successful AI validation before closing
@@ -3953,7 +3953,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/periods/:id/reopen', requireRole(['admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { reason } = req.body;
 
       if (!reason) {
@@ -3993,7 +3993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/periods/:id/adjustments/:adjustmentId/approve', requireRole(['admin']), async (req: any, res) => {
     try {
       const { adjustmentId } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const approvedAdjustment = await storage.approvePeriodAdjustment(adjustmentId, userId);
       res.json(approvedAdjustment);
@@ -4117,7 +4117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/shipments', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const shipmentData = insertShipmentSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const shipment = await storage.createShipment({ ...shipmentData, createdBy: userId });
       res.status(201).json(shipment);
     } catch (error) {
@@ -4129,7 +4129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/shipments/from-stock', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const shipmentData = createShipmentFromStockSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const shipment = await storage.createShipmentFromWarehouseStock(shipmentData, userId);
       res.status(201).json(shipment);
     } catch (error) {
@@ -4154,7 +4154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status, actualDepartureDate, actualArrivalDate } = shipmentStatusUpdateSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       let actualDate: Date | undefined;
       if (status === 'in_transit' && actualDepartureDate) {
@@ -4244,7 +4244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/shipping-costs', requireRole(['admin', 'finance']), approvalMiddleware.shippingOperation, genericPeriodGuard, async (req: any, res) => {
     try {
       const costData = addShippingCostSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       // Require exchangeRate for non-USD shipping costs (same as capital entries)
       if (costData.currency !== 'USD' && (!costData.exchangeRate || costData.exchangeRate === '0')) {
@@ -4308,7 +4308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/delivery-tracking', requireRole(['admin', 'warehouse']), approvalMiddleware.shippingOperation, async (req: any, res) => {
     try {
       const trackingData = addDeliveryTrackingSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const tracking = await storage.addDeliveryTracking(trackingData, userId);
       res.status(201).json(tracking);
     } catch (error) {
@@ -4332,7 +4332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/delivery-tracking/:id/notify', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const tracking = await storage.markCustomerNotified(id, userId);
       res.json(tracking);
     } catch (error) {
@@ -4451,7 +4451,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fundingSource: z.enum(['capital', 'operational', 'supplier']).default('operational')
       }).parse(req.body);
       
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const result = await commissionCalculationService.calculateAndApplyCommission(request, userId);
       res.json(result);
     } catch (error) {
@@ -4485,7 +4485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const inspectionData = {
         ...request,
-        inspectorUserId: req.user.claims.sub
+        inspectorUserId: req.user.id
       };
       
       const inspectionId = await inspectionWorkflowService.startInspection(inspectionData);
@@ -4514,7 +4514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
       
       const resultData = { ...request, inspectionId };
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const result = await inspectionWorkflowService.recordInspectionResults(resultData, userId);
       res.json(result);
@@ -4539,7 +4539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
       
       const settlementData = { ...request, inspectionId };
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const result = await inspectionWorkflowService.requestSettlement(settlementData, userId);
       res.json(result);
@@ -4698,7 +4698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         justification: z.string().min(1)
       }).parse(req.body);
       
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       // Validate leg sequencing before confirmation
       const leg = await storage.getShipmentLeg(id);
@@ -4803,7 +4803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const batchData = {
         ...insertWarehouseBatchSchema.parse(req.body),
-        createdById: req.user.claims.sub
+        createdById: req.user.id
       };
       const batch = await storage.createWarehouseBatch(batchData);
       res.json(batch);
@@ -4822,7 +4822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { splitQuantity } = z.object({
         splitQuantity: z.string()
       }).parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const result = await storage.splitWarehouseBatch(id, splitQuantity, userId);
       res.json(result);
@@ -4852,8 +4852,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const inspectionData = {
         ...insertQualityInspectionSchema.parse(req.body),
-        inspectorId: req.user.claims.sub,
-        createdById: req.user.claims.sub
+        inspectorId: req.user.id,
+        createdById: req.user.id
       };
       const inspection = await storage.createQualityInspection(inspectionData);
       res.json(inspection);
@@ -4871,7 +4871,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const results = {
         ...req.body,
-        userId: req.user.claims.sub
+        userId: req.user.id
       };
       const inspection = await storage.completeQualityInspection(id, results);
       res.json(inspection);
@@ -4884,7 +4884,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/warehouse/quality-inspections/:id/approve', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const inspection = await storage.approveQualityInspection(id, userId);
       res.json(inspection);
     } catch (error) {
@@ -4917,7 +4917,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         consumptionType: z.string(),
         allocatedTo: z.string().optional()
       }).parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const consumptions = await storage.consumeInventoryFIFO(warehouseStockId, quantity, consumptionType, userId, allocatedTo);
       res.json(consumptions);
@@ -4971,7 +4971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const operationData = {
         ...insertProcessingOperationSchema.parse(req.body),
-        createdById: req.user.claims.sub
+        createdById: req.user.id
       };
       const operation = await storage.createProcessingOperation(operationData);
       res.json(operation);
@@ -4989,7 +4989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const results = {
         ...req.body,
-        userId: req.user.claims.sub
+        userId: req.user.id
       };
       const operation = await storage.completeProcessingOperation(id, results);
       res.json(operation);
@@ -5018,7 +5018,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const transferData = {
         ...insertStockTransferSchema.parse(req.body),
-        createdById: req.user.claims.sub
+        createdById: req.user.id
       };
       const transfer = await storage.createStockTransfer(transferData);
       res.json(transfer);
@@ -5034,7 +5034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/warehouse/stock-transfers/:id/execute', requireRole(['admin', 'warehouse']), approvalMiddleware.warehouseOperation, warehousePeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const transfer = await storage.executeStockTransfer(id, userId);
       res.json(transfer);
     } catch (error) {
@@ -5063,7 +5063,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const adjustmentData = {
         ...insertInventoryAdjustmentSchema.parse(req.body),
-        createdById: req.user.claims.sub
+        createdById: req.user.id
       };
       const adjustment = await storage.createInventoryAdjustment(adjustmentData);
       res.json(adjustment);
@@ -5079,7 +5079,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/warehouse/inventory-adjustments/:id/approve', requireRole(['admin']), warehousePeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const adjustment = await storage.approveInventoryAdjustment(id, userId);
       res.json(adjustment);
     } catch (error) {
@@ -5093,7 +5093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { qualityGrade, qualityScore } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const stock = await storage.assignQualityGradeToStock(id, qualityGrade, qualityScore, userId);
       res.json(stock);
     } catch (error) {
@@ -5106,7 +5106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { batchId } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const stock = await storage.assignBatchToStock(id, batchId, userId);
       res.json(stock);
     } catch (error) {
@@ -5195,7 +5195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const customerData = insertCustomerSchema.parse({
         ...req.body,
-        createdBy: req.user.claims.sub,
+        createdBy: req.user.id,
       });
       const customer = await storage.createCustomer(customerData);
       res.json(customer);
@@ -5242,7 +5242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/customers/:id', requireRole(['admin', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const customer = await storage.deactivateCustomer(id, userId);
       res.json(customer);
     } catch (error) {
@@ -5268,7 +5268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const communicationData = insertCustomerCommunicationSchema.parse({
         ...req.body,
         customerId: id,
-        userId: req.user.claims.sub,
+        userId: req.user.id,
       });
       const communication = await storage.createCustomerCommunication(communicationData);
       res.json(communication);
@@ -5318,8 +5318,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orderData = insertSalesOrderSchema.parse({
         ...req.body,
-        salesRepId: req.user.claims.sub,
-        createdBy: req.user.claims.sub,
+        salesRepId: req.user.id,
+        createdBy: req.user.id,
       });
       const order = await storage.createSalesOrder(orderData);
       res.json(order);
@@ -5367,7 +5367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       let order;
       switch (status) {
@@ -5398,7 +5398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/sales-orders/:id', requireRole(['admin', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const order = await storage.cancelSalesOrder(id, 'Order deleted', userId);
       res.json(order);
     } catch (error) {
@@ -5410,7 +5410,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/sales-orders/:id/fulfill', requireRole(['admin', 'sales', 'warehouse']), validateWarehouseSource(), approvalMiddleware.saleOrder, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const order = await storage.fulfillSalesOrder(id, userId);
       res.json(order);
     } catch (error) {
@@ -5469,7 +5469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const transactionData = insertRevenueTransactionSchema.parse({
         ...req.body,
-        userId: req.user.claims.sub,
+        userId: req.user.id,
       });
       const transaction = await storage.createRevenueTransaction(transactionData);
       res.json(transaction);
@@ -5580,12 +5580,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const returnData = {
         ...req.body,
         originalSalesOrderId: id,
-        returnedBy: req.user.claims.sub,
+        returnedBy: req.user.id,
       };
 
       // CRITICAL FIX: Wire to storage for actual persistence per architect feedback
       const auditContext = {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userEmail: req.user.claims.email,
         action: 'create_sales_return',
         resource: 'sales_return',
@@ -5593,7 +5593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const approvalContext = {
-        userId: req.user.claims.sub,
+        userId: req.user.id,
         userRole: req.user.claims.role || 'sales',
         operation: 'sale_order',
         resourceId: id
@@ -5603,7 +5603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newReturn = await storage.createSalesReturn(returnData, auditContext, approvalContext);
       
       // Process the return if auto-processing is enabled
-      const processedReturn = await storage.processSalesReturn(newReturn.id, req.user.claims.sub, auditContext, approvalContext);
+      const processedReturn = await storage.processSalesReturn(newReturn.id, req.user.id, auditContext, approvalContext);
 
       res.json({ 
         message: "Sales return processed successfully", 
@@ -5661,7 +5661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const documentData = documentUploadSchema.parse(req.body);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const result = await DocumentService.processFileUpload(req.file, documentData, userId);
       
@@ -5688,7 +5688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/documents', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
     try {
       const searchRequest = documentSearchSchema.parse(req.query);
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const result = await DocumentService.searchDocuments(searchRequest, userId);
       res.json(result);
@@ -5702,7 +5702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/documents/:id', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const document = await storage.getDocumentWithMetadata(id, userId);
       if (!document) {
@@ -5721,7 +5721,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const updateData = documentUpdateSchema.parse({ ...req.body, id });
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const document = await storage.updateDocument(id, updateData, {
         userId,
@@ -5740,7 +5740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/documents/:id', requireRole(['admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       await DocumentService.deleteDocument(id, userId);
       res.json({ message: "Document deleted successfully" });
@@ -5754,7 +5754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/documents/:id/download', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const fileInfo = await DocumentService.downloadDocument(id, userId);
       
@@ -5791,7 +5791,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { id } = req.params;
       const versionData = documentVersionCreateSchema.parse({ ...req.body, documentId: id });
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const result = await DocumentService.createDocumentVersion(id, req.file, versionData, userId);
       
@@ -5822,7 +5822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const complianceData = documentComplianceUpdateSchema.parse({ ...req.body, documentId: id });
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const compliance = await storage.addDocumentCompliance(complianceData, {
         userId,
@@ -5840,7 +5840,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Compliance dashboard
   app.get('/api/compliance/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const dashboard = await DocumentService.getComplianceDashboard(userId);
       res.json(dashboard);
     } catch (error) {
@@ -5938,7 +5938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/documents/bulk/status', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { documentIds, status } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       if (!Array.isArray(documentIds) || !status) {
         return res.status(400).json({ message: "Invalid request data" });
@@ -5955,7 +5955,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/documents/bulk', requireRole(['admin']), async (req: any, res) => {
     try {
       const { documentIds } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       if (!Array.isArray(documentIds)) {
         return res.status(400).json({ message: "Invalid request data" });
@@ -5976,7 +5976,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification Settings Routes
   app.get('/api/notifications/settings', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const settings = await storage.getNotificationSettings(userId);
       
       // Create default settings if none exist
@@ -6011,7 +6011,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/notifications/settings', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const settingsData = updateNotificationSettingSchema.parse(req.body);
       const auditContext = auditService.extractRequestContext(req);
       
@@ -6025,7 +6025,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/notifications/settings/preferences', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const preferences = await storage.getUserNotificationPreferences(userId);
       res.json(preferences);
     } catch (error) {
@@ -6125,7 +6125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification Queue Routes
   app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const filter = { ...req.query, userId } as any;
       
       // Map frontend "unread" status to "pending" for database compatibility
@@ -6145,7 +6145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const notificationData = createNotificationSchema.parse({
         ...req.body,
-        userId: req.user.claims.sub,
+        userId: req.user.id,
       });
       
       const result = await notificationService.sendNotification(notificationData);
@@ -6164,7 +6164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/notifications/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const notification = await storage.getNotification(id);
       
@@ -6182,7 +6182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const notification = await storage.markNotificationAsRead(id, userId);
       res.json(notification);
@@ -6195,7 +6195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/notifications/:id/dismiss', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       const notification = await storage.dismissNotification(id, userId);
       res.json(notification);
@@ -6208,7 +6208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/notifications/bulk-read', isAuthenticated, async (req: any, res) => {
     try {
       const { notificationIds } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       if (!Array.isArray(notificationIds)) {
         return res.status(400).json({ message: "Invalid request data" });
@@ -6225,7 +6225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/notifications/bulk-dismiss', isAuthenticated, async (req: any, res) => {
     try {
       const { notificationIds } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       if (!Array.isArray(notificationIds)) {
         return res.status(400).json({ message: "Invalid request data" });
@@ -6328,7 +6328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification History Routes
   app.get('/api/notifications/history', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const filter = notificationHistoryFilterSchema.optional().parse(req.query);
       const history = await storage.getUserNotificationHistory(userId, filter);
       res.json(history);
@@ -6356,7 +6356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Monitoring Routes
   app.get('/api/notifications/monitoring/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const dashboard = await storage.getAlertMonitoringDashboard(userId);
       res.json(dashboard);
     } catch (error) {
@@ -6434,7 +6434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/notifications/delivery-status/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       
       // Check if user has access to this notification
       const notification = await storage.getNotification(id);
@@ -6535,7 +6535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/compliance/dashboard - Compliance dashboard overview
   app.get('/api/compliance/dashboard', isAuthenticated, requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const dashboard = await storage.getComplianceDashboard(userId);
       res.json(dashboard);
     } catch (error) {

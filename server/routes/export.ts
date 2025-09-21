@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
-import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
+import { isAuthenticated, requireRole } from "../core/auth";
 import { exportService } from "../exportService";
 import { auditService } from "../auditService";
 import { exportTypeSchema } from "@shared/schema";

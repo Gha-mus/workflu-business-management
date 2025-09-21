@@ -25,10 +25,11 @@ export const requireWarehouseScope = authProvider.requireWarehouseScope;
 export const requireWarehouseScopeForResource = authProvider.requireWarehouseScopeForResource;
 export const hasWarehouseScope = authProvider.hasWarehouseScope;
 export const validateWarehouseSource = authProvider.validateWarehouseSource;
+export const validateSalesReturn = authProvider.validateSalesReturn;
 export const requireApproval = authProvider.requireApproval;
 
-// Export session configuration for the active provider
-export const configureSession = authProvider.configureSession;
+// Export session setup function
+export const setupAuth = authProvider.setupAuth;
 
 // Export auth provider info for debugging
 export const getAuthProviderInfo = () => ({

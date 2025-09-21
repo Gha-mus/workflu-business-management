@@ -28,10 +28,11 @@ export interface AuthProvider {
   requireWarehouseScopeForResource: (resourceExtractor: (req: any) => string) => RequestHandler;
   hasWarehouseScope: (userId: string, warehouseCode: string) => Promise<boolean>;
   validateWarehouseSource: () => RequestHandler;
+  validateSalesReturn: () => RequestHandler;
   requireApproval: (operationType: string) => RequestHandler;
   
-  // Session configuration
-  configureSession: () => any;
+  // Session setup
+  setupAuth: (app: any) => void;
   
   // Provider-specific info
   providerName: 'replit' | 'supabase';
