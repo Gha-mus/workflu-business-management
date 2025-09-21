@@ -43,42 +43,57 @@ usersRouter.post("/",
     try {
       const validatedData = insertUserSchema.parse(req.body);
       
-      // Create user in local database first
-      const user = await storage.createUser({
-        ...validatedData,
-        email: validatedData.email ?? null,
-        firstName: validatedData.firstName ?? null,
-        lastName: validatedData.lastName ?? null,
-        profileImageUrl: validatedData.profileImageUrl ?? null,
-        roles: validatedData.roles ? [...validatedData.roles] : null
-      });
-
-      // If using Supabase, create/invite user in Supabase as well
-      if (process.env.AUTH_PROVIDER === 'supabase' && user.email) {
+      // If using Supabase, create auth user first
+      let supabaseUserId: string | undefined;
+      const temporaryPassword = req.body.temporaryPassword || generateTemporaryPassword();
+      
+      if (process.env.AUTH_PROVIDER === 'supabase' && validatedData.email) {
         try {
           const admin = supabaseAdmin();
           const { data, error } = await admin.auth.admin.createUser({
-            email: user.email,
-            password: req.body.temporaryPassword || generateTemporaryPassword(),
+            email: validatedData.email,
+            password: temporaryPassword,
             email_confirm: true,
             user_metadata: {
-              first_name: user.firstName,
-              last_name: user.lastName,
-              role: user.role
+              first_name: validatedData.firstName,
+              last_name: validatedData.lastName,
+              role: validatedData.role || 'worker'
             }
           });
 
           if (error) {
-            console.warn(`Supabase user creation failed for ${user.email}:`, error);
-            // Don't fail the entire operation, just log the warning
-          } else {
-            console.log(`Created Supabase user for ${user.email} with ID: ${data.user?.id}`);
+            console.error(`Supabase user creation failed for ${validatedData.email}:`, error);
+            return res.status(400).json({ 
+              message: `Failed to create authentication account: ${error.message}`,
+              temporaryPassword: null 
+            });
           }
-        } catch (supabaseError) {
-          console.warn("Supabase user creation error:", supabaseError);
-          // Continue with local user creation even if Supabase fails
+          
+          supabaseUserId = data.user?.id;
+          console.log(`Created Supabase user for ${validatedData.email} with ID: ${supabaseUserId}`);
+        } catch (supabaseError: any) {
+          console.error("Supabase user creation error:", supabaseError);
+          return res.status(400).json({ 
+            message: `Authentication service error: ${supabaseError.message || 'Unknown error'}`,
+            temporaryPassword: null 
+          });
         }
       }
+      
+      // Create user in local database after Supabase success
+      const user = await storage.createUser({
+        email: validatedData.email ?? null,
+        firstName: validatedData.firstName ?? null,
+        lastName: validatedData.lastName ?? null,
+        profileImageUrl: validatedData.profileImageUrl ?? null,
+        role: validatedData.role || 'worker',
+        isActive: validatedData.isActive ?? true,
+        authProvider: process.env.AUTH_PROVIDER === 'supabase' ? 'supabase' : null,
+        authProviderUserId: supabaseUserId || null,
+        roles: validatedData.roles ? [...validatedData.roles] : null
+      });
+
+      // Note: Supabase user was already created above before local database user
 
       // Create audit log
       const context = auditService.extractRequestContext(req);
@@ -94,8 +109,9 @@ usersRouter.post("/",
 
       res.status(201).json({
         ...user,
+        temporaryPassword: process.env.AUTH_PROVIDER === 'supabase' ? temporaryPassword : undefined,
         message: process.env.AUTH_PROVIDER === 'supabase' 
-          ? "User created successfully. They will receive an email to set their password."
+          ? `User created successfully with temporary password: ${temporaryPassword}. Please save this password securely.`
           : "User created successfully."
       });
     } catch (error) {
