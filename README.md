@@ -94,9 +94,19 @@ Users authenticate via email/password through Supabase. The system uses JWT toke
 
 ## 👤 Admin User Management
 
-### First Admin Setup
+### Current Admin Account
 
-To create the first admin user:
+An admin account has been created for you:
+
+- **Email**: ghassan.ahmed711@gmail.com
+- **Password**: WorkFlu2024Admin!
+- **Role**: Admin (full system access)
+
+> **Important**: Please change the password after your first login for security.
+
+### Creating Additional Admin Users
+
+To create additional admin users:
 1. Register through the application  
 2. Elevate to admin role via Users page or database update
 3. Alternatively, use the migration script to import existing users
