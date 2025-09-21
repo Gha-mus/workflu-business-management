@@ -58,26 +58,12 @@ function Users() {
   const [newUserRole, setNewUserRole] = useState<User['role']>("worker");
 
   // Check if current user is admin
-  if (!isAuthenticated || currentUser?.role !== 'admin') {
-    return (
-      <div className="h-full flex">
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <AlertCircle className="w-16 h-16 text-destructive mx-auto" />
-            <h2 className="text-2xl font-bold text-foreground">Access Denied</h2>
-            <p className="text-muted-foreground">
-              Administrator privileges required to manage users.
-            </p>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  const isAdmin = isAuthenticated && currentUser?.role === 'admin';
 
-  // Fetch all users
+  // Fetch all users - only enabled for admin users
   const { data: users, isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    enabled: isAdmin,
   });
 
   // Create user mutation
@@ -212,6 +198,24 @@ function Users() {
   const handleRoleChange = (userId: string, newRole: User['role']) => {
     updateRoleMutation.mutate({ userId, role: newRole });
   };
+
+  // Show access denied for non-admin users
+  if (!isAdmin) {
+    return (
+      <div className="h-full flex">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <AlertCircle className="w-16 h-16 text-destructive mx-auto" />
+            <h2 className="text-2xl font-bold text-foreground">Access Denied</h2>
+            <p className="text-muted-foreground">
+              Administrator privileges required to manage users.
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
