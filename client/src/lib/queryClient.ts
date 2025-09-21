@@ -1,12 +1,25 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { getCurrentToken } from "./supabase";
 
+// Track if we're already redirecting to prevent loops
+let isRedirecting = false;
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     // Handle 401 unauthorized by redirecting to login
     if (res.status === 401 && typeof window !== 'undefined') {
-      window.location.href = '/auth/login';
-      return;
+      // Only redirect once to prevent loops
+      if (!isRedirecting && !window.location.pathname.includes('/auth/')) {
+        isRedirecting = true;
+        // Clear the query cache on auth failure
+        queryClient.clear();
+        // Small delay to prevent race conditions
+        setTimeout(() => {
+          window.location.href = '/auth/login';
+        }, 100);
+      }
+      // Return early to prevent further processing
+      throw new Error('Authentication required');
     }
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
@@ -15,12 +28,22 @@ async function throwIfResNotOk(res: Response) {
 
 // Helper function to get headers with authentication
 async function getAuthHeaders(additionalHeaders: Record<string, string> = {}) {
-  const token = await getCurrentToken();
-  
-  return {
-    ...additionalHeaders,
-    ...(token && { Authorization: `Bearer ${token}` }),
-  };
+  try {
+    const token = await getCurrentToken();
+    
+    // Log token attachment for debugging
+    if (typeof window !== 'undefined' && window.location.pathname.includes('/api/')) {
+      console.debug('Auth header attached:', !!token ? 'yes' : 'no');
+    }
+    
+    return {
+      ...additionalHeaders,
+      ...(token && { Authorization: `Bearer ${token}` }),
+    };
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+    return additionalHeaders;
+  }
 }
 
 export async function apiRequest(
@@ -91,11 +114,26 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: (failureCount, error: any) => {
+        // Don't retry on 401 errors
+        if (error?.message?.includes('401') || error?.message?.includes('Authentication')) {
+          return false;
+        }
+        return failureCount < 1;
+      },
     },
     mutations: {
       retry: false,
     },
   },
 });
+
+// Reset redirect flag when navigating away from login page
+if (typeof window !== 'undefined') {
+  const originalPushState = window.history.pushState;
+  window.history.pushState = function(...args) {
+    isRedirecting = false;
+    return originalPushState.apply(window.history, args);
+  };
+}
