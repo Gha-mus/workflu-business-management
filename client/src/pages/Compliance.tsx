@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { BackButton } from '@/components/ui/back-button';
 import { 
   AlertCircle, 
   CheckCircle, 
@@ -102,11 +103,14 @@ export default function Compliance() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Compliance Dashboard</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Monitor compliance status, track expiring requirements, and manage regulatory obligations
-          </p>
+        <div className="flex items-start gap-4">
+          <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Compliance Dashboard</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              Monitor compliance status, track expiring requirements, and manage regulatory obligations
+            </p>
+          </div>
         </div>
         
         <Button 

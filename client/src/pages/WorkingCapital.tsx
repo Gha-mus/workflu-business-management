@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, Lock, History } from "lucide-react";
+import { BackButton } from '@/components/ui/back-button';
 
 export default function WorkingCapital() {
   const { toast } = useToast();
@@ -174,9 +175,12 @@ export default function WorkingCapital() {
         {/* Header */}
         <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Working Capital</h2>
-              <p className="text-sm text-muted-foreground">Manage your business funding and cash flow</p>
+            <div className="flex items-start gap-4">
+              <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">Working Capital</h2>
+                <p className="text-sm text-muted-foreground">Manage your business funding and cash flow</p>
+              </div>
             </div>
             <Dialog open={showAddEntryModal} onOpenChange={setShowAddEntryModal}>
               <DialogTrigger asChild>
