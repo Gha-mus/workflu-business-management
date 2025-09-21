@@ -1,0 +1,81 @@
+Final Auth Hardening Checklist (must pass before we add users)
+
+Message:
+
+Please verify ALL items below and don’t stop at the first green check. Only mark “DONE” when every check passes on desktop + mobile, normal + private window.
+
+A) Supabase / JWT configuration
+
+ SUPABASE_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY are consistent and active.
+
+ SUPABASE_JWT_SECRET is set on the server and used for local JWT verification.
+
+ JWT issuer/audience values match what we verify (no “unexpected iss” again).
+
+ Server time is correct; allow small clock skew (±60s) in verification.
+
+ Refresh token flow is enabled and silent session refresh works.
+
+B) Backend verification path
+
+ We use local verification (jose / HS256 with SUPABASE_JWT_SECRET)—no calls to admin.auth.getUser(token).
+
+ 401 responses always return a single, compact JSON error; no loops or retries from server.
+
+ CORS/headers allow Authorization: Bearer <jwt> from the client.
+
+ Health endpoint /api/auth/user returns 200 with the correct user id/roles when logged in.
+
+C) Frontend auth client
+
+ Outgoing API requests always attach the current Authorization: Bearer <jwt>.
+
+ One auth guard only; no double useEffect redirects or duplicate queries.
+
+ On 401, we redirect once to /auth/login (no infinite redirect/render loops).
+
+ Login form awaits Supabase response, handles error states, and disables double-submit.
+
+ Logout clears tokens and redirects cleanly every time.
+
+D) Critical flows (must test end-to-end)
+
+ Invite/Create user → first login → forced password reset → dashboard loads.
+
+ Password reset email link works on mobile and desktop; env redirect URLs are correct.
+
+ Deactivated user gets 403/blocked everywhere.
+
+ Role change reflects in UI/permissions after refresh (no stale session).
+
+ Users page loads without “Rendered more hooks than during the previous render” (hooks order stable).
+
+E) RBAC & route protection
+
+ Every protected route checks both auth and role/scope server-side.
+
+ Warehouse scoping enforced on queries (no data bleed across scopes).
+
+F) Tests & monitoring
+
+ Add Playwright tests to CI: login, logout, reset, deactivation, role change.
+
+ Add API tests: valid/expired/forged token, issuer mismatch, audience mismatch.
+
+ Add a lightweight auth health check to run on boot and log clear errors.
+
+ Console noise removed; errors surface as toasts/UI messages, not silent failures.
+
+G) Docs / runbook
+
+ README section: how to create users, reset passwords, set required envs.
+
+ “Auth runbook” with common failure causes and fixes (env mismatch, issuer, clock skew, missing header).
+
+Please complete all items, fix anything red, and share:
+
+CI run showing Playwright + API tests green, and
+
+A short note confirming the exact envs used and the issuer/audience values.
+
+Only after this, we’ll start adding real users.
