@@ -32,14 +32,23 @@ async function getAuthHeaders(additionalHeaders: Record<string, string> = {}) {
     const token = await getCurrentToken();
     
     // Log token attachment for debugging
-    if (typeof window !== 'undefined' && window.location.pathname.includes('/api/')) {
-      console.debug('Auth header attached:', !!token ? 'yes' : 'no');
+    if (typeof window !== 'undefined') {
+      console.debug(`Getting auth headers - Token exists: ${!!token}`);
     }
     
-    return {
-      ...additionalHeaders,
-      ...(token && { Authorization: `Bearer ${token}` }),
+    const headers: Record<string, string> = {
+      ...additionalHeaders
     };
+    
+    // Explicitly set Authorization header
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.debug('Authorization header set with Bearer token');
+    } else {
+      console.warn('No auth token available for request');
+    }
+    
+    return headers;
   } catch (error) {
     console.error('Error getting auth token:', error);
     return additionalHeaders;
@@ -93,9 +102,16 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const headers = await getAuthHeaders();
+    const url = queryKey.join("/") as string;
     
-    const res = await fetch(queryKey.join("/") as string, {
+    // Log the request for debugging
+    console.debug(`Query request to: ${url}`);
+    
+    const headers = await getAuthHeaders({
+      'Content-Type': 'application/json'
+    });
+    
+    const res = await fetch(url, {
       headers,
       credentials: "include", // Keep for backward compatibility with session auth
     });
