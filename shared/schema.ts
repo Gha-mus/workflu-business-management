@@ -69,6 +69,9 @@ export const permissionScopeEnum = pgEnum('permission_scope', [
   'system', 'module', 'operation', 'record', 'field'
 ]);
 
+// Auth provider enum for user authentication method
+export const authProviderEnum = pgEnum('auth_provider', ['replit', 'supabase']);
+
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -79,6 +82,8 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull().default('worker'), // Legacy single role (kept for compatibility)
   roles: jsonb("roles").$type<string[]>().default(sql`'[]'`), // Stage 8: Multiple role combination support
   isActive: boolean("is_active").notNull().default(true),
+  authProvider: authProviderEnum("auth_provider").default('replit'), // Track which auth provider is used
+  authProviderUserId: varchar("auth_provider_user_id"), // Provider-specific user ID (Replit sub or Supabase ID)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3081,16 +3086,8 @@ export const insertSupplyPurchaseSchema = createInsertSchema(supplyPurchases).om
   receivedDate: true,
   createdAt: true,
   updatedAt: true,
-}).refine((data) => {
-  // Require exchangeRate for non-USD currencies
-  if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Exchange rate is required for non-USD currencies",
-  path: ["exchangeRate"],
 });
+// Note: exchangeRate validation removed since it's omitted from schema (handled server-side)
 
 // Types
 export type UpsertUser = typeof users.$inferInsert;
