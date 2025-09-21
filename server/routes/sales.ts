@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
-import { isAuthenticated, requireRole, validateSalesReturn } from "../core/auth/replitAuth";
+import { isAuthenticated, requireRole, validateSalesReturn } from "../core/auth";
 import { auditService } from "../auditService";
 import { salesEnhancementService } from "../salesEnhancementService";
 import { 

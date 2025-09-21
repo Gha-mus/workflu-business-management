@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
-import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
+import { isAuthenticated, requireRole } from "../core/auth";
 import { notificationService } from "../notificationService";
 
 export const notificationsRouter = Router();
@@ -8,7 +8,7 @@ export const notificationsRouter = Router();
 // GET /api/notifications
 notificationsRouter.get("/", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = req.user?.id;
     const { status, priority, limit, offset } = req.query;
     
     // Map frontend 'unread' status to backend 'pending' status
@@ -38,7 +38,7 @@ notificationsRouter.get("/", isAuthenticated, async (req, res) => {
 notificationsRouter.put("/:id/read", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    await storage.markNotificationAsRead(id, (req.user as any)?.claims?.sub);
+    await storage.markNotificationAsRead(id, req.user?.id);
     res.json({ success: true });
   } catch (error) {
     console.error("Error marking notification as read:", error);

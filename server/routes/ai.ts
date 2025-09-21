@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { isAuthenticated } from "../core/auth/replitAuth";
+import { isAuthenticated } from "../core/auth";
 import { aiService } from "../services/openai/aiService";
 import {
   aiPurchaseRecommendationRequestSchema,

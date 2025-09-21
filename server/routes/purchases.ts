@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
-import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
+import { isAuthenticated, requireRole } from "../core/auth";
 import { auditService } from "../auditService";
 import { supplierEnhancementService } from "../modules/purchases/supplierService";
 import { insertPurchaseSchema, insertSupplierSchema, insertSupplierQualityAssessmentSchema, purchaseReturnSchema, supplierAdvanceIssueSchema, supplierAdvanceConsumeSchema } from "@shared/schema";

@@ -10,31 +10,59 @@ import { User } from '@shared/schema';
 import type { AuthProvider, AuthUser } from '../types';
 import { storage } from '../../storage';
 
-// Initialize Supabase clients
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Lazy initialization of Supabase clients
+let supabaseClient: any = null;
+let supabaseAdmin: any = null;
 
-// Client for frontend operations (anon key)
-export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
-// Admin client for backend operations (service role key)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+const getSupabaseClient = () => {
+  if (!supabaseClient) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Supabase configuration missing. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables.');
+    }
+    
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
   }
-});
+  return supabaseClient;
+};
 
-// JWT verification and user mapping
+const getSupabaseAdmin = () => {
+  if (!supabaseAdmin) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase admin configuration missing. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
+    }
+    
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+  }
+  return supabaseAdmin;
+};
+
+export { getSupabaseClient as supabaseClient, getSupabaseAdmin as supabaseAdmin };
+
+// Secure JWT verification and user mapping
 const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
   try {
-    // Verify JWT token
-    const decoded = jwt.decode(token, { complete: true }) as any;
-    if (!decoded?.payload?.sub) return null;
+    // Use Supabase's secure user verification instead of JWT decode
+    const admin = getSupabaseAdmin();
+    const { data: { user }, error } = await admin.auth.getUser(token);
+    
+    if (error || !user) {
+      console.error('Supabase token verification failed:', error);
+      return null;
+    }
 
-    const supabaseUserId = decoded.payload.sub;
-    const email = decoded.payload.email;
+    const supabaseUserId = user.id;
+    const email = user.email;
 
     if (!email) return null;
 
@@ -42,7 +70,7 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
     const appUser = await storage.getUserByEmail(email);
     if (!appUser || !appUser.isActive) return null;
 
-    return {
+    const authUser = {
       id: appUser.id,
       email: appUser.email!,
       firstName: appUser.firstName || undefined,
@@ -51,9 +79,11 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
       role: appUser.role,
       roles: (appUser.roles as User['role'][]) || [],
       isActive: appUser.isActive,
-      authProvider: 'supabase',
+      authProvider: 'supabase' as const,
       authUserId: supabaseUserId
     };
+
+    return authUser;
   } catch (error) {
     console.error('Supabase token verification error:', error);
     return null;
@@ -75,7 +105,14 @@ const isAuthenticated: RequestHandler = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    req.user = user;
+    // Add compatibility shim for legacy req.user.claims.sub access
+    req.user = {
+      ...user,
+      claims: {
+        sub: user.id,
+        email: user.email
+      }
+    } as any;
     next();
   } catch (error) {
     console.error('Supabase authentication error:', error);
@@ -196,25 +233,29 @@ const requireWarehouseScopeForResource = (resourceExtractor: (req: any) => strin
   };
 };
 
-// Placeholder implementations for Supabase-specific features
+// Delegate to existing warehouse source validation
 const validateWarehouseSource = (): RequestHandler => {
-  return (req, res, next) => {
-    // TODO: Implement warehouse source validation for Supabase
-    next();
-  };
+  return replitAuth.validateWarehouseSource();
+};
+
+// Import existing middleware to delegate to
+import * as replitAuth from '../replitAuth';
+import { requireApproval as approvalMiddleware } from '../../../approvalMiddleware';
+
+const validateSalesReturn = (): RequestHandler => {
+  // Delegate to existing sales return validation logic
+  return replitAuth.validateSalesReturn();
 };
 
 const requireApproval = (operationType: string): RequestHandler => {
-  return (req, res, next) => {
-    // TODO: Implement approval workflow for Supabase
-    next();
-  };
+  // Delegate to existing approval middleware
+  return approvalMiddleware(operationType);
 };
 
-// Session configuration for Supabase (JWT-based, no session store needed)
-const configureSession = () => {
-  // Supabase uses JWT tokens, no session middleware needed
-  return null;
+// Setup auth for Supabase (minimal setup since JWT-based)
+const setupAuth = (app: any) => {
+  // Supabase uses JWT tokens, minimal Express setup needed
+  console.log('🔐 Supabase Auth: JWT-based authentication configured');
 };
 
 // Export Supabase auth provider
@@ -225,7 +266,8 @@ export const supabaseAuthProvider: AuthProvider = {
   requireWarehouseScopeForResource,
   hasWarehouseScope,
   validateWarehouseSource,
+  validateSalesReturn,
   requireApproval,
-  configureSession,
+  setupAuth,
   providerName: 'supabase'
 };
