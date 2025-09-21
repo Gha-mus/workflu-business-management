@@ -83,7 +83,17 @@ function Users() {
   // Create user mutation
   const createUserMutation = useMutation({
     mutationFn: async (data: { email: string; password: string; displayName: string; role: User['role'] }) => {
-      return await apiRequest("POST", "/api/admin/users", data);
+      const nameParts = data.displayName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      return await apiRequest("POST", "/api/users", {
+        email: data.email,
+        temporaryPassword: data.password,
+        firstName,
+        lastName,
+        role: data.role
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -136,8 +146,7 @@ function Users() {
   // Toggle user active status mutation
   const toggleUserActiveMutation = useMutation({
     mutationFn: async ({ userId, activate }: { userId: string; activate: boolean }) => {
-      const endpoint = activate ? "activate" : "deactivate";
-      return await apiRequest("PATCH", `/api/admin/users/${userId}/${endpoint}`, {});
+      return await apiRequest("PUT", `/api/users/${userId}/status`, { isActive: activate });
     },
     onSuccess: (data, { activate }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -158,7 +167,7 @@ function Users() {
   // Reset password mutation
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ userId }: { userId: string }) => {
-      return await apiRequest("POST", `/api/admin/users/${userId}/reset-password`, {});
+      return await apiRequest("POST", `/api/users/${userId}/reset-password`, {});
     },
     onSuccess: () => {
       toast({
@@ -178,7 +187,11 @@ function Users() {
   // Update display name mutation
   const updateDisplayNameMutation = useMutation({
     mutationFn: async ({ userId, displayName }: { userId: string; displayName: string }) => {
-      return await apiRequest("PATCH", `/api/admin/users/${userId}/display-name`, { displayName });
+      const nameParts = displayName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      return await apiRequest("PUT", `/api/users/${userId}/display-name`, { firstName, lastName });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
