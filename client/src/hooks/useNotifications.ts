@@ -181,7 +181,7 @@ export function useNotifications(filters?: {
 
   // Calculate notification summary
   const notifications = notificationsQuery.data || [];
-  const unreadNotifications = notifications.filter(n => n.status !== 'read');
+  const unreadNotifications = notifications.filter(n => n.status === 'pending');
   const unreadCount = unreadNotifications.length;
   
   const summary = {

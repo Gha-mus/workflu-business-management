@@ -9,8 +9,23 @@ export const notificationsRouter = Router();
 notificationsRouter.get("/", isAuthenticated, async (req, res) => {
   try {
     const userId = (req.user as any)?.claims?.sub;
-    console.log(`🔍 GET /api/notifications for userId: ${userId}`);
-    const result = await storage.getUserNotifications(userId);
+    const { status, priority, limit, offset } = req.query;
+    
+    // Map frontend 'unread' status to backend 'pending' status
+    let mappedStatus = status as string;
+    if (status === 'unread') {
+      mappedStatus = 'pending';
+    }
+    
+    const filter = {
+      ...(mappedStatus && mappedStatus !== 'all' && { status: mappedStatus }),
+      ...(priority && { priority: priority as string }),
+      ...(limit && { limit: parseInt(limit as string) }),
+      ...(offset && { offset: parseInt(offset as string) }),
+    };
+    
+    console.log(`🔍 GET /api/notifications for userId: ${userId}, filter:`, filter);
+    const result = await storage.getUserNotifications(userId, filter);
     console.log(`📊 Returned ${result.notifications.length} notifications for user ${userId}`);
     res.json(result.notifications);
   } catch (error) {
