@@ -9,16 +9,6 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
   const [sessionChecked, setSessionChecked] = useState(false);
 
-  // Add logging for auth state transitions
-  useEffect(() => {
-    if (typeof window !== 'undefined' && sessionChecked) {
-      console.info(`Auth state: ${isLoading ? 'loading' : session ? 'authed' : 'unauthed'}→ready`, {
-        timestamp: new Date().toISOString(),
-        hasSession: !!session,
-        hasToken: !!session?.access_token
-      });
-    }
-  }, [isLoading, session, sessionChecked]);
 
   // Fetch user data from our backend using the session token
   const { data: user, isLoading: isUserLoading, refetch } = useQuery<User | null>({
@@ -39,9 +29,6 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!mounted) return;
       
-      if (error) {
-        console.error('Error getting session:', error);
-      }
       
       setSession(session);
       setIsLoading(false);
@@ -54,7 +41,6 @@ export function useAuth() {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       
-      console.info(`Auth event: ${event}`, { hasSession: !!session });
       
       setSession(session);
       setIsLoading(false);
@@ -74,7 +60,6 @@ export function useAuth() {
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error("Error signing out:", error);
       return false;
     }
     // Navigate to login page after successful logout

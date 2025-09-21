@@ -31,11 +31,6 @@ async function getAuthHeaders(additionalHeaders: Record<string, string> = {}) {
   try {
     const token = await getCurrentToken();
     
-    // Log token attachment for debugging
-    if (typeof window !== 'undefined') {
-      console.debug(`Getting auth headers - Token exists: ${!!token}`);
-    }
-    
     const headers: Record<string, string> = {
       ...additionalHeaders
     };
@@ -43,14 +38,10 @@ async function getAuthHeaders(additionalHeaders: Record<string, string> = {}) {
     // Explicitly set Authorization header
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
-      console.debug('Authorization header set with Bearer token');
-    } else {
-      console.warn('No auth token available for request');
     }
     
     return headers;
   } catch (error) {
-    console.error('Error getting auth token:', error);
     return additionalHeaders;
   }
 }
@@ -103,9 +94,6 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const url = queryKey.join("/") as string;
-    
-    // Log the request for debugging
-    console.debug(`Query request to: ${url}`);
     
     const headers = await getAuthHeaders({
       'Content-Type': 'application/json'
