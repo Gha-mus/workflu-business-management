@@ -7,13 +7,17 @@ import type { Session } from "@supabase/supabase-js";
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   // Fetch user data from our backend using the session token
-  const { data: user, isLoading: isUserLoading } = useQuery<User | null>({
+  const { data: user, isLoading: isUserLoading, refetch } = useQuery<User | null>({
     queryKey: ["/api/auth/user"],
-    enabled: !!session?.access_token,
+    enabled: !!session?.access_token && sessionChecked,
     retry: false,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   useEffect(() => {
@@ -21,6 +25,7 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsLoading(false);
+      setSessionChecked(true);
     });
 
     // Listen for auth changes
@@ -29,6 +34,10 @@ export function useAuth() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setIsLoading(false);
+      // Only refetch user data if session changed
+      if (session) {
+        refetch();
+      }
     });
 
     return () => subscription.unsubscribe();
