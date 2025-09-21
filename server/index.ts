@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 // Temporarily disable legacy routes
 // import { registerRoutes } from "./routes";
 import { setupModuleRoutes } from "./routes/index"; 
-import { setupAuth } from "./core/auth/replitAuth";
+import { setupAuth } from "./core/auth";
 import { createServer } from "http";
 import { setupVite, serveStatic, log } from "./vite";
 import { databaseSecurityService } from "./databaseSecurityService";
