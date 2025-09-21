@@ -5,7 +5,8 @@
 
 import { RequestHandler } from 'express';
 import { createClient } from '@supabase/supabase-js';
-// JWT token verification is handled by Supabase admin client
+import { jwtVerify } from 'jose';
+// JWT token verification is handled locally with jose library
 import { User } from '@shared/schema';
 import type { AuthProvider, AuthUser } from '../types';
 import { storage } from '../../storage';
@@ -52,65 +53,114 @@ export { getSupabaseClient as supabaseClient, getSupabaseAdmin as supabaseAdmin 
 // Secure JWT verification and user mapping
 const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
   try {
-    // Use the existing Supabase client and pass the token directly to getUser
-    // This is the correct way to verify JWT tokens server-side with Supabase
-    const client = getSupabaseClient();
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const jwtSecret = process.env.SUPABASE_JWT_SECRET;
     
-    // Pass the JWT token directly as a parameter to getUser
-    // This tells Supabase to verify and decode this specific JWT
-    const { data: { user }, error } = await client.auth.getUser(token);
+    // If JWT secret is not set, fall back to the SDK method
+    if (!jwtSecret) {
+      console.log('SUPABASE_JWT_SECRET not set, falling back to SDK verification');
+      
+      // Fallback to SDK method (current implementation that's failing)
+      const client = getSupabaseClient();
+      const { data: { user }, error } = await client.auth.getUser(token);
+      
+      if (error || !user) {
+        console.error('JWT verification via SDK failed:', error?.message || 'No user');
+        return null;
+      }
+      
+      const email = user.email;
+      if (!email) {
+        console.error('No email in token');
+        return null;
+      }
+      
+      // Map to app user
+      const appUser = await storage.getUserByEmail(email);
+      if (!appUser) {
+        console.error(`No app user found for email: ${email}`);
+        return null;
+      }
+      
+      if (!appUser.isActive) {
+        console.error(`User account is inactive: ${email}`);
+        return null;
+      }
+
+      return {
+        id: appUser.id,
+        email: appUser.email!,
+        firstName: appUser.firstName || undefined,
+        lastName: appUser.lastName || undefined,
+        profileImageUrl: appUser.profileImageUrl || undefined,
+        role: appUser.role,
+        roles: (appUser.roles as User['role'][]) || [],
+        isActive: appUser.isActive,
+        authProvider: 'supabase' as const,
+        authUserId: user.id
+      };
+    }
     
-    if (error) {
-      // Only log errors for debugging, avoid exposing details to client
-      if (error.message?.includes('JWT expired')) {
-        console.error('JWT token expired');
-      } else if (error.message?.includes('invalid JWT')) {
-        console.error('Invalid JWT token format');
+    // Local JWT verification with jose
+    try {
+      const secret = new TextEncoder().encode(jwtSecret);
+      
+      // Verify the JWT with proper checks
+      // Note: Supabase JWTs use 'supabase' as the issuer, not the URL
+      const { payload } = await jwtVerify(token, secret, {
+        algorithms: ['HS256']
+      });
+      
+      // Extract user info from verified JWT payload
+      const supabaseUserId = payload.sub;
+      const email = payload.email as string;
+      
+      if (!supabaseUserId || !email) {
+        console.error('Missing sub or email in JWT payload');
+        return null;
+      }
+      
+      // Map Supabase user to app user by email
+      const appUser = await storage.getUserByEmail(email);
+      if (!appUser) {
+        console.error(`No app user found for email: ${email}`);
+        return null;
+      }
+      
+      if (!appUser.isActive) {
+        console.error(`User account is inactive: ${email}`);
+        return null;
+      }
+
+      const authUser = {
+        id: appUser.id,
+        email: appUser.email!,
+        firstName: appUser.firstName || undefined,
+        lastName: appUser.lastName || undefined,
+        profileImageUrl: appUser.profileImageUrl || undefined,
+        role: appUser.role,
+        roles: (appUser.roles as User['role'][]) || [],
+        isActive: appUser.isActive,
+        authProvider: 'supabase' as const,
+        authUserId: supabaseUserId
+      };
+
+      return authUser;
+    } catch (jwtError) {
+      // Log specific JWT verification errors
+      if (jwtError instanceof Error) {
+        if (jwtError.message.includes('expired')) {
+          console.error('JWT token expired');
+        } else if (jwtError.message.includes('signature')) {
+          console.error('Invalid JWT signature');
+        } else {
+          console.error('JWT verification error:', jwtError.message);
+        }
       } else {
-        console.error('JWT verification failed:', error.message);
+        console.error('JWT verification failed:', jwtError);
       }
       return null;
     }
-    
-    if (!user) {
-      console.error('No user found in JWT token');
-      return null;
-    }
-    
-    const supabaseUserId = user.id;
-    const email = user.email;
-    
-    if (!email) {
-      console.error('No email found in JWT token payload');
-      return null;
-    }
-
-    // Map Supabase user to app user by email
-    const appUser = await storage.getUserByEmail(email);
-    if (!appUser) {
-      console.error(`No app user found for email: ${email}`);
-      return null;
-    }
-    
-    if (!appUser.isActive) {
-      console.error(`User account is inactive: ${email}`);
-      return null;
-    }
-
-    const authUser = {
-      id: appUser.id,
-      email: appUser.email!,
-      firstName: appUser.firstName || undefined,
-      lastName: appUser.lastName || undefined,
-      profileImageUrl: appUser.profileImageUrl || undefined,
-      role: appUser.role,
-      roles: (appUser.roles as User['role'][]) || [],
-      isActive: appUser.isActive,
-      authProvider: 'supabase' as const,
-      authUserId: supabaseUserId
-    };
-
-    return authUser;
   } catch (error) {
     console.error('Supabase token verification exception:', error);
     return null;
