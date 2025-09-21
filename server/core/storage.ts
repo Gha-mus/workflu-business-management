@@ -1912,6 +1912,60 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async createUser(userData: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...userData,
+        // Let the schema default handle ID generation for cross-DB compatibility
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return user;
+  }
+
+  async updateUserStatus(id: string, isActive: boolean): Promise<User> {
+    // Get old user data for audit trail
+    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!oldUser) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    const [user] = await db
+      .update(users)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    
+    // Removed duplicate audit logging - handled by route layer
+    return user;
+  }
+
+  async updateDisplayName(id: string, firstName: string, lastName: string): Promise<User> {
+    // Get old user data for audit trail
+    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!oldUser) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    const [user] = await db
+      .update(users)
+      .set({ firstName, lastName, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    
+    // Removed duplicate audit logging - handled by route layer
+    return user;
+  }
+
+  // Alias for compatibility
+  async getUsers(): Promise<User[]> {
+    return this.getAllUsers();
+  }
+
   // Settings operations
   async getSetting(key: string): Promise<Setting | undefined> {
     const [setting] = await db.select().from(settings).where(and(
