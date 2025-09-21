@@ -759,6 +759,7 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   countAdminUsers(): Promise<number>;
   updateUserRole(id: string, role: User['role'], auditContext?: AuditContext): Promise<User>;
+  deleteUser(id: string, auditContext?: AuditContext): Promise<User>;
   
   // Settings operations
   getSetting(key: string): Promise<Setting | undefined>;
@@ -1923,6 +1924,36 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return user;
+  }
+
+  async deleteUser(id: string, auditContext?: AuditContext): Promise<User> {
+    // Get old user data for audit trail
+    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!oldUser) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    // Delete the user from the database
+    await db.delete(users).where(eq(users.id, id));
+    
+    // CRITICAL SECURITY: Audit logging for user deletion
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'users',
+        id,
+        'delete',
+        'user_role_change',
+        oldUser,
+        undefined,
+        undefined,
+        undefined,
+        `Permanently deleted user: ${oldUser.email}`
+      );
+    }
+    
+    return oldUser;
   }
 
   async updateUserStatus(id: string, isActive: boolean): Promise<User> {
