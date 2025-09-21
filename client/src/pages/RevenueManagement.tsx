@@ -15,6 +15,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
+import {
+  insertRevenueTransactionSchema,
+  insertWithdrawalRecordSchema,
+  insertReinvestmentSchema,
+  insertSalesOrderSchema,
+  insertCustomerSchema
+} from '@shared/schema';
 import { 
   DollarSign, 
   Users, 
@@ -47,45 +54,53 @@ import {
   Percent
 } from 'lucide-react';
 
-// Zod schemas for forms
+// Schemas aligned with shared schema field names and types
 const customerReceiptSchema = z.object({
   customerId: z.string().min(1, 'Customer is required'),
   salesOrderId: z.string().optional(),
+  type: z.literal('payment').default('payment'),
   amount: z.string().min(1, 'Amount is required'),
   currency: z.string().default('USD'),
-  paymentMethod: z.enum(['cash', 'bank_transfer', 'check', 'card', 'mobile_money']).default('bank_transfer'),
+  exchangeRate: z.string().optional(),
+  paymentMethod: z.enum(['cash', 'bank_transfer', 'credit_card', 'check', 'trade_credit']).default('bank_transfer'),
+  paymentReference: z.string().optional(),
   description: z.string().min(1, 'Description is required'),
-  reference: z.string().optional(),
-  note: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 const customerRefundSchema = z.object({
   customerId: z.string().min(1, 'Customer is required'),
   salesOrderId: z.string().optional(),
+  type: z.literal('refund').default('refund'),
   amount: z.string().min(1, 'Amount is required'),
   currency: z.string().default('USD'),
-  refundMethod: z.enum(['cash', 'bank_transfer', 'check', 'card', 'mobile_money']).default('bank_transfer'),
-  reason: z.string().min(1, 'Reason is required'),
-  note: z.string().optional(),
+  exchangeRate: z.string().optional(),
+  paymentMethod: z.enum(['cash', 'bank_transfer', 'credit_card', 'check', 'trade_credit']).default('bank_transfer'),
+  paymentReference: z.string().optional(),
+  description: z.string().min(1, 'Reason is required'),
+  notes: z.string().optional(),
 });
 
 const withdrawalRequestSchema = z.object({
   partner: z.string().min(1, 'Partner name is required'),
   amount: z.string().min(1, 'Amount is required'),
   currency: z.string().default('USD'),
-  purpose: z.string().min(1, 'Purpose is required'),
-  paymentMethod: z.enum(['cash', 'bank_transfer', 'check', 'mobile_money']).default('bank_transfer'),
-  bankDetails: z.string().optional(),
+  exchangeRate: z.string().optional(),
+  paymentMethod: z.enum(['bank_transfer', 'cash', 'check']).default('bank_transfer'),
+  bankAccount: z.string().optional(),
+  reference: z.string().optional(),
   note: z.string().optional(),
 });
 
 const reinvestmentSchema = z.object({
   amount: z.string().min(1, 'Amount is required'),
-  currency: z.string().default('USD'),
-  transferCost: z.string().optional(),
-  reinvestmentType: z.enum(['capital_increase', 'equipment_purchase', 'business_expansion', 'debt_repayment']).default('capital_increase'),
-  purpose: z.string().min(1, 'Purpose is required'),
+  transferCost: z.string().default('0'),
+  feeCurrency: z.string().default('USD'),
+  feeExchangeRate: z.string().optional(),
+  allocationPolicy: z.enum(['aggregate', 'pro_rata', 'specified']).default('aggregate'),
   note: z.string().optional(),
+  counterparty: z.string().optional(),
+  bankReference: z.string().optional(),
 });
 
 const salesOrderSchema = z.object({
@@ -93,7 +108,8 @@ const salesOrderSchema = z.object({
   orderDate: z.string().optional(),
   requestedDeliveryDate: z.string().optional(),
   currency: z.string().default('USD'),
-  paymentTerms: z.enum(['net_15', 'net_30', 'net_60', 'net_90', 'immediate', 'advance']).default('net_30'),
+  exchangeRate: z.string().optional(),
+  paymentTerms: z.enum(['net_15', 'net_30', 'net_45', 'net_60', 'cash_on_delivery', 'advance_payment', 'credit']).default('net_30'),
   shippingAddress: z.string().optional(),
   shippingMethod: z.string().optional(),
   reference: z.string().optional(),
@@ -252,12 +268,14 @@ export default function RevenueManagement() {
     defaultValues: {
       customerId: '',
       salesOrderId: '',
+      type: 'payment' as const,
       amount: '',
       currency: 'USD',
+      exchangeRate: '',
       paymentMethod: 'bank_transfer' as const,
+      paymentReference: '',
       description: '',
-      reference: '',
-      note: '',
+      notes: '',
     }
   });
 
@@ -266,11 +284,14 @@ export default function RevenueManagement() {
     defaultValues: {
       customerId: '',
       salesOrderId: '',
+      type: 'refund' as const,
       amount: '',
       currency: 'USD',
-      refundMethod: 'bank_transfer' as const,
-      reason: '',
-      note: '',
+      exchangeRate: '',
+      paymentMethod: 'bank_transfer' as const,
+      paymentReference: '',
+      description: '',
+      notes: '',
     }
   });
 
@@ -280,9 +301,10 @@ export default function RevenueManagement() {
       partner: '',
       amount: '',
       currency: 'USD',
-      purpose: '',
+      exchangeRate: '',
       paymentMethod: 'bank_transfer' as const,
-      bankDetails: '',
+      bankAccount: '',
+      reference: '',
       note: '',
     }
   });
@@ -291,11 +313,13 @@ export default function RevenueManagement() {
     resolver: zodResolver(reinvestmentSchema),
     defaultValues: {
       amount: '',
-      currency: 'USD',
-      transferCost: '',
-      reinvestmentType: 'capital_increase' as const,
-      purpose: '',
+      transferCost: '0',
+      feeCurrency: 'USD',
+      feeExchangeRate: '',
+      allocationPolicy: 'aggregate' as const,
       note: '',
+      counterparty: '',
+      bankReference: '',
     }
   });
 
@@ -306,6 +330,7 @@ export default function RevenueManagement() {
       orderDate: '',
       requestedDeliveryDate: '',
       currency: 'USD',
+      exchangeRate: '',
       paymentTerms: 'net_30' as const,
       shippingAddress: '',
       shippingMethod: '',
