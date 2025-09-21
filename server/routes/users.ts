@@ -124,9 +124,16 @@ usersRouter.post("/",
   }
 );
 
-// Helper function to generate temporary password
+// Helper function to generate secure temporary password
 function generateTemporaryPassword(): string {
-  return Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12).toUpperCase() + '123!';
+  const crypto = require('crypto');
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*';
+  const bytes = crypto.randomBytes(16);
+  let password = '';
+  for (let i = 0; i < bytes.length; i++) {
+    password += chars[bytes[i] % chars.length];
+  }
+  return password;
 }
 
 // PUT /api/users/:id/role
