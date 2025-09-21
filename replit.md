@@ -20,8 +20,8 @@ Preferred communication style: Simple, everyday language.
 ## Backend Architecture
 - **Framework**: Express.js with TypeScript for robust API development
 - **API Design**: RESTful API architecture with JSON responses and structured error handling
-- **Authentication**: OpenID Connect integration with Replit Auth using Passport.js
-- **Session Management**: Express sessions with PostgreSQL store for persistent login state
+- **Authentication**: Supabase Email/Password authentication with JWT tokens
+- **Session Management**: JWT-based stateless authentication for scalability
 - **Validation**: Zod schemas for request/response validation and type safety
 - **Middleware**: Centralized approval workflows, period guards, and audit logging
 
@@ -39,7 +39,7 @@ Preferred communication style: Simple, everyday language.
 - **Service Pattern**: Singleton AI service class for centralized AI operations and conversation management
 
 ## Authentication & Authorization
-- **Authentication**: Replit OpenID Connect with secure session management
+- **Authentication**: Supabase Email/Password authentication with secure JWT tokens
 - **Authorization**: Role-based access control with granular permissions (admin, finance, purchasing, warehouse, sales, worker)
 - **Session Security**: HTTP-only cookies with CSRF protection and secure transmission
 - **User Management**: Admin-controlled user roles with approval workflows for sensitive changes
@@ -70,8 +70,8 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle Kit**: Database migration and schema management toolkit
 
 ## Authentication Services
-- **Replit OpenID Connect**: Authentication provider for seamless integration with Replit platform
-- **Passport.js**: Authentication middleware for Express.js applications
+- **Supabase Auth**: Email/Password authentication with secure JWT token management
+- **JWT Verification**: Token-based authentication for stateless, scalable user sessions
 
 ## AI Services
 - **OpenAI API**: GPT-4 model integration for business intelligence and automated insights
