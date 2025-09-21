@@ -13,7 +13,7 @@ export const usersRouter = Router();
 // GET /api/users
 usersRouter.get("/",
   isAuthenticated,
-  requireRole(["admin", "manager"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const users = await storage.getUsers();
@@ -140,7 +140,7 @@ usersRouter.put("/:id/role",
 // GET /api/users/:id
 usersRouter.get("/:id",
   isAuthenticated,
-  requireRole(["admin", "manager"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const { id } = req.params;
