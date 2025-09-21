@@ -100,10 +100,11 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
     try {
       const secret = new TextEncoder().encode(jwtSecret);
       
-      // Verify the JWT with proper checks
+      // Verify the JWT with proper checks and clock skew tolerance
       // Note: Supabase JWTs use 'supabase' as the issuer, not the URL
       const { payload } = await jwtVerify(token, secret, {
-        algorithms: ['HS256']
+        algorithms: ['HS256'],
+        clockTolerance: 60 // Allow ±60 seconds clock skew
       });
       
       // Extract user info from verified JWT payload
@@ -158,14 +159,16 @@ const isAuthenticated: RequestHandler = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Not authenticated' });
+      // Return consistent, compact error response
+      return res.status(401).json({ error: 'unauthorized' });
     }
 
     const token = authHeader.split(' ')[1];
     const user = await verifySupabaseToken(token);
 
     if (!user) {
-      return res.status(401).json({ message: 'Invalid token' });
+      // Return consistent, compact error response
+      return res.status(401).json({ error: 'unauthorized' });
     }
 
     // Add compatibility shim for legacy req.user.claims.sub access
@@ -178,8 +181,8 @@ const isAuthenticated: RequestHandler = async (req, res, next) => {
     } as any;
     next();
   } catch (error) {
-    console.error('Supabase authentication error:', error);
-    res.status(500).json({ message: 'Authentication error' });
+    // Silent fail for security - don't expose internal errors
+    res.status(401).json({ error: 'unauthorized' });
   }
 };
 
