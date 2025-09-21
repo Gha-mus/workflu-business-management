@@ -15,7 +15,7 @@ export interface AuthUser {
   role: User['role'];
   roles?: User['role'][];
   isActive: boolean;
-  authProvider: 'replit' | 'supabase';
+  authProvider: 'supabase';
   authUserId: string;  // Provider-specific user ID
 }
 
@@ -35,7 +35,7 @@ export interface AuthProvider {
   setupAuth: (app: any) => void;
   
   // Provider-specific info
-  providerName: 'replit' | 'supabase';
+  providerName: 'supabase';
 }
 
 // Extended Express Request type with auth user
