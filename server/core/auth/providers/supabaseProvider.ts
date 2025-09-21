@@ -52,80 +52,50 @@ export { getSupabaseClient as supabaseClient, getSupabaseAdmin as supabaseAdmin 
 // Secure JWT verification and user mapping
 const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
   try {
-    // First verify the JWT with the admin client
-    const admin = getSupabaseAdmin();
+    // Use the existing Supabase client and pass the token directly to getUser
+    // This is the correct way to verify JWT tokens server-side with Supabase
+    const client = getSupabaseClient();
     
-    // Set the JWT token to verify it belongs to a real user
-    const { data: { user }, error } = await admin.auth.getUser(token);
+    // Pass the JWT token directly as a parameter to getUser
+    // This tells Supabase to verify and decode this specific JWT
+    const { data: { user }, error } = await client.auth.getUser(token);
     
-    if (error || !user) {
-      // Fallback: Try using the regular client with the JWT to get the user
-      const client = getSupabaseClient();
-      // Set global headers with the JWT token for this request
-      const response = await client.auth.getSession();
-      
-      if (!response.data.session) {
-        console.error('Supabase token verification failed:', error);
-        return null;
+    if (error) {
+      // Only log errors for debugging, avoid exposing details to client
+      if (error.message?.includes('JWT expired')) {
+        console.error('JWT token expired');
+      } else if (error.message?.includes('invalid JWT')) {
+        console.error('Invalid JWT token format');
+      } else {
+        console.error('JWT verification failed:', error.message);
       }
-      
-      // Create a new client with this specific JWT  
-      const userClient = createClient(
-        process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
-        process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY!,
-        {
-          global: {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          },
-          auth: {
-            persistSession: false
-          }
-        }
-      );
-      
-      const userResponse = await userClient.auth.getUser();
-      if (userResponse.error || !userResponse.data.user) {
-        console.error('Supabase token verification failed:', userResponse.error);
-        return null;
-      }
-      
-      const verifiedUser = userResponse.data.user;
-      const supabaseUserId = verifiedUser.id;
-      const email = verifiedUser.email;
-      
-      if (!email) return null;
-
-      // Map Supabase user to app user by email
-      const appUser = await storage.getUserByEmail(email);
-      if (!appUser || !appUser.isActive) return null;
-
-      const authUser = {
-        id: appUser.id,
-        email: appUser.email!,
-        firstName: appUser.firstName || undefined,
-        lastName: appUser.lastName || undefined,
-        profileImageUrl: appUser.profileImageUrl || undefined,
-        role: appUser.role,
-        roles: (appUser.roles as User['role'][]) || [],
-        isActive: appUser.isActive,
-        authProvider: 'supabase' as const,
-        authUserId: supabaseUserId
-      };
-
-      return authUser;
+      return null;
     }
-
-    // This path should not be reached anymore but keep as fallback
+    
+    if (!user) {
+      console.error('No user found in JWT token');
+      return null;
+    }
+    
     const supabaseUserId = user.id;
     const email = user.email;
-
-    if (!email) return null;
+    
+    if (!email) {
+      console.error('No email found in JWT token payload');
+      return null;
+    }
 
     // Map Supabase user to app user by email
     const appUser = await storage.getUserByEmail(email);
-    if (!appUser || !appUser.isActive) return null;
+    if (!appUser) {
+      console.error(`No app user found for email: ${email}`);
+      return null;
+    }
+    
+    if (!appUser.isActive) {
+      console.error(`User account is inactive: ${email}`);
+      return null;
+    }
 
     const authUser = {
       id: appUser.id,
@@ -142,7 +112,7 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
 
     return authUser;
   } catch (error) {
-    console.error('Supabase token verification error:', error);
+    console.error('Supabase token verification exception:', error);
     return null;
   }
 };
