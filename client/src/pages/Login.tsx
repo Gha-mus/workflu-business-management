@@ -10,11 +10,24 @@ import { Loader2, Mail, Lock } from "lucide-react";
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const { signIn, isLoading } = useAuth();
+  const { signIn, isAuthenticated } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // If user is already authenticated, redirect to dashboard
+  if (isAuthenticated) {
+    setLocation("/");
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Redirecting...</span>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,17 +43,6 @@ export default function Login() {
       setIsSubmitting(false);
     }
   };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading...</span>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -97,7 +99,7 @@ export default function Login() {
               type="submit" 
               className="w-full" 
               disabled={isSubmitting}
-              data-testid="button-login"
+              data-testid="button-submit"
             >
               {isSubmitting ? (
                 <>
