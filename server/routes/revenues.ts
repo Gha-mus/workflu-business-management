@@ -2,7 +2,8 @@ import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth/replitAuth";
 import { auditService } from "../auditService";
-import { insertRevenueTransactionSchema } from "@shared/schema";
+import { insertRevenueTransactionSchema, reinvestments } from "@shared/schema";
+import { db } from "../db";
 import { requireApproval } from "../approvalMiddleware";
 
 export const revenuesRouter = Router();
@@ -26,21 +27,25 @@ revenuesRouter.post("/transactions",
   async (req, res) => {
     try {
       const validatedData = insertRevenueTransactionSchema.parse(req.body);
-      const transaction = await storage.createRevenueTransaction({
-        ...validatedData,
-        userId: req.user!.id
-      });
+      const transaction = await storage.createRevenueTransaction(validatedData);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "revenue_transaction",
-        entityId: transaction.id,
-        description: `Created revenue transaction: ${transaction.type}`,
-        previousState: null,
-        newState: transaction
-      });
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'revenue',
+          severity: 'info',
+        },
+        {
+          entityType: 'revenue_transactions',
+          entityId: transaction.id,
+          action: 'create',
+          operationType: 'revenue_management',
+          description: `Created revenue transaction: ${transaction.type}`,
+          newValues: transaction
+        }
+      );
 
       res.status(201).json(transaction);
     } catch (error) {
@@ -50,36 +55,7 @@ revenuesRouter.post("/transactions",
   }
 );
 
-// POST /api/revenues/reinvestment
-revenuesRouter.post("/reinvestment",
-  isAuthenticated,
-  requireRole(["admin"]),
-  requireApproval("financial_adjustment"),
-  async (req, res) => {
-    try {
-      const result = await storage.processRevenueReinvestment({
-        ...req.body,
-        userId: req.user!.id
-      });
-
-      // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "revenue_reinvestment",
-        entityId: result.id,
-        description: `Processed revenue reinvestment: $${req.body.amount}`,
-        previousState: null,
-        newState: result
-      });
-
-      res.json(result);
-    } catch (error) {
-      console.error("Error processing revenue reinvestment:", error);
-      res.status(500).json({ message: "Failed to process revenue reinvestment" });
-    }
-  }
-);
+// Removed duplicate /reinvestment route - using /reinvestments instead
 
 // GET /api/revenues/balance
 revenuesRouter.get("/balance", 
@@ -87,7 +63,7 @@ revenuesRouter.get("/balance",
   requireRole(["admin", "finance"]),
   async (req, res) => {
     try {
-      const balance = await storage.getRevenueBalance();
+      const balance = await storage.getWithdrawableBalance();
       res.json(balance);
     } catch (error) {
       console.error("Error fetching revenue balance:", error);
@@ -182,10 +158,17 @@ revenuesRouter.post("/withdrawals",
   requireApproval("revenue_management"),
   async (req, res) => {
     try {
+      const auditContext = {
+        userId: (req.user as any)?.claims?.sub || 'unknown',
+        userName: (req.user as any)?.claims?.email || 'Unknown',
+        source: 'revenue_management',
+        severity: 'info' as const
+      };
+      
       const withdrawal = await storage.createWithdrawalRecord({
         ...req.body,
         requestedBy: (req.user as any)?.claims?.sub || 'unknown'
-      });
+      }, auditContext);
       
       await auditService.logOperation(
         { userId: (req.user as any)?.claims?.sub, source: 'revenue_management' },
@@ -225,22 +208,17 @@ revenuesRouter.post("/reinvestments",
   requireApproval("revenue_management"),
   async (req, res) => {
     try {
+      const auditContext = {
+        userId: (req.user as any)?.claims?.sub || 'unknown',
+        userName: (req.user as any)?.claims?.email || 'Unknown',
+        source: 'revenue_management',
+        severity: 'info' as const
+      };
+      
       const reinvestment = await storage.createReinvestment({
         ...req.body,
         requestedBy: (req.user as any)?.claims?.sub || 'unknown'
-      });
-      
-      await auditService.logOperation(
-        { userId: (req.user as any)?.claims?.sub, source: 'revenue_management' },
-        {
-          entityType: 'reinvestments',
-          entityId: reinvestment.id,
-          action: 'create',
-          operationType: 'revenue_management',
-          description: `Reinvestment request submitted: $${req.body.amount}`,
-          newValues: reinvestment
-        }
-      );
+      }, auditContext);
       
       res.status(201).json(reinvestment);
     } catch (error) {
@@ -267,7 +245,24 @@ revenuesRouter.get("/analytics",
   requireRole(["admin", "finance"]),
   async (req, res) => {
     try {
-      const analytics = await storage.getRevenueAnalytics();
+      // Calculate basic analytics from available data
+      const transactions = await storage.getRevenueTransactions();
+      const withdrawals = await storage.getWithdrawalRecords();
+      const reinvestments = await storage.getReinvestments();
+      
+      const totalRevenue = transactions.reduce((sum, t) => sum + parseFloat(t.amountUsd || '0'), 0);
+      const totalWithdrawals = withdrawals.reduce((sum, w) => sum + parseFloat(w.amountUsd || '0'), 0);
+      const totalReinvestments = reinvestments.reduce((sum, r) => sum + parseFloat(r.amountUsd || '0'), 0);
+      
+      const analytics = {
+        totalRevenue,
+        totalWithdrawals,
+        totalReinvestments,
+        netRevenue: totalRevenue - totalWithdrawals - totalReinvestments,
+        transactionCount: transactions.length,
+        withdrawalCount: withdrawals.length,
+        reinvestmentCount: reinvestments.length
+      };
       res.json(analytics);
     } catch (error) {
       console.error("Error fetching revenue analytics:", error);
