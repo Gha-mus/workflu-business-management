@@ -3,6 +3,11 @@ import { getCurrentToken } from "./supabase";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
+    // Handle 401 unauthorized by redirecting to login
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.location.href = '/auth/login';
+      return;
+    }
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }

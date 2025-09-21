@@ -29,6 +29,15 @@ import ReportsManagement from "@/pages/ReportsManagement";
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // If still loading, show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
   return (
     <Switch>
       {/* Auth routes - always accessible */}
@@ -36,12 +45,16 @@ function Router() {
       <Route path="/auth/forgot-password" component={ForgotPassword} />
       <Route path="/auth/reset-password" component={ResetPassword} />
       
-      {/* Protected routes */}
-      {isLoading || !isAuthenticated ? (
+      {/* Public landing page */}
+      {!isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
+        <Route path="/" component={Dashboard} />
+      )}
+      
+      {/* Protected routes - redirect to login if not authenticated */}
+      {isAuthenticated ? (
         <>
-          <Route path="/" component={Dashboard} />
           <Route path="/capital" component={WorkingCapital} />
           <Route path="/purchases" component={Purchases} />
           <Route path="/warehouse" component={Warehouse} />
@@ -57,7 +70,18 @@ function Router() {
           <Route path="/users" component={Users} />
           <Route path="/settings" component={SettingsManagement} />
         </>
+      ) : (
+        // Redirect unauthorized access to login
+        <Route>
+          {() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = '/auth/login';
+            }
+            return null;
+          }}
+        </Route>
       )}
+      
       <Route component={NotFound} />
     </Switch>
   );
