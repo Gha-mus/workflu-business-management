@@ -1839,7 +1839,7 @@ export class DatabaseStorage implements IStorage {
       .insert(users)
       .values(userData)
       .onConflictDoUpdate({
-        target: users.email,
+        target: users.id,
         set: {
           email: userData.email,
           firstName: userData.firstName,
@@ -9476,6 +9476,7 @@ export class DatabaseStorage implements IStorage {
         userId,
         limit: 50,
         offset: 0,
+        status: 'pending', // Default to only pending notifications
         ...filter,
       };
 
