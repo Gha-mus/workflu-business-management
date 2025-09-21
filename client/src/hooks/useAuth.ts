@@ -9,8 +9,8 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch user data from our backend using the session token
-  const { data: user, isLoading: isUserLoading, refetch } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
+  const { data: user, isLoading: isUserLoading } = useQuery<User | null>({
+    queryKey: ["/api/auth/user", session?.access_token],
     enabled: !!session?.access_token,
     retry: false,
   });
@@ -28,15 +28,10 @@ export function useAuth() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setIsLoading(false);
-      
-      // Refetch user data when session changes
-      if (session) {
-        refetch();
-      }
     });
 
     return () => subscription.unsubscribe();
-  }, [refetch]);
+  }, []); // Empty dependency array - run once on mount
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
