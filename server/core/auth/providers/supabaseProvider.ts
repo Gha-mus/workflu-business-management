@@ -58,32 +58,27 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
     
     // If JWT secret is not set, fall back to the SDK method
     if (!jwtSecret) {
-      console.log('SUPABASE_JWT_SECRET not set, falling back to SDK verification');
       
-      // Fallback to SDK method (current implementation that's failing)
+      // Fallback to SDK method
       const client = getSupabaseClient();
       const { data: { user }, error } = await client.auth.getUser(token);
       
       if (error || !user) {
-        console.error('JWT verification via SDK failed:', error?.message || 'No user');
         return null;
       }
       
       const email = user.email;
       if (!email) {
-        console.error('No email in token');
         return null;
       }
       
       // Map to app user
       const appUser = await storage.getUserByEmail(email);
       if (!appUser) {
-        console.error(`No app user found for email: ${email}`);
         return null;
       }
       
       if (!appUser.isActive) {
-        console.error(`User account is inactive: ${email}`);
         return null;
       }
 
@@ -116,19 +111,12 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
       const email = payload.email as string;
       
       if (!supabaseUserId || !email) {
-        console.error('Missing sub or email in JWT payload');
         return null;
       }
       
       // Map Supabase user to app user by email
       const appUser = await storage.getUserByEmail(email);
-      if (!appUser) {
-        console.error(`No app user found for email: ${email}`);
-        return null;
-      }
-      
-      if (!appUser.isActive) {
-        console.error(`User account is inactive: ${email}`);
+      if (!appUser || !appUser.isActive) {
         return null;
       }
 
@@ -150,14 +138,12 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
       // Log specific JWT verification errors
       if (jwtError instanceof Error) {
         if (jwtError.message.includes('expired')) {
-          console.error('JWT token expired');
+          // Token expired - silent fail, client should refresh
         } else if (jwtError.message.includes('signature')) {
-          console.error('Invalid JWT signature');
+          // Invalid signature - silent fail for security
         } else {
-          console.error('JWT verification error:', jwtError.message);
+          // Other JWT errors - silent fail
         }
-      } else {
-        console.error('JWT verification failed:', jwtError);
       }
       return null;
     }
