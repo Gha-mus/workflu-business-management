@@ -14,6 +14,7 @@ import { aiRouter } from "./ai";
 import { reportsRouter } from "./reports";
 import { settingsRouter } from "./settings";
 import { usersRouter } from "./users";
+import { adminRouter } from "./admin";
 
 export function setupModuleRoutes(app: Express): void {
   // Business stage modules
@@ -36,4 +37,5 @@ export function setupModuleRoutes(app: Express): void {
   app.use("/api/reports", reportsRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/admin", adminRouter);
 }
