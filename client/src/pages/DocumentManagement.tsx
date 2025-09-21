@@ -15,6 +15,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
+import { BackButton } from '@/components/ui/back-button';
 import { 
   FileText,
   Upload,
@@ -523,9 +524,12 @@ export default function DocumentManagement() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="title-document-management">Document Management</h1>
-          <p className="text-muted-foreground">Comprehensive document storage, version control, compliance tracking, and lifecycle management</p>
+        <div className="flex items-start gap-4">
+          <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight" data-testid="title-document-management">Document Management</h1>
+            <p className="text-muted-foreground">Comprehensive document storage, version control, compliance tracking, and lifecycle management</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setShowUploadDialog(true)} data-testid="button-upload-document">

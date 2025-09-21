@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, DollarSign } from "lucide-react";
+import { BackButton } from '@/components/ui/back-button';
 import { NewPurchaseModal } from "@/components/modals/NewPurchaseModal";
 
 // Settlement form schema with proper validation  
@@ -141,9 +142,12 @@ export default function Purchases() {
         {/* Header */}
         <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Purchases</h2>
-              <p className="text-sm text-muted-foreground">Manage your purchase operations and supplier relationships</p>
+            <div className="flex items-start gap-4">
+              <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">Purchases</h2>
+                <p className="text-sm text-muted-foreground">Manage your purchase operations and supplier relationships</p>
+              </div>
             </div>
             <Button onClick={() => setShowPurchaseModal(true)} data-testid="button-new-purchase">
               <Plus className="w-4 h-4 mr-2" />

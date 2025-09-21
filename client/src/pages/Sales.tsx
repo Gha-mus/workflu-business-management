@@ -50,6 +50,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { format } from "date-fns";
+import { BackButton } from '@/components/ui/back-button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import type { Customer as CustomerType, SalesOrder as SalesOrderType, InsertCustomer, InsertSalesOrder } from "@shared/schema";
 import { insertCustomerSchema, insertSalesOrderSchema } from "@shared/schema";
@@ -281,9 +282,12 @@ export default function Sales() {
         {/* Header */}
         <header className="bg-card border-b border-border px-6 py-4" data-testid="sales-header">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Sales Pipeline</h2>
-              <p className="text-sm text-muted-foreground">Manage customers, orders, and revenue performance</p>
+            <div className="flex items-start gap-4">
+              <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">Sales Pipeline</h2>
+                <p className="text-sm text-muted-foreground">Manage customers, orders, and revenue performance</p>
+              </div>
             </div>
             <div className="flex items-center space-x-3">
               <Button 

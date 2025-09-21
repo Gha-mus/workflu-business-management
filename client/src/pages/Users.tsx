@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Users as UsersIcon, UserCheck, AlertCircle, Check } from "lucide-react";
+import { BackButton } from '@/components/ui/back-button';
 
 const roleLabels = {
   admin: "Administrator",
@@ -124,9 +125,12 @@ function Users() {
         {/* Header */}
         <header className="bg-card border-b border-border px-6 py-4" data-testid="users-header">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Users Management</h2>
-              <p className="text-sm text-muted-foreground">Manage user roles and access permissions</p>
+            <div className="flex items-start gap-4">
+              <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">Users Management</h2>
+                <p className="text-sm text-muted-foreground">Manage user roles and access permissions</p>
+              </div>
             </div>
             <div className="flex items-center space-x-3">
               <Shield className="w-5 h-5 text-primary" />

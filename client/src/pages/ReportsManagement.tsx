@@ -15,6 +15,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
+import { BackButton } from '@/components/ui/back-button';
 import { 
   BarChart3,
   PieChart,
@@ -356,9 +357,12 @@ export default function ReportsManagement() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-testid="title-reports-management">Reports Management</h1>
-          <p className="text-muted-foreground">Comprehensive business intelligence, analytics, and scheduled reporting</p>
+        <div className="flex items-start gap-4">
+          <BackButton to="/" text="Back to Dashboard" mobileIconOnly={true} />
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight" data-testid="title-reports-management">Reports Management</h1>
+            <p className="text-muted-foreground">Comprehensive business intelligence, analytics, and scheduled reporting</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
