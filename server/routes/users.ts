@@ -44,7 +44,14 @@ usersRouter.post("/",
       const validatedData = insertUserSchema.parse(req.body);
       
       // Create user in local database first
-      const user = await storage.createUser(validatedData);
+      const user = await storage.createUser({
+        ...validatedData,
+        email: validatedData.email ?? null,
+        firstName: validatedData.firstName ?? null,
+        lastName: validatedData.lastName ?? null,
+        profileImageUrl: validatedData.profileImageUrl ?? null,
+        roles: validatedData.roles ? [...validatedData.roles] : null
+      });
 
       // If using Supabase, create/invite user in Supabase as well
       if (process.env.AUTH_PROVIDER === 'supabase' && user.email) {
@@ -74,14 +81,15 @@ usersRouter.post("/",
       }
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
+      const context = auditService.extractRequestContext(req);
+      await auditService.logOperation(context, {
+        action: "create",
         entityType: "user",
         entityId: user.id,
+        operationType: "user_role_change",
         description: `Created user: ${user.email}${process.env.AUTH_PROVIDER === 'supabase' ? ' (with Supabase account)' : ''}`,
-        previousState: null,
-        newState: user
+        oldValues: undefined,
+        newValues: user
       });
 
       res.status(201).json({
@@ -119,14 +127,15 @@ usersRouter.put("/:id/role",
       const updatedUser = await storage.updateUserRole(id, validatedData.role);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "UPDATE",
+      const context = auditService.extractRequestContext(req);
+      await auditService.logOperation(context, {
+        action: "update",
         entityType: "user",
         entityId: id,
+        operationType: "user_role_change",
         description: `Changed user role from ${previousUser?.role} to ${validatedData.role}`,
-        previousState: previousUser,
-        newState: updatedUser
+        oldValues: previousUser,
+        newValues: updatedUser
       });
 
       res.json(updatedUser);
@@ -174,14 +183,15 @@ usersRouter.put("/:id/status",
       const updatedUser = await storage.updateUserStatus(id, isActive);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "UPDATE",
+      const context = auditService.extractRequestContext(req);
+      await auditService.logOperation(context, {
+        action: "update",
         entityType: "user",
         entityId: id,
+        operationType: "user_role_change",
         description: `Changed user status to ${isActive ? 'active' : 'inactive'}`,
-        previousState: previousUser,
-        newState: updatedUser
+        oldValues: previousUser,
+        newValues: updatedUser
       });
 
       res.json(updatedUser);
@@ -230,14 +240,15 @@ usersRouter.post("/:id/reset-password",
       }
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "ADMIN_ACTION",
+      const context = auditService.extractRequestContext(req);
+      await auditService.logOperation(context, {
+        action: "update",
         entityType: "user",
         entityId: id,
+        operationType: "user_role_change",
         description: `Admin initiated password reset for user ${user.email}`,
-        previousState: null,
-        newState: { action: 'password_reset_initiated' }
+        oldValues: undefined,
+        newValues: { action: 'password_reset_initiated' }
       });
 
       res.json({ message: "Password reset email sent successfully" });
@@ -270,14 +281,15 @@ usersRouter.put("/:id/display-name",
       const updatedUser = await storage.updateDisplayName(id, firstName, lastName);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "UPDATE",
+      const context = auditService.extractRequestContext(req);
+      await auditService.logOperation(context, {
+        action: "update",
         entityType: "user",
         entityId: id,
+        operationType: "user_role_change",
         description: `Updated display name from '${previousUser.firstName} ${previousUser.lastName}' to '${firstName} ${lastName}'`,
-        previousState: { firstName: previousUser.firstName, lastName: previousUser.lastName },
-        newState: { firstName, lastName }
+        oldValues: { firstName: previousUser.firstName, lastName: previousUser.lastName },
+        newValues: { firstName, lastName }
       });
 
       res.json(updatedUser);
