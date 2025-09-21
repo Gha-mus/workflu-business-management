@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -43,6 +44,7 @@ import {
 export default function Warehouse() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, userRole, hasAnyRole } = useAuth();
+  const [, setLocation] = useLocation();
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
@@ -97,7 +99,7 @@ export default function Warehouse() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }

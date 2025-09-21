@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SettingsResponse, SuppliersResponse } from "@shared/schema";
@@ -42,6 +43,7 @@ import {
 export default function Settings() {
   const { toast } = useToast();
   const { user, isAuthenticated, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [exchangeRate, setExchangeRate] = useState("");
   const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
@@ -58,7 +60,7 @@ export default function Settings() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/auth/login");
       }, 500);
       return;
     }
@@ -110,7 +112,7 @@ export default function Settings() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          setLocation("/auth/login");
         }, 500);
         return;
       }
@@ -146,7 +148,7 @@ export default function Settings() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          setLocation("/auth/login");
         }, 500);
         return;
       }
@@ -181,7 +183,7 @@ export default function Settings() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          setLocation("/auth/login");
         }, 500);
         return;
       }
