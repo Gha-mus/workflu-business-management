@@ -13,8 +13,14 @@ const envSchema = z.object({
   PGUSER: z.string().optional(),
   PGPASSWORD: z.string().optional(),
   
-  // Authentication
+  // Authentication - Provider Selection
+  AUTH_PROVIDER: z.enum(['replit', 'supabase']).default('replit'),
   SESSION_SECRET: z.string().min(1, 'SESSION_SECRET is required'),
+  
+  // Supabase Auth Configuration
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_ANON_KEY: z.string().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   
   // AI services
   OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
