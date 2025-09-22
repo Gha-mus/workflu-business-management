@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Mail, Lock } from "lucide-react";
+import { TranslatedText } from "@/components/TranslatedText";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -28,7 +29,7 @@ export default function Login() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center space-x-2">
           <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Redirecting...</span>
+          <TranslatedText>Redirecting...</TranslatedText>
         </div>
       </div>
     );
@@ -52,9 +53,9 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center"><TranslatedText>Sign In</TranslatedText></CardTitle>
           <CardDescription className="text-center">
-            Enter your email and password to access WorkFlu
+            <TranslatedText>Enter your email and password to access WorkFlu</TranslatedText>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -66,7 +67,7 @@ export default function Login() {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email"><TranslatedText>Email</TranslatedText></Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
@@ -83,7 +84,7 @@ export default function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password"><TranslatedText>Password</TranslatedText></Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
@@ -108,10 +109,10 @@ export default function Login() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing In...
+                  <TranslatedText>Signing In...</TranslatedText>
                 </>
               ) : (
-                "Sign In"
+                <TranslatedText>Sign In</TranslatedText>
               )}
             </Button>
           </form>
@@ -123,7 +124,7 @@ export default function Login() {
               className="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
               data-testid="link-forgot-password"
             >
-              Forgot your password?
+              <TranslatedText>Forgot your password?</TranslatedText>
             </button>
           </div>
         </CardContent>
