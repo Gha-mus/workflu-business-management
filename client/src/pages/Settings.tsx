@@ -279,7 +279,7 @@ export default function Settings() {
   // Mutation for updating AI settings
   const updateAISettingsMutation = useMutation({
     mutationFn: async (updates: typeof aiSettings) => {
-      return await apiRequest('/api/ai/settings', 'POST', updates);
+      return await apiRequest('POST', '/api/ai/settings', updates);
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/ai/status'] });
@@ -371,7 +371,7 @@ export default function Settings() {
   // Management tab mutations
   const createSnapshotMutation = useMutation({
     mutationFn: async (data: z.infer<typeof snapshotCreateSchema>) => {
-      return await apiRequest('/api/settings/snapshots', 'POST', data);
+      return await apiRequest('POST', '/api/settings/snapshots', data);
     },
     onSuccess: () => {
       toast({ 
