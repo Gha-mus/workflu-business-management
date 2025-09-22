@@ -37,7 +37,12 @@ import {
   Database,
   Plus,
   Edit,
-  Save
+  Save,
+  Brain,
+  Power,
+  MessageSquare,
+  FileText,
+  Globe
 } from "lucide-react";
 
 export default function Settings() {
@@ -277,11 +282,12 @@ export default function Settings() {
         {/* Content */}
         <div className="flex-1 overflow-auto bg-background p-6">
           <Tabs defaultValue="general" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="financial">Financial</TabsTrigger>
               <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
               <TabsTrigger value="system">System</TabsTrigger>
+              <TabsTrigger value="ai">AI</TabsTrigger>
             </TabsList>
 
             <TabsContent value="general" className="space-y-6">
@@ -637,6 +643,145 @@ export default function Settings() {
                   <Button data-testid="save-system-settings">
                     <Save className="w-4 h-4 mr-2" />
                     Save System Settings
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="ai" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <h3 className="text-lg font-semibold flex items-center">
+                    <Brain className="w-5 h-5 mr-2" />
+                    AI Configuration
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Master AI Toggle */}
+                  <div className="border-b pb-6">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-base flex items-center">
+                          <Power className="w-4 h-4 mr-2" />
+                          Master AI Toggle
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Enable or disable all AI features system-wide
+                        </p>
+                      </div>
+                      <Switch 
+                        id="ai-master-toggle"
+                        defaultChecked={true}
+                        data-testid="switch-ai-master"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Feature Toggles */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-sm text-muted-foreground">FEATURE TOGGLES</h4>
+                    
+                    {/* Translation Feature */}
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="flex items-center">
+                          <Globe className="w-4 h-4 mr-2" />
+                          Translation
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          AI-powered text translation (Coming Soon)
+                        </p>
+                      </div>
+                      <Switch 
+                        id="ai-feature-translation"
+                        defaultChecked={false}
+                        disabled
+                        data-testid="switch-ai-translation"
+                      />
+                    </div>
+
+                    {/* Assistant Feature */}
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="flex items-center">
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          AI Assistant
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Business chat assistant and contextual help
+                        </p>
+                      </div>
+                      <Switch 
+                        id="ai-feature-assistant"
+                        defaultChecked={true}
+                        data-testid="switch-ai-assistant"
+                      />
+                    </div>
+
+                    {/* Reports Feature */}
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="flex items-center">
+                          <FileText className="w-4 h-4 mr-2" />
+                          AI Reports
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Intelligent analytics, insights, and recommendations
+                        </p>
+                      </div>
+                      <Switch 
+                        id="ai-feature-reports"
+                        defaultChecked={true}
+                        data-testid="switch-ai-reports"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Model Information */}
+                  <div className="border-t pt-6">
+                    <h4 className="font-medium text-sm text-muted-foreground mb-4">MODEL CONFIGURATION</h4>
+                    <div className="p-4 bg-muted rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>Active Model</Label>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Current AI model being used for all features
+                          </p>
+                        </div>
+                        <Badge variant="secondary" className="font-mono">
+                          gpt-3.5-turbo
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status Information */}
+                  <div>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-4">AI SERVICE STATUS</h4>
+                    <div className="p-4 bg-muted rounded-lg">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">API Status:</span>
+                          <Badge variant="default" className="ml-2 bg-green-100 text-green-800">Connected</Badge>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Rate Limit:</span>
+                          <Badge variant="outline" className="ml-2">60 req/min</Badge>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Usage Today:</span>
+                          <Badge variant="outline" className="ml-2">234 requests</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button 
+                    className="w-full"
+                    data-testid="save-ai-settings"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save AI Settings
                   </Button>
                 </CardContent>
               </Card>

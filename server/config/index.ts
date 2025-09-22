@@ -36,10 +36,20 @@ export const config = {
   
   // AI Services
   openai: {
-    apiKey: env.OPENAI_API_KEY,
-    model: 'gpt-4',
+    apiKey: env.OPENAI_API_KEY || '',
+    model: env.OPENAI_MODEL,
     maxTokens: 4000,
     temperature: 0.7,
+  },
+  
+  // AI Feature Toggles
+  ai: {
+    enabled: env.AI_ENABLED,
+    features: {
+      translation: env.AI_FEATURE_TRANSLATION,
+      assistant: env.AI_FEATURE_ASSISTANT,
+      reports: env.AI_FEATURE_REPORTS,
+    },
   },
   
   // Email (optional)

@@ -1,4 +1,5 @@
-import { openaiClient, OPENAI_CONFIG, withRetry, OpenAIError } from './client';
+import { openaiGateway, OPENAI_CONFIG, AIServiceError, AI_ERROR_CODES, checkAIFeature, AIFeature } from './client';
+import OpenAI from 'openai';
 import { config } from '../../config';
 import * as prompts from './prompts';
 import * as fs from "fs/promises";
@@ -198,29 +199,32 @@ export class WorkFluAIService {
   }
 
   private constructor() {
-    if (!process.env.OPENAI_API_KEY) {
-      console.warn("OPENAI_API_KEY not found. AI features will be disabled.");
+    const status = openaiGateway.getStatus();
+    if (!status.enabled || !status.hasApiKey) {
+      console.warn("AI features disabled:", !status.enabled ? "AI_ENABLED=false" : "Missing API key");
     }
   }
 
-  private async createCompletion(messages: OpenAI.Chat.ChatCompletionMessageParam[], useJson = false) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.");
-    }
-
+  private async createCompletion(messages: OpenAI.Chat.ChatCompletionMessageParam[], useJson = false, feature: AIFeature = 'reports') {
     try {
-      const response = await openaiClient.chat.completions.create({
-        model: OPENAI_CONFIG.model,
-        messages,
-        // Note: response_format json_object removed due to model compatibility issues
-        // Instead, we rely on the system prompt to request JSON format
+      // Use centralized gateway with appropriate feature toggle
+      return await openaiGateway.createChatCompletion(messages, {
+        feature,
+        useJson,
       });
-
-      return response.choices[0].message.content;
     } catch (error) {
-      console.error("OpenAI API error:", error);
+      if (error instanceof AIServiceError) {
+        // Re-throw AI service errors with proper code
+        throw error;
+      }
+      console.error("AI service error:", error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      throw new Error(`AI service error: ${errorMessage}`);
+      throw new AIServiceError(
+        `AI service error: ${errorMessage}`,
+        AI_ERROR_CODES.SERVICE_ERROR,
+        503,
+        error
+      );
     }
   }
 
