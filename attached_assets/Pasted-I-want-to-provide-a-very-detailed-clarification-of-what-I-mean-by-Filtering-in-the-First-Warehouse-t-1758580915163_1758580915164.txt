@@ -1,0 +1,79 @@
+I want to provide a very detailed clarification of what I mean by Filtering in the First Warehouse tab, so the concept is fully understood and implemented correctly.
+
+1. Operational Filtering (Business Process)
+
+This is the core warehouse operation that happens after a purchase is received into the First Warehouse.
+
+Step 1 – Arrival: Purchased goods arrive in the First Warehouse.
+
+Step 2 – Decision: Each lot must either:
+
+Go directly to Ready to Ship (no filtering needed), OR
+
+Go into Awaiting Filter (requires filtering before shipping).
+
+Step 3 – Execute Filter Button:
+
+When I click this, the system should prompt me to enter the weights for:
+
+Clean (usable, export quality)
+
+Non-Clean (waste, to be sold locally at zero value)
+
+The system validates that:
+
+Clean + Non-Clean ≤ Original Purchased Weight
+
+The system then:
+
+Creates a Filter Record with details (Order ID, Supplier, Date, Clean/Non-Clean weights, Yield%).
+
+Calculates the filter yield % = (Clean / Original) × 100.
+
+Redistributes costs:
+
+Clean weight retains all purchase cost allocations.
+
+Non-Clean weight is valued at zero (goes to Local Sale).
+
+Updates inventory:
+
+Clean → goes into Ready to Ship.
+
+Non-Clean → goes into Non-Clean / Local Sale.
+
+📌 This is a business/operational workflow. It is NOT the same as just filtering/searching data in a table. It changes the inventory records and financial calculations.
+
+2. Data Filtering / Search Tools (UI-level Filtering)
+
+This is different — it’s a tool for me as a user to find and view records inside the First Warehouse tab.
+
+Examples of what I need:
+
+By Supplier (see stock from one supplier)
+
+By Date (see purchases/filters by a certain range)
+
+By Order ID (track a specific order across filtering stages)
+
+By Status (Awaiting Filter, Ready to Ship, Non-Clean, etc.)
+
+By Quality/Category if relevant
+
+📌 This does not modify inventory. It just helps me view and track. For example, I might filter the list to only see “Awaiting Filter” items, then use the Execute Filter button to process them.
+
+3. How Both Connect Together
+
+Operational Filtering = Actual process of splitting stock into Clean and Non-Clean, with cost/accounting updates.
+
+UI Filtering (Search) = Allows me to quickly locate which items need filtering, which are already filtered, or which are ready to ship.
+
+Both should exist in the First Warehouse tab to fully support the workflow.
+
+✅ Summary of Requirements
+
+The Execute Filter button must be implemented to handle the operational filtering process exactly as described.
+
+Add proper UI filtering/search tools (supplier, date, order ID, status) above the inventory table in First Warehouse.
+
+Ensure that the operational filtering process automatically updates inventory status and costs, while the UI filters remain purely for user convenience in navigating the records.

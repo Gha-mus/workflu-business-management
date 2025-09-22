@@ -38,7 +38,8 @@ import {
   Settings,
   Search,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  X
 } from "lucide-react";
 
 export default function Warehouse() {
@@ -49,6 +50,16 @@ export default function Warehouse() {
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [filterData, setFilterData] = useState({ cleanKg: '', nonCleanKg: '' });
+  const [filterYield, setFilterYield] = useState<string>('0');
+  
+  // UI Filtering/Search state
+  const [uiFilters, setUiFilters] = useState<{
+    supplier?: string;
+    status?: string;
+    orderId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }>({});
   
   // Advanced warehouse operations state
   const [qualityGradingDialogOpen, setQualityGradingDialogOpen] = useState(false);
@@ -188,7 +199,7 @@ export default function Warehouse() {
 
   const getSupplierName = (supplierId: string) => {
     const supplier = suppliers?.find((s: any) => s.id === supplierId);
-    return supplier?.name || 'Unknown Supplier';
+    return supplier?.companyName || 'Unknown Supplier';
   };
 
   const getStatusColor = (status: string) => {
@@ -231,11 +242,7 @@ export default function Warehouse() {
   // Mutation for status updates
   const statusUpdateMutation = useMutation({
     mutationFn: async ({ stockId, status }: { stockId: string; status: string }) => {
-      return apiRequest(`/api/warehouse/stock/${stockId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('PATCH', `/api/warehouse/stock/${stockId}/status`, { status });
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Stock status updated successfully" });
@@ -254,11 +261,7 @@ export default function Warehouse() {
   // Mutation for filtering operations
   const filterMutation = useMutation({
     mutationFn: async ({ purchaseId, outputCleanKg, outputNonCleanKg }: { purchaseId: string; outputCleanKg: string; outputNonCleanKg: string }) => {
-      return apiRequest('/api/warehouse/filter', {
-        method: 'POST',
-        body: JSON.stringify({ purchaseId, outputCleanKg, outputNonCleanKg }),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('POST', '/api/warehouse/filter', { purchaseId, outputCleanKg, outputNonCleanKg });
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Filter operation completed successfully" });
@@ -279,11 +282,7 @@ export default function Warehouse() {
   // Mutation for moving to final warehouse
   const moveMutation = useMutation({
     mutationFn: async ({ stockId }: { stockId: string }) => {
-      return apiRequest('/api/warehouse/move-to-final', {
-        method: 'POST',
-        body: JSON.stringify({ stockId }),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('POST', '/api/warehouse/move-to-final', { stockId });
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Stock moved to final warehouse successfully" });
@@ -303,11 +302,7 @@ export default function Warehouse() {
   // Advanced warehouse mutations
   const qualityGradingMutation = useMutation({
     mutationFn: async ({ stockId, qualityGrade, qualityScore }: { stockId: string; qualityGrade: string; qualityScore?: string }) => {
-      return apiRequest(`/api/warehouse/stock/${stockId}/assign-quality-grade`, {
-        method: 'PATCH',
-        body: JSON.stringify({ qualityGrade, qualityScore }),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('PATCH', `/api/warehouse/stock/${stockId}/assign-quality-grade`, { qualityGrade, qualityScore });
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Quality grade assigned successfully" });
@@ -327,11 +322,7 @@ export default function Warehouse() {
 
   const inspectionMutation = useMutation({
     mutationFn: async (inspectionData: any) => {
-      return apiRequest('/api/warehouse/quality-inspections', {
-        method: 'POST',
-        body: JSON.stringify(inspectionData),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('POST', '/api/warehouse/quality-inspections', inspectionData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Quality inspection created successfully" });
@@ -350,11 +341,7 @@ export default function Warehouse() {
 
   const batchMutation = useMutation({
     mutationFn: async (batchData: any) => {
-      return apiRequest('/api/warehouse/batches', {
-        method: 'POST',
-        body: JSON.stringify(batchData),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('POST', '/api/warehouse/batches', batchData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Warehouse batch created successfully" });
@@ -378,11 +365,7 @@ export default function Warehouse() {
       consumptionType: string; 
       allocatedTo?: string 
     }) => {
-      return apiRequest('/api/warehouse/inventory-consumption/fifo', {
-        method: 'POST',
-        body: JSON.stringify({ warehouseStockId, quantity, consumptionType, allocatedTo }),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('POST', '/api/warehouse/inventory-consumption/fifo', { warehouseStockId, quantity, consumptionType, allocatedTo });
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Inventory consumption recorded successfully" });
@@ -403,11 +386,7 @@ export default function Warehouse() {
 
   const processingMutation = useMutation({
     mutationFn: async (operationData: any) => {
-      return apiRequest('/api/warehouse/processing-operations', {
-        method: 'POST',
-        body: JSON.stringify(operationData),
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return apiRequest('POST', '/api/warehouse/processing-operations', operationData);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Processing operation created successfully" });
@@ -426,9 +405,7 @@ export default function Warehouse() {
 
   const traceabilityMutation = useMutation({
     mutationFn: async ({ stockId }: { stockId: string }) => {
-      return apiRequest(`/api/warehouse/trace/stock/${stockId}/origin`, {
-        method: 'GET'
-      });
+      return apiRequest('GET', `/api/warehouse/trace/stock/${stockId}/origin`);
     },
     onSuccess: (data) => {
       // Handle traceability data display
@@ -522,7 +499,96 @@ export default function Warehouse() {
             </TabsList>
             
             <TabsContent value="first-warehouse" className="space-y-6">
-              {/* Summary Cards */}
+              {/* UI Filtering/Search Tools */}
+              <Card>
+                <CardHeader className="pb-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground">SEARCH & FILTER TOOLS</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Supplier Filter */}
+                    <div>
+                      <Label htmlFor="supplier-filter" className="text-xs">Filter by Supplier</Label>
+                      <Select 
+                        onValueChange={(value) => setUiFilters(prev => ({ ...prev, supplier: value === 'all' ? '' : value }))}
+                        value={uiFilters.supplier || 'all'}
+                      >
+                        <SelectTrigger id="supplier-filter" data-testid="supplier-filter">
+                          <SelectValue placeholder="All Suppliers" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Suppliers</SelectItem>
+                          {suppliers?.map((supplier: any) => (
+                            <SelectItem key={supplier.id} value={supplier.id}>
+                              {supplier.companyName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Status Filter */}
+                    <div>
+                      <Label htmlFor="status-filter" className="text-xs">Filter by Status</Label>
+                      <Select 
+                        onValueChange={(value) => setUiFilters(prev => ({ ...prev, status: value === 'all' ? '' : value }))}
+                        value={uiFilters.status || 'all'}
+                      >
+                        <SelectTrigger id="status-filter" data-testid="status-filter">
+                          <SelectValue placeholder="All Statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          <SelectItem value="AWAITING_DECISION">Awaiting Decision</SelectItem>
+                          <SelectItem value="AWAITING_FILTER">Awaiting Filter</SelectItem>
+                          <SelectItem value="READY_TO_SHIP">Ready to Ship</SelectItem>
+                          <SelectItem value="NON_CLEAN">Non-Clean</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Order ID Search */}
+                    <div>
+                      <Label htmlFor="order-search" className="text-xs">Search by Order ID</Label>
+                      <Input
+                        id="order-search"
+                        type="text"
+                        placeholder="Enter Order ID"
+                        value={uiFilters.orderId || ''}
+                        onChange={(e) => setUiFilters(prev => ({ ...prev, orderId: e.target.value }))}
+                        data-testid="order-search"
+                      />
+                    </div>
+
+                    {/* Date Range */}
+                    <div>
+                      <Label htmlFor="date-filter" className="text-xs">Filter by Date Range</Label>
+                      <Input
+                        id="date-filter"
+                        type="date"
+                        value={uiFilters.dateFrom || ''}
+                        onChange={(e) => setUiFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                        data-testid="date-filter"
+                      />
+                    </div>
+
+                    {/* Clear Filters Button */}
+                    <div className="md:col-span-4 flex justify-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setUiFilters({})}
+                        data-testid="clear-filters"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Clear All Filters
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Summary Cards */>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="p-4">
@@ -605,14 +671,50 @@ export default function Warehouse() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          {warehouseStock?.filter((stock: any) => stock.warehouse === 'FIRST')?.length === 0 ? (
-                            <tr>
-                              <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                                No inventory found in first warehouse
-                              </td>
-                            </tr>
-                          ) : (
-                            warehouseStock?.filter((stock: any) => stock.warehouse === 'FIRST')?.map((stock: any) => (
+                          {(() => {
+                            // Apply UI filters to the warehouse stock
+                            let filteredStock = warehouseStock?.filter((stock: any) => stock.warehouse === 'FIRST') || [];
+                            
+                            // Apply supplier filter
+                            if (uiFilters.supplier) {
+                              filteredStock = filteredStock.filter((stock: any) => stock.supplierId === uiFilters.supplier);
+                            }
+                            
+                            // Apply status filter
+                            if (uiFilters.status) {
+                              filteredStock = filteredStock.filter((stock: any) => stock.status === uiFilters.status);
+                            }
+                            
+                            // Apply order ID filter
+                            if (uiFilters.orderId) {
+                              filteredStock = filteredStock.filter((stock: any) => 
+                                stock.purchaseId?.toLowerCase().includes(uiFilters.orderId!.toLowerCase())
+                              );
+                            }
+                            
+                            // Apply date range filter
+                            if (uiFilters.dateFrom) {
+                              filteredStock = filteredStock.filter((stock: any) => {
+                                const stockDate = new Date(stock.createdAt || '');
+                                const filterDate = new Date(uiFilters.dateFrom!);
+                                return stockDate >= filterDate;
+                              });
+                            }
+                            
+                            if (filteredStock.length === 0) {
+                              return (
+                                <tr>
+                                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                                    {Object.keys(uiFilters).length > 0 
+                                      ? 'No inventory matches your filters'
+                                      : 'No inventory found in first warehouse'
+                                    }
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            
+                            return filteredStock.map((stock: any) => (
                               <tr key={stock.id} className="hover:bg-muted/50" data-testid={`stock-${stock.id}`}>
                                 <td className="px-4 py-4 text-sm">
                                   {getSupplierName(stock.supplierId)}
@@ -672,40 +774,102 @@ export default function Warehouse() {
                                           Execute Filter
                                         </Button>
                                       </DialogTrigger>
-                                      <DialogContent>
+                                      <DialogContent className="max-w-md">
                                         <DialogHeader>
-                                          <DialogTitle>Filter Operation</DialogTitle>
+                                          <DialogTitle>Execute Filter Operation</DialogTitle>
                                         </DialogHeader>
                                         <div className="space-y-4">
-                                          <div>
-                                            <Label>Input Weight: {selectedStock?.qtyKgTotal} kg</Label>
+                                          {/* Stock Details */}
+                                          <div className="p-3 bg-muted rounded-lg space-y-2">
+                                            <div className="flex justify-between text-sm">
+                                              <span className="text-muted-foreground">Supplier:</span>
+                                              <span className="font-medium">{getSupplierName(selectedStock?.supplierId)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                              <span className="text-muted-foreground">Order ID:</span>
+                                              <span className="font-mono">{selectedStock?.purchaseId || 'N/A'}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                              <span className="text-muted-foreground">Input Weight:</span>
+                                              <span className="font-semibold">{selectedStock?.qtyKgTotal} kg</span>
+                                            </div>
                                           </div>
+
+                                          {/* Filter Inputs */}
                                           <div>
-                                            <Label htmlFor="cleanKg">Clean Output (kg)</Label>
+                                            <Label htmlFor="cleanKg">Clean Weight (Export Quality)</Label>
                                             <Input
                                               id="cleanKg"
                                               type="number"
+                                              step="0.1"
                                               value={filterData.cleanKg}
-                                              onChange={(e) => setFilterData(prev => ({ ...prev, cleanKg: e.target.value }))}
-                                              placeholder="Enter clean weight"
+                                              onChange={(e) => {
+                                                const value = e.target.value;
+                                                setFilterData(prev => ({ ...prev, cleanKg: value }));
+                                                // Calculate yield percentage
+                                                if (value && selectedStock?.qtyKgTotal) {
+                                                  const yield_ = (parseFloat(value) / parseFloat(selectedStock.qtyKgTotal) * 100).toFixed(2);
+                                                  setFilterYield(yield_);
+                                                }
+                                              }}
+                                              placeholder="Enter clean weight in kg"
                                             />
+                                            <p className="text-xs text-muted-foreground mt-1">Retains all purchase cost allocations</p>
                                           </div>
                                           <div>
-                                            <Label htmlFor="nonCleanKg">Non-Clean Output (kg)</Label>
+                                            <Label htmlFor="nonCleanKg">Non-Clean Weight (Local Sale)</Label>
                                             <Input
                                               id="nonCleanKg"
                                               type="number"
+                                              step="0.1"
                                               value={filterData.nonCleanKg}
                                               onChange={(e) => setFilterData(prev => ({ ...prev, nonCleanKg: e.target.value }))}
-                                              placeholder="Enter non-clean weight"
+                                              placeholder="Enter non-clean weight in kg"
                                             />
+                                            <p className="text-xs text-muted-foreground mt-1">Valued at zero (waste/local sale)</p>
                                           </div>
+
+                                          {/* Validation & Yield Display */}
+                                          {filterData.cleanKg && filterData.nonCleanKg && (
+                                            <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg space-y-2">
+                                              <div className="flex justify-between text-sm">
+                                                <span>Total Output:</span>
+                                                <span className="font-medium">
+                                                  {(parseFloat(filterData.cleanKg || '0') + parseFloat(filterData.nonCleanKg || '0')).toFixed(2)} kg
+                                                </span>
+                                              </div>
+                                              <div className="flex justify-between text-sm">
+                                                <span>Filter Yield %:</span>
+                                                <span className="font-semibold text-green-600 dark:text-green-400">
+                                                  {filterYield}%
+                                                </span>
+                                              </div>
+                                              {(parseFloat(filterData.cleanKg || '0') + parseFloat(filterData.nonCleanKg || '0')) > parseFloat(selectedStock?.qtyKgTotal || '0') && (
+                                                <p className="text-xs text-red-600 dark:text-red-400">
+                                                  ⚠️ Total output exceeds input weight!
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+
                                           <Button 
                                             onClick={handleFilterSubmit}
-                                            disabled={filterMutation.isPending}
+                                            disabled={
+                                              filterMutation.isPending || 
+                                              !filterData.cleanKg || 
+                                              !filterData.nonCleanKg ||
+                                              (parseFloat(filterData.cleanKg || '0') + parseFloat(filterData.nonCleanKg || '0')) > parseFloat(selectedStock?.qtyKgTotal || '0')
+                                            }
                                             className="w-full"
                                           >
-                                            {filterMutation.isPending ? 'Processing...' : 'Execute Filter'}
+                                            {filterMutation.isPending ? (
+                                              <>
+                                                <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-current border-r-transparent" />
+                                                Processing Filter...
+                                              </>
+                                            ) : (
+                                              'Execute Filter Operation'
+                                            )}
                                           </Button>
                                         </div>
                                       </DialogContent>
@@ -767,8 +931,8 @@ export default function Warehouse() {
                                   </Button>
                                 </td>
                               </tr>
-                            ))
-                          )}
+                            ));
+                          })()}
                         </tbody>
                       </table>
                     </div>
