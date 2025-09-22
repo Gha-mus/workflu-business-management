@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Users as UsersIcon, UserCheck, AlertCircle, Check, Plus, UserX, RefreshCw, Edit } from "lucide-react";
+import { Shield, Users as UsersIcon, UserCheck, AlertCircle, Check, Plus, UserX, RefreshCw, Edit, Trash2 } from "lucide-react";
 import { BackButton } from '@/components/ui/back-button';
 
 const roleLabels = {
@@ -57,13 +57,18 @@ function Users() {
   const [newUserDisplayName, setNewUserDisplayName] = useState("");
   const [newUserRole, setNewUserRole] = useState<User['role']>("worker");
 
-  // Check if current user is admin
-  const isAdmin = isAuthenticated && currentUser?.role === 'admin';
+  // Delete user confirmation state
+  const [deleteUserOpen, setDeleteUserOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
-  // Fetch all users - only enabled for admin users
+  // Check if current user is admin and super-admin
+  const isAdmin = isAuthenticated && currentUser?.role === 'admin';
+  const isSuperAdmin = isAuthenticated && currentUser?.isSuperAdmin === true;
+
+  // Fetch all users - enabled for admin users or super-admins
   const { data: users, isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
-    enabled: isAdmin,
+    enabled: isAdmin || isSuperAdmin,
   });
 
   // Create user mutation
@@ -217,12 +222,54 @@ function Users() {
     },
   });
 
+  // Delete user mutation (Super-Admin Only)
+  const deleteUserMutation = useMutation({
+    mutationFn: async ({ userId }: { userId: string }) => {
+      // Use apiRequest for consistency with other mutations
+      const response = await apiRequest("POST", `/api/super-admin/users/${userId}/anonymize`, { confirm: true });
+      return await response.json();
+    },
+    onSuccess: (data, { userId }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      
+      const deletedUser = users?.find(u => u.id === userId);
+      toast({
+        title: "User Deleted Successfully",
+        description: data.action === 'hard_delete' 
+          ? `${deletedUser?.email} has been permanently deleted.`
+          : `${deletedUser?.email} has been anonymized to preserve business data integrity.`,
+        duration: 5000,
+      });
+      
+      setDeleteUserOpen(false);
+      setUserToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Delete Failed",
+        description: error.message || "Failed to delete user. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleRoleChange = (userId: string, newRole: User['role']) => {
     updateRoleMutation.mutate({ userId, role: newRole });
   };
 
-  // Show access denied for non-admin users
-  if (!isAdmin) {
+  const handleDeleteUser = (user: User) => {
+    setUserToDelete(user);
+    setDeleteUserOpen(true);
+  };
+
+  const confirmDeleteUser = () => {
+    if (userToDelete) {
+      deleteUserMutation.mutate({ userId: userToDelete.id });
+    }
+  };
+
+  // Show access denied for non-admin users (allow super-admins)
+  if (!isAdmin && !isSuperAdmin) {
     return (
       <div className="h-full flex">
         <Sidebar />
@@ -360,6 +407,61 @@ function Users() {
                         {createUserMutation.isPending ? "Creating..." : "Create User"}
                       </Button>
                     </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Delete User Confirmation Dialog - Super-Admin Only */}
+              <Dialog open={deleteUserOpen} onOpenChange={setDeleteUserOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-destructive">
+                      <AlertCircle className="h-5 w-5" />
+                      Delete User Account
+                    </DialogTitle>
+                    <DialogDescription className="space-y-3">
+                      <p>
+                        You are about to delete the user account for{" "}
+                        <span className="font-semibold">
+                          {userToDelete?.firstName && userToDelete?.lastName 
+                            ? `${userToDelete.firstName} ${userToDelete.lastName}` 
+                            : userToDelete?.email}
+                        </span>
+                        .
+                      </p>
+                      <div className="p-4 bg-muted rounded-lg space-y-2">
+                        <p className="font-semibold text-sm">Deletion Process:</p>
+                        <ul className="text-sm space-y-1">
+                          <li>• If user has <strong>no business records</strong>: Account will be permanently deleted</li>
+                          <li>• If user has <strong>linked business data</strong>: Account will be anonymized to preserve data integrity</li>
+                          <li>• This action cannot be undone</li>
+                          <li>• All operations are fully audited</li>
+                        </ul>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Only super-admins can perform this action. The system will automatically determine the safest deletion method.
+                      </p>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex justify-end space-x-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDeleteUserOpen(false);
+                        setUserToDelete(null);
+                      }}
+                      data-testid="button-cancel-delete-user"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={confirmDeleteUser}
+                      disabled={deleteUserMutation.isPending}
+                      data-testid="button-confirm-delete-user"
+                    >
+                      {deleteUserMutation.isPending ? "Deleting..." : "Delete User"}
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -506,6 +608,20 @@ function Users() {
                             >
                               <RefreshCw className="w-3 h-3" />
                             </Button>
+                            
+                            {/* Delete button - Super-Admin Only */}
+                            {isSuperAdmin && user.id !== currentUser?.id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteUser(user)}
+                                disabled={deleteUserMutation.isPending}
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                data-testid={`button-delete-${user.id}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                           
                           {updatingUserId === user.id && (
