@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/NotificationBell";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -135,7 +136,10 @@ export function Sidebar() {
                   </p>
                 </div>
               </div>
-              <NotificationBell className="ml-2 flex-shrink-0" data-testid="sidebar-notification-bell" />
+              <div className="flex items-center gap-1">
+                <LanguageSwitcher />
+                <NotificationBell className="ml-2 flex-shrink-0" data-testid="sidebar-notification-bell" />
+              </div>
             </div>
           </div>
         </div>

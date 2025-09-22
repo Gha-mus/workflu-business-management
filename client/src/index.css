@@ -4,6 +4,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import RTL support styles */
+@import './styles/rtl.css';
+
 :root {
   --background: hsl(210, 40%, 98%);
   --foreground: hsl(222.2, 84%, 4.9%);

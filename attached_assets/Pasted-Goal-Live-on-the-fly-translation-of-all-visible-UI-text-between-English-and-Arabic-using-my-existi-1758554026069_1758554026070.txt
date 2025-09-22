@@ -1,0 +1,79 @@
+Goal: Live, on-the-fly translation of all visible UI text between English and Arabic using my existing OpenAI connection (API key already in Replit Secrets). Model must be gpt-3.5.
+
+Required Behaviors
+
+Model
+
+Use OpenAI gpt-3.5 exclusively for translation calls.
+
+Scope of translation
+
+Translate only currently visible UI text on the page (menus, buttons, labels, table headers, form field labels/placeholders, dashboard and report headings).
+
+Do not translate dynamic data values (numbers, amounts, dates), user-entered text, product/supplier names, or status codes.
+
+No persistence
+
+No database or file storage of AI outputs.
+
+You may use in-memory cache per browser session to reduce calls (OK to cache for ~10 minutes). Cache is cleared on refresh or tab close.
+
+No UI changes
+
+Do not alter layout/components. Only swap text content.
+
+Language Switcher (global)
+
+Add a Language toggle in the top navigation bar (visible on every page): English | العربية.
+
+Changing language translates the current page immediately and the next navigations should render in the chosen language.
+
+Direction & layout
+
+English → LTR (menus/sidebar on the left).
+
+Arabic → RTL (menus/sidebar on the right).
+
+Implement with CSS logical properties and dir="rtl"/"ltr" on the root to avoid layout bugs.
+
+Ensure icons, arrows, pagination, and breadcrumbs flip correctly in RTL.
+
+Technical Notes (please follow)
+
+Batching: Collect visible text nodes and batch into a single prompt per page to minimize API calls and latency. Return a keyed map so we can re-insert text deterministically.
+
+Placeholders & variables: Preserve placeholders like {name}, {count}, %, currency symbols, and newline/HTML. The model must return them unchanged.
+
+Numbers/dates: Don’t send raw numbers or dates to OpenAI. Use Intl.NumberFormat / Intl.DateTimeFormat for locale display.
+
+HTML safety: Never inject raw model text as HTML; set textContent or escape.
+
+Fallbacks: If the API fails or rate-limits, show the original English text and a small “translation unavailable” toast (no crash).
+
+Performance: Show a subtle spinner/skeleton while first batch is translating; subsequent renders should use session cache.
+
+Cost guard: Debounce rapid toggles; don’t re-translate identical strings already cached this session.
+
+Integration points
+
+Hook into the existing AI toggle system:
+
+If AI_ENABLED=false or OPENAI_API_KEY missing → translation feature auto-disables and the UI stays in English.
+
+Add a Settings → AI entry (or reuse existing AI tab) showing:
+
+Read-only Active Model: gpt-3.5-turbo
+
+A switch “Enable Live Translation” (respects the master AI toggle; if master is off, this switch shows disabled).
+
+Acceptance Criteria
+
+Switching to Arabic instantly translates all visible UI strings on at least: Dashboard, Purchases, Warehouse, Shipping, Sales, Orders, Documents, Compliance, Reports, Users & Roles, Settings.
+
+Sidebar/header/menus flip correctly for RTL; no broken layouts or clipped text.
+
+No new tables or collections created in the database.
+
+With AI disabled or key missing, app functions normally in English without errors.
+
+No hardcoded model names remain; translation uses the centralized AI gateway.
