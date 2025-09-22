@@ -499,18 +499,9 @@ router.post('/cleanup',
                   })
                   .where(eq(users.id, user.id));
                 
-                // 2. Handle audit logs based on preserveAuditLogs setting
-                if (!preserveAuditLogs) {
-                  // Anonymize user references in audit logs instead of deleting them
-                  await tx.update(auditLogs)
-                    .set({
-                      userName: 'Deleted User',
-                      // Keep userId for referential integrity but anonymize identifying info
-                      ipAddress: null,
-                      userAgent: null
-                    })
-                    .where(eq(auditLogs.userId, user.id));
-                }
+                // 2. Audit logs are immutable - never update or delete them
+                // They serve as a permanent historical record
+                // Note: preserveAuditLogs flag is ignored as audit logs must always be preserved
                 
                 // 3. Deactivate Supabase user (but don't delete for soft-delete)
                 if (user.authProviderUserId && process.env.AUTH_PROVIDER === 'supabase') {

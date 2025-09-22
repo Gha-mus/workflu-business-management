@@ -60,6 +60,11 @@ function Users() {
   // Delete user confirmation state
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  
+  // Soft delete confirmation state  
+  const [softDeleteConfirmOpen, setSoftDeleteConfirmOpen] = useState(false);
+  const [softDeleteUser, setSoftDeleteUser] = useState<User | null>(null);
+  const [forceDeleteOption, setForceDeleteOption] = useState(false);
 
   // Check if current user is admin and super-admin
   const isAdmin = isAuthenticated && currentUser?.role === 'admin';
@@ -224,65 +229,161 @@ function Users() {
 
   // Delete user mutation (Super-Admin Only)
   const deleteUserMutation = useMutation({
-    mutationFn: async ({ userId }: { userId: string }) => {
-      // Use DELETE endpoint which handles both hard delete and soft delete automatically
-      const response = await apiRequest("DELETE", `/api/super-admin/users/${userId}`);
-      return await response.json();
+    mutationFn: async ({ userId, force = false }: { userId: string; force?: boolean }) => {
+      // Use DELETE endpoint with optional force parameter
+      const url = force 
+        ? `/api/super-admin/users/${userId}?force=true`
+        : `/api/super-admin/users/${userId}`;
+      // apiRequest already parses JSON, don't call .json() on the result
+      const response = await apiRequest("DELETE", url);
+      return response;
     },
     onSuccess: (data, { userId }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       
       const deletedUser = users?.find(u => u.id === userId);
-      toast({
-        title: "User Deleted Successfully",
-        description: data.action === 'hard_delete' 
-          ? `${deletedUser?.email} has been permanently deleted.`
-          : data.action === 'soft_delete'
-          ? `${deletedUser?.email} has been deactivated (has business records).`
-          : `${deletedUser?.email} has been removed from the system.`,
-        duration: 5000,
-      });
+      
+      // Handle success based on mode
+      if (data.success) {
+        let message = "";
+        if (data.mode === "hard") {
+          message = "User deleted successfully";
+        } else if (data.mode === "soft") {
+          message = "User account deactivated due to existing business records";
+        } else {
+          message = data.message || "User removed from the system";
+        }
+        
+        toast({
+          title: "Success",
+          description: `${deletedUser?.email ? deletedUser.email + ": " : ""}${message}`,
+          duration: 5000,
+        });
+      } else {
+        // Handle structured error response even in onSuccess (shouldn't happen but just in case)
+        handleDeleteError(data);
+      }
       
       setDeleteUserOpen(false);
       setUserToDelete(null);
+      setSoftDeleteConfirmOpen(false);
+      setSoftDeleteUser(null);
+      setForceDeleteOption(false);
     },
     onError: (error: any) => {
-      // Parse the error message which comes as "400: {error: '...'}"
-      let errorMessage = "Failed to delete user. Please try again.";
+      // Parse the error response
+      let errorData: any = null;
       
       if (error.message) {
         try {
-          // Extract JSON part from error message like "400: {error: '...'}"
+          // Try to extract JSON from error message
           const jsonPart = error.message.substring(error.message.indexOf('{'));
-          const parsed = JSON.parse(jsonPart);
-          errorMessage = parsed.error || parsed.message || errorMessage;
+          errorData = JSON.parse(jsonPart);
         } catch {
-          // If parsing fails, use the raw message
-          errorMessage = error.message;
+          // If that fails, the message might be the actual response
+          errorData = { message: error.message };
         }
       }
       
-      toast({
-        title: "Delete Failed",
-        description: errorMessage,
-        variant: "destructive",
-        duration: 7000,
-      });
+      handleDeleteError(errorData);
     },
   });
+  
+  // Helper function to handle delete errors
+  const handleDeleteError = (errorData: any) => {
+    let title = "Delete Failed";
+    let description = "Failed to delete user. Please try again.";
+    let showSoftDeleteDialog = false;
+    
+    if (errorData) {
+      const errorCode = errorData.code;
+      const errorMessage = errorData.message;
+      
+      // Handle specific error codes
+      switch (errorCode) {
+        case "last_admin_blocked":
+          title = "Cannot Delete Last Admin";
+          description = "Deletion blocked: this action would leave 0 admins. Create another admin first.";
+          break;
+          
+        case "linked_records_found":
+          // Show soft delete confirmation dialog
+          showSoftDeleteDialog = true;
+          setSoftDeleteConfirmOpen(true);
+          setSoftDeleteUser(userToDelete);
+          setDeleteUserOpen(false);
+          return; // Don't show toast, show dialog instead
+          
+        case "self_delete_forbidden":
+          title = "Cannot Delete Own Account";
+          description = "You cannot delete your own account";
+          break;
+          
+        case "user_not_found":
+          title = "User Not Found";
+          description = "User not found";
+          break;
+          
+        default:
+          // Use the server message if available
+          if (errorMessage) {
+            description = errorMessage;
+          }
+      }
+    }
+    
+    toast({
+      title,
+      description,
+      variant: "destructive",
+      duration: 7000,
+    });
+    
+    setDeleteUserOpen(false);
+    setUserToDelete(null);
+  };
+
+  // Helper function to check if a user has already been deleted/anonymized
+  const isUserAlreadyDeleted = (user: User): boolean => {
+    return (user.email?.includes("@anonymized.local") || 
+            user.firstName === "[DELETED]") ?? false;
+  };
 
   const handleRoleChange = (userId: string, newRole: User['role']) => {
     updateRoleMutation.mutate({ userId, role: newRole });
   };
 
   const handleDeleteUser = (user: User) => {
+    // Check if user is already deleted/anonymized
+    if (isUserAlreadyDeleted(user)) {
+      toast({
+        title: "Already Deleted",
+        description: "This user has already been deleted",
+        variant: "default",
+      });
+      return;
+    }
+    
+    // Otherwise, proceed with normal deletion flow
     setUserToDelete(user);
     setDeleteUserOpen(true);
   };
 
   const confirmDeleteUser = () => {
     if (userToDelete) {
-      deleteUserMutation.mutate({ userId: userToDelete.id });
+      deleteUserMutation.mutate({ userId: userToDelete.id, force: false });
+    }
+  };
+  
+  const handleSoftDeleteConfirm = () => {
+    if (softDeleteUser) {
+      deleteUserMutation.mutate({ userId: softDeleteUser.id, force: false });
+    }
+  };
+  
+  const handleForceDelete = () => {
+    if (softDeleteUser) {
+      deleteUserMutation.mutate({ userId: softDeleteUser.id, force: true });
     }
   };
 
@@ -425,6 +526,75 @@ function Users() {
                         {createUserMutation.isPending ? "Creating..." : "Create User"}
                       </Button>
                     </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Soft Delete Confirmation Dialog */}
+              <Dialog open={softDeleteConfirmOpen} onOpenChange={setSoftDeleteConfirmOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-amber-600">
+                      <AlertCircle className="h-5 w-5" />
+                      User Has Business Records
+                    </DialogTitle>
+                    <DialogDescription className="space-y-3">
+                      <p>
+                        The user{" "}
+                        <span className="font-semibold">
+                          {softDeleteUser?.firstName && softDeleteUser?.lastName 
+                            ? `${softDeleteUser.firstName} ${softDeleteUser.lastName}` 
+                            : softDeleteUser?.email}
+                        </span>{" "}
+                        has existing business records in the system.
+                      </p>
+                      <div className="p-4 bg-muted rounded-lg space-y-2">
+                        <p className="text-sm">
+                          <strong>Standard Deactivation:</strong> This user has existing business records. 
+                          The account will be deactivated and personal data anonymized to preserve data integrity. 
+                        </p>
+                        {isSuperAdmin && (
+                          <p className="text-sm text-destructive">
+                            <strong>Force Delete (Super-Admin Only):</strong> Permanently delete the user and 
+                            ALL associated business records. This action is irreversible and may impact data integrity.
+                          </p>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Choose how you want to proceed:
+                      </p>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex justify-end space-x-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSoftDeleteConfirmOpen(false);
+                        setSoftDeleteUser(null);
+                        setForceDeleteOption(false);
+                      }}
+                      data-testid="button-cancel-soft-delete"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="default"
+                      onClick={handleSoftDeleteConfirm}
+                      disabled={deleteUserMutation.isPending}
+                      data-testid="button-soft-delete"
+                    >
+                      {deleteUserMutation.isPending ? "Processing..." : "Deactivate User"}
+                    </Button>
+                    {isSuperAdmin && (
+                      <Button
+                        variant="destructive"
+                        onClick={handleForceDelete}
+                        disabled={deleteUserMutation.isPending}
+                        data-testid="button-force-delete"
+                      >
+                        {deleteUserMutation.isPending ? "Processing..." : "Force Delete (Remove All Data)"}
+                      </Button>
+                    )}
                   </div>
                 </DialogContent>
               </Dialog>
@@ -627,14 +797,14 @@ function Users() {
                               <RefreshCw className="w-3 h-3" />
                             </Button>
                             
-                            {/* Delete button - Super-Admin Only */}
-                            {isSuperAdmin && user.id !== currentUser?.id && (
+                            {/* Delete button - Super-Admin Only, hide for already deleted users */}
+                            {isSuperAdmin && user.id !== currentUser?.id && !isUserAlreadyDeleted(user) && (
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleDeleteUser(user)}
                                 disabled={deleteUserMutation.isPending}
-                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
                                 data-testid={`button-delete-${user.id}`}
                               >
                                 <Trash2 className="w-3 h-3" />

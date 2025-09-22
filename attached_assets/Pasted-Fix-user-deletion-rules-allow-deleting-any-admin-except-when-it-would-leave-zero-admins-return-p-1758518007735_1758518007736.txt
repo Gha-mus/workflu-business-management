@@ -1,0 +1,100 @@
+Fix user deletion rules — allow deleting any admin except when it would leave zero admins + return proper errors
+
+Hi,
+
+I tested Users & Roles → Delete on two accounts:
+
+Admin #1: Blocked with “Cannot delete the last active admin user.”
+
+Admin #2: “Delete Failed” generic toast.
+
+What I need
+
+Change the rule:
+
+I must be able to delete any user, including admins, as long as at least one admin remains after the operation.
+
+In other words: block only when the result would be 0 admins.
+
+It should be allowed to delete admins even if it leaves exactly one admin (me) in the system.
+
+Fix the generic “Delete Failed” case:
+
+Always return a structured JSON error with a clear code and message (e.g., linked_records_found, not_super_admin, etc.).
+
+The UI toast must display the server’s message, not a generic one.
+
+Backend changes
+
+Update DELETE /api/admin/users/:id:
+
+Permit deletion of admin users unless admin_count_after_delete === 0.
+
+If the target user has linked business records, perform the existing anonymize-or-deactivate path; otherwise hard delete.
+
+Never rely on UI logic for the admin-count check; enforce on the server.
+
+Return precise JSON for both success and failure.
+
+Add an override for super-admin only:
+
+Query param ?force=true or header X-Force-Delete: true.
+
+Allows deleting admins even if it leaves one admin (the current super-admin).
+
+Still block if it would leave zero admins.
+
+Make sure session invalidation happens on delete/deactivate.
+
+Add immutable audit logs for attempts and results (who, whom, outcome, reason).
+
+Frontend changes
+
+In Users & Roles table:
+
+If server returns linked_records_found, show a confirmation that the account will be deactivated/anonymized instead of hard-deleted, and proceed accordingly.
+
+If server returns last_admin_blocked, show:
+“Deletion blocked: this action would leave 0 admins. Create another admin first.”
+
+Surface server error messages directly in the toast.
+
+Keep the red “Delete” flow for admins; do not gray it out.
+
+Safety rails
+
+Keep self-delete blocked (super-admin cannot delete their own account). That’s the only lockout guard we need.
+
+Rate limit the delete endpoint.
+
+Tests (must pass in CI)
+
+Deleting an admin while another admin remains → Allowed.
+
+Deleting an admin when it would leave 0 admins → Blocked.
+
+Deleting user with linked records → Anonymize/deactivate path returns 200 with mode:"soft".
+
+Deleting user without linked records → Hard delete returns 200 with mode:"hard".
+
+Non-admin or plain admin hitting super-admin override → 403.
+
+UI shows the exact server message for each failure/success.
+
+Please use ChatGPT-5 for static checks, gap detection, and test generation as you implement (as we agreed).
+
+Deliverables:
+
+PR with backend change, PR with frontend change, and a test PR.
+
+Short changelog and screenshots of:
+
+Deleting an admin while one admin remains (success),
+
+Attempt that would leave 0 admins (blocked with clear message),
+
+Delete user with linked records (soft delete/anonymize),
+
+Error toast showing the precise server message.
+
+Thanks—please implement this end-to-end and let me know when the PRs are ready.
