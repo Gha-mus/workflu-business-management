@@ -12,6 +12,7 @@ import { notificationSchedulerService } from "./notificationSchedulerService";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

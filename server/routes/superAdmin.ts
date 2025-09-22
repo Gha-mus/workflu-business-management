@@ -5,6 +5,20 @@ import { supabaseAdmin } from "../core/auth/providers/supabaseProvider";
 import { auditService } from "../auditService";
 import { insertUserSchema, userRoleUpdateSchema } from "@shared/schema";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
+
+// Rate limiter for delete operations - super admins get more lenient limits
+const deleteRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute window
+  max: 10, // limit to 10 requests per windowMs
+  message: { 
+    success: false,
+    code: "rate_limit_exceeded",
+    message: "Too many deletion requests, please try again later" 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export const superAdminRouter = Router();
 
@@ -290,7 +304,7 @@ superAdminRouter.post("/:id/password",
       }
 
       // Invalidate all refresh tokens to force re-login
-      const { error: signOutError } = await admin.auth.admin.signOutUser(user.authProviderUserId);
+      const { error: signOutError } = await admin.auth.signOutUser(user.authProviderUserId);
       if (signOutError) {
         console.warn("Failed to invalidate refresh tokens:", signOutError);
         // Don't fail the request for this, just log the warning
@@ -325,19 +339,64 @@ superAdminRouter.post("/:id/password",
 // DELETE /api/super-admin/users/:id - Delete user account (super-admin only)
 superAdminRouter.delete("/:id",
   requireSuperAdmin,
+  deleteRateLimiter,
   async (req, res) => {
     try {
       const { id } = req.params;
       
+      // Check for force deletion flag (super-admin privilege)
+      const forceDelete = req.query.force === 'true' || req.headers['x-force-delete'] === 'true';
+      
       // Get user from our database
       const user = await storage.getUser(id);
       if (!user) {
-        return res.status(404).json({ error: "User not found" });
+        return res.status(404).json({ 
+          success: false,
+          code: "user_not_found",
+          message: "User not found"
+        });
+      }
+
+      // Check if user is already deleted/anonymized (idempotency)
+      if (user.email?.includes("@anonymized.local") || user.firstName === "[DELETED]") {
+        // Log the noop operation
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "delete",
+          entityType: "user",
+          entityId: id,
+          operationType: "user_role_change",
+          description: `Attempted to delete already-anonymized user (noop)`,
+          oldValues: undefined,
+          newValues: { mode: "noop", alreadyDeleted: true }
+        });
+        
+        return res.json({ 
+          success: true,
+          mode: "noop",
+          message: "User already deleted"
+        });
       }
 
       // Prevent super-admin from deleting themselves
       if (req.user?.id === id) {
-        return res.status(400).json({ error: "Cannot delete your own account" });
+        // Log the self-deletion attempt
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "delete",
+          entityType: "user",
+          entityId: id,
+          operationType: "user_role_change",
+          description: `Super-admin attempted to delete their own account (blocked)`,
+          oldValues: undefined,
+          newValues: { blocked: true, reason: 'self_delete_forbidden' }
+        });
+        
+        return res.status(400).json({ 
+          success: false,
+          code: "self_delete_forbidden",
+          message: "Cannot delete your own account"
+        });
       }
 
       // CRITICAL: Last super-admin protection
@@ -348,120 +407,135 @@ superAdminRouter.delete("/:id",
         );
         
         if (activeSuperAdmins.length === 0) {
-          return res.status(400).json({ 
-            error: "Cannot delete the last active super-admin. At least one super-admin must remain." 
-          });
-        }
-      }
-
-      // CRITICAL: Last admin protection
-      if (user.role === 'admin') {
-        const activeAdminCount = await storage.countAdminUsers();
-        if (activeAdminCount <= 1) {
-          return res.status(400).json({ 
-            error: "Cannot delete the last active admin user. At least one active admin must remain to manage the system." 
-          });
-        }
-      }
-
-      // Check for business records linked to this user 
-      // Use a simple business record check (similar to existing admin.ts)
-      try {
-        // For now, use the same simple check as in admin.ts
-        // This checks core business operations for user involvement
-        const [
-          capitalEntries,
-          purchases,
-          operatingExpenses
-        ] = await Promise.all([
-          storage.getCapitalEntries(),
-          storage.getPurchases(), 
-          storage.getOperatingExpenses()
-        ]);
-
-        const hasCapitalEntries = capitalEntries.some((entry: any) => entry.createdBy === id);
-        const hasPurchases = purchases.some((purchase: any) => 
-          purchase.createdBy === id || purchase.userId === id
-        );
-        const hasOperatingExpenses = operatingExpenses.some((expense: any) => 
-          expense.createdBy === id
-        );
-
-        const hasBusinessRecords = hasCapitalEntries || hasPurchases || hasOperatingExpenses;
-
-        if (hasBusinessRecords) {
-          // Perform soft delete instead of hard delete
-          const updatedUser = await storage.updateUserStatus(id, false);
-          
-          // CRITICAL: Invalidate Supabase sessions on deactivation to prevent continued access
-          if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
-            const admin = supabaseAdmin();
-            const { error: signOutError } = await admin.auth.admin.signOutUser(user.authProviderUserId);
-            if (signOutError) {
-              console.warn("Failed to invalidate sessions on user deactivation:", signOutError);
-            }
-          }
-          
-          // Create audit log for soft delete
+          // Log the last super-admin deletion attempt
           const context = auditService.extractRequestContext(req);
           await auditService.logOperation(context, {
-            action: "update",
+            action: "delete",
             entityType: "user",
             entityId: id,
             operationType: "user_role_change",
-            description: `Super-admin soft-deleted user ${user.email} (has linked business records, sessions invalidated)`,
-            oldValues: user,
-            newValues: { ...updatedUser, deletionReason: 'has_business_records' }
+            description: `Attempted to delete last super-admin ${user.email} (blocked)`,
+            oldValues: undefined,
+            newValues: { blocked: true, reason: 'last_super_admin' }
           });
-
-          return res.json({ 
-            message: "User has linked business records. Account has been deactivated and sessions invalidated.",
-            action: "soft_delete",
-            user: updatedUser,
-            businessRecordsFound: true
+          
+          return res.status(400).json({ 
+            success: false,
+            code: "last_admin_blocked",
+            message: "Cannot delete the last active super-admin. At least one super-admin must remain."
           });
         }
-      } catch (auditError) {
-        console.error("Error checking business records, defaulting to soft delete:", auditError);
-        // If we can't check business records, err on the side of caution and do soft delete
-        const updatedUser = await storage.updateUserStatus(id, false);
-        
-        // CRITICAL: Invalidate Supabase sessions on deactivation to prevent continued access
-        if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
-          const admin = supabaseAdmin();
-          const { error: signOutError } = await admin.auth.admin.signOutUser(user.authProviderUserId);
-          if (signOutError) {
-            console.warn("Failed to invalidate sessions on user deactivation:", signOutError);
-          }
-        }
-        
-        // Create audit log for soft delete
-        const context = auditService.extractRequestContext(req);
-        await auditService.logOperation(context, {
-          action: "update",
-          entityType: "user",
-          entityId: id,
-          operationType: "user_role_change",
-          description: `Super-admin soft-deleted user ${user.email} (business record check failed, sessions invalidated)`,
-          oldValues: user,
-          newValues: { ...updatedUser, deletionReason: 'audit_check_failed' }
-        });
-
-        return res.json({ 
-          message: "Unable to verify business records. Account has been deactivated for safety and sessions invalidated.",
-          action: "soft_delete",
-          user: updatedUser
-        });
       }
 
-      // No business records, proceed with hard delete
-      // First attempt to delete from Supabase if using Supabase auth and user has a Supabase ID
-      let supabaseDeleted = false;
-      let supabaseDeletionNote = '';
+      // CRITICAL: Last admin protection - Check admin count AFTER theoretical deletion
+      if (user.role === 'admin' && user.isActive) {
+        const allUsers = await storage.getAllUsers();
+        // Count remaining active admins AFTER this user would be deleted
+        const remainingActiveAdmins = allUsers.filter(u => 
+          u.isActive && u.role === 'admin' && u.id !== id
+        );
+        
+        if (remainingActiveAdmins.length === 0 && !forceDelete) {
+          // Log the last admin deletion attempt
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "delete",
+            entityType: "user",
+            entityId: id,
+            operationType: "user_role_change",
+            description: `Attempted to delete last admin ${user.email} (blocked, no force override)`,
+            oldValues: undefined,
+            newValues: { blocked: true, reason: 'last_admin_blocked' }
+          });
+          
+          return res.status(400).json({ 
+            success: false,
+            code: "last_admin_blocked",
+            message: "Cannot delete the last active admin user. At least one active admin must remain to manage the system. Use force=true to override (dangerous)."
+          });
+        }
+      }
+
+      // Check for business records linked to this user (unless force deletion is enabled)
+      if (!forceDelete) {
+        try {
+          const [
+            capitalEntries,
+            purchases,
+            operatingExpenses
+          ] = await Promise.all([
+            storage.getCapitalEntries(),
+            storage.getPurchases(), 
+            storage.getOperatingExpenses()
+          ]);
+
+          const hasCapitalEntries = capitalEntries.some((entry: any) => entry.createdBy === id);
+          const hasPurchases = purchases.some((purchase: any) => 
+            purchase.createdBy === id || purchase.userId === id
+          );
+          const hasOperatingExpenses = operatingExpenses.some((expense: any) => 
+            expense.createdBy === id
+          );
+
+          const hasBusinessRecords = hasCapitalEntries || hasPurchases || hasOperatingExpenses;
+
+          if (hasBusinessRecords) {
+            // Perform soft delete/anonymization instead of hard delete
+            const updatedUser = await storage.updateUserStatus(id, false);
+            
+            // CRITICAL: Invalidate Supabase sessions on deactivation to prevent continued access
+            if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
+              const admin = supabaseAdmin();
+              const { error: signOutError } = await admin.auth.signOutUser(user.authProviderUserId);
+              if (signOutError) {
+                console.warn("Failed to invalidate sessions on user deactivation:", signOutError);
+              }
+            }
+            
+            // Create audit log for soft delete
+            const context = auditService.extractRequestContext(req);
+            await auditService.logOperation(context, {
+              action: "update",
+              entityType: "user",
+              entityId: id,
+              operationType: "user_role_change",
+              description: `Super-admin soft-deleted/anonymized user ${user.email} (has linked business records, sessions invalidated)`,
+              oldValues: user,
+              newValues: { ...updatedUser, deletionReason: 'has_business_records', sessionsInvalidated: true }
+            });
+
+            return res.json({ 
+              success: true,
+              mode: "soft",
+              message: "User anonymized due to linked records"
+            });
+          }
+        } catch (auditError) {
+          console.error("Error checking business records:", auditError);
+          // If force delete is not enabled and we can't check, return error
+          return res.status(500).json({
+            success: false,
+            code: "linked_records_found",
+            message: "Unable to verify business records. Use force=true to override."
+          });
+        }
+      }
+
+      // No business records or force delete enabled, proceed with hard delete
+      // First attempt to delete from Supabase if using Supabase auth
+      let sessionsInvalidated = false;
       
       if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
         try {
           const admin = supabaseAdmin();
+          
+          // First invalidate all sessions
+          const { error: signOutError } = await admin.auth.signOutUser(user.authProviderUserId);
+          if (!signOutError) {
+            sessionsInvalidated = true;
+          }
+          
+          // Then delete the user
           const { error: deleteError } = await admin.auth.admin.deleteUser(user.authProviderUserId);
           
           if (deleteError) {
@@ -469,54 +543,68 @@ superAdminRouter.delete("/:id",
             if (deleteError.status === 404 || 
                 deleteError.message?.toLowerCase().includes('user not found') ||
                 deleteError.message?.toLowerCase().includes('not found')) {
-              // User doesn't exist in Supabase (legacy user or already deleted) - this is fine
-              console.info(`Supabase user not found for ${user.email} (ID: ${user.authProviderUserId}) - treating as already deleted`);
-              supabaseDeleted = true;
-              supabaseDeletionNote = ' (Supabase account was already absent)';
+              console.info(`Supabase user not found for ${user.email} - treating as already deleted`);
             } else {
               // Non-404 error - log warning but continue with local deletion
               console.warn(`Failed to delete Supabase user for ${user.email}, continuing with local deletion:`, deleteError);
-              supabaseDeletionNote = ' (Supabase deletion failed but local deletion proceeded)';
             }
-          } else {
-            // Successfully deleted from Supabase
-            supabaseDeleted = true;
-            supabaseDeletionNote = ' (Supabase account deleted)';
           }
         } catch (supabaseError: any) {
           // Unexpected error - log warning but continue with local deletion
           console.warn(`Unexpected error during Supabase deletion for ${user.email}, continuing with local deletion:`, supabaseError);
-          supabaseDeletionNote = ' (Supabase deletion error but local deletion proceeded)';
         }
-      } else if (process.env.AUTH_PROVIDER === 'supabase' && !user.authProviderUserId) {
-        // Legacy user without Supabase account
-        console.info(`User ${user.email} has no Supabase account (legacy user) - skipping Supabase deletion`);
-        supabaseDeletionNote = ' (legacy user without Supabase account)';
       }
 
       // Always proceed with local database deletion regardless of Supabase result
       const context = auditService.extractRequestContext(req);
       const deletedUser = await storage.deleteUser(id, context);
 
-      // Create audit log for hard delete
+      // Create comprehensive audit log for hard delete
       await auditService.logOperation(context, {
         action: "delete",
         entityType: "user",
         entityId: id,
         operationType: "user_role_change",
-        description: `Super-admin permanently deleted user ${user.email} (no business records)${supabaseDeletionNote}`,
+        description: `Super-admin permanently deleted user ${user.email} (${forceDelete ? 'force deletion' : 'no business records'})`,
         oldValues: user,
-        newValues: undefined
+        newValues: { 
+          deletionType: 'hard_delete',
+          forceDelete,
+          sessionsInvalidated,
+          deletedBy: req.user?.id,
+          timestamp: new Date().toISOString()
+        }
       });
 
       res.json({ 
-        message: `User account permanently deleted successfully${supabaseDeletionNote}`,
-        action: "hard_delete",
-        deletedUser
+        success: true,
+        mode: "hard",
+        message: "User deleted successfully"
       });
     } catch (error) {
       console.error("Error deleting user:", error);
-      res.status(500).json({ error: "Failed to delete user" });
+      
+      // Log the failed deletion attempt
+      try {
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "delete",
+          entityType: "user",
+          entityId: req.params.id,
+          operationType: "user_role_change",
+          description: `Failed to delete user: ${error}`,
+          oldValues: undefined,
+          newValues: { error: String(error), failed: true }
+        });
+      } catch (logError) {
+        console.error("Failed to log deletion error:", logError);
+      }
+      
+      res.status(500).json({ 
+        success: false,
+        code: "internal_error",
+        message: "Failed to delete user"
+      });
     }
   }
 );
@@ -570,7 +658,7 @@ superAdminRouter.post("/:id/anonymize",
         // Invalidate sessions if using Supabase
         if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
           const admin = supabaseAdmin();
-          await admin.auth.admin.signOutUser(user.authProviderUserId);
+          await admin.auth.signOutUser(user.authProviderUserId);
         }
 
         res.json({ 
