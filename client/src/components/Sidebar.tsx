@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/NotificationBell";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { TranslatedText } from "@/components/TranslatedText";
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -111,7 +112,7 @@ export function Sidebar() {
             </div>
             <div>
               <h1 className="text-lg font-semibold" data-testid="app-name">WorkFlu</h1>
-              <p className="text-xs text-muted-foreground">Business Management</p>
+              <p className="text-xs text-muted-foreground"><TranslatedText>Business Management</TranslatedText></p>
             </div>
           </div>
           
@@ -166,7 +167,7 @@ export function Sidebar() {
                   data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span>{item.name}</span>
+                  <TranslatedText>{item.name}</TranslatedText>
                 </button>
               </Link>
             );
@@ -175,7 +176,7 @@ export function Sidebar() {
         
         {isAdmin && (
           <div className="pt-4 mt-4 border-t border-border">
-            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin</p>
+            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider"><TranslatedText>Admin</TranslatedText></p>
             <div className="mt-2 space-y-1">
               {adminNavigation.map((item) => {
                 const isActive = location === item.href;
@@ -194,7 +195,7 @@ export function Sidebar() {
                       data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       <Icon className="w-4 h-4" />
-                      <span>{item.name}</span>
+                      <TranslatedText>{item.name}</TranslatedText>
                     </button>
                   </Link>
                 );
@@ -213,7 +214,7 @@ export function Sidebar() {
           data-testid="logout-button"
         >
           <LogOut className="w-4 h-4 mr-3" />
-          Logout
+          <TranslatedText>Logout</TranslatedText>
         </Button>
       </div>
     </aside>
