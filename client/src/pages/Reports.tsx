@@ -14,6 +14,7 @@ import type {
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TranslatedText } from "@/components/TranslatedText";
 import {
   Select,
   SelectContent,
@@ -517,8 +518,8 @@ export default function Reports() {
         <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-foreground">Reports & Analytics</h2>
-              <p className="text-sm text-muted-foreground">Business intelligence and performance insights</p>
+              <h2 className="text-2xl font-bold text-foreground"><TranslatedText>Reports & Analytics</TranslatedText></h2>
+              <p className="text-sm text-muted-foreground"><TranslatedText>Business intelligence and performance insights</TranslatedText></p>
             </div>
             <div className="flex items-center space-x-4">
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
@@ -526,10 +527,10 @@ export default function Reports() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="last-7-days">Last 7 days</SelectItem>
-                  <SelectItem value="last-30-days">Last 30 days</SelectItem>
-                  <SelectItem value="last-90-days">Last 90 days</SelectItem>
-                  <SelectItem value="last-year">Last year</SelectItem>
+                  <SelectItem value="last-7-days"><TranslatedText>Last 7 days</TranslatedText></SelectItem>
+                  <SelectItem value="last-30-days"><TranslatedText>Last 30 days</TranslatedText></SelectItem>
+                  <SelectItem value="last-90-days"><TranslatedText>Last 90 days</TranslatedText></SelectItem>
+                  <SelectItem value="last-year"><TranslatedText>Last year</TranslatedText></SelectItem>
                 </SelectContent>
               </Select>
               <Button 
@@ -538,7 +539,7 @@ export default function Reports() {
                 data-testid="refresh-button"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
+                <TranslatedText>Refresh</TranslatedText>
               </Button>
               <div className="flex space-x-2">
                 <Button 
@@ -548,7 +549,7 @@ export default function Reports() {
                   data-testid="export-financial-button"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Export Financial
+                  <TranslatedText>Export Financial</TranslatedText>
                 </Button>
                 <Button 
                   variant="outline" 
@@ -557,7 +558,7 @@ export default function Reports() {
                   data-testid="export-inventory-button"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Export Inventory
+                  <TranslatedText>Export Inventory</TranslatedText>
                 </Button>
               </div>
             </div>
@@ -568,13 +569,13 @@ export default function Reports() {
         <div className="flex-1 overflow-auto bg-background p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="financial">Financial</TabsTrigger>
-              <TabsTrigger value="inventory">Inventory</TabsTrigger>
-              <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-              <TabsTrigger value="trading">Trading</TabsTrigger>
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
-              <TabsTrigger value="validation">Validation</TabsTrigger>
+              <TabsTrigger value="overview"><TranslatedText>Overview</TranslatedText></TabsTrigger>
+              <TabsTrigger value="financial"><TranslatedText>Financial</TranslatedText></TabsTrigger>
+              <TabsTrigger value="inventory"><TranslatedText>Inventory</TranslatedText></TabsTrigger>
+              <TabsTrigger value="suppliers"><TranslatedText>Suppliers</TranslatedText></TabsTrigger>
+              <TabsTrigger value="trading"><TranslatedText>Trading</TranslatedText></TabsTrigger>
+              <TabsTrigger value="analytics"><TranslatedText>Analytics</TranslatedText></TabsTrigger>
+              <TabsTrigger value="validation"><TranslatedText>Validation</TranslatedText></TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -614,31 +615,31 @@ export default function Reports() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <Card>
                     <CardHeader>
-                      <h3 className="text-lg font-semibold">Financial Position</h3>
+                      <h3 className="text-lg font-semibold"><TranslatedText>Financial Position</TranslatedText></h3>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
                         <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Working Capital</span>
+                          <span className="text-sm text-muted-foreground"><TranslatedText>Working Capital</TranslatedText></span>
                           <span className="font-bold">
                             ${financialSummary.summary.currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Inventory Value</span>
+                          <span className="text-sm text-muted-foreground"><TranslatedText>Inventory Value</TranslatedText></span>
                           <span className="font-medium">
                             ${financialSummary.summary.totalInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Outstanding</span>
+                          <span className="text-sm text-muted-foreground"><TranslatedText>Outstanding</TranslatedText></span>
                           <span className="font-medium text-red-600">
                             ${financialSummary.summary.totalOutstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="border-t pt-3">
                           <div className="flex justify-between">
-                            <span className="text-sm font-medium">Net Position</span>
+                            <span className="text-sm font-medium"><TranslatedText>Net Position</TranslatedText></span>
                             <span className="font-bold text-lg">
                               ${financialSummary.summary.netPosition.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </span>
@@ -650,7 +651,7 @@ export default function Reports() {
 
                   <Card>
                     <CardHeader>
-                      <h3 className="text-lg font-semibold">Currency Breakdown</h3>
+                      <h3 className="text-lg font-semibold"><TranslatedText>Currency Breakdown</TranslatedText></h3>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
@@ -769,18 +770,18 @@ export default function Reports() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <h3 className="text-lg font-semibold">Capital Movement</h3>
+                    <h3 className="text-lg font-semibold"><TranslatedText>Capital Movement</TranslatedText></h3>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Current Balance</span>
+                        <span className="text-sm text-muted-foreground"><TranslatedText>Current Balance</TranslatedText></span>
                         <span className="font-bold text-lg" data-testid="financial-balance">
                           ${(capitalBalance?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Total Capital In</span>
+                        <span className="text-sm text-muted-foreground"><TranslatedText>Total Capital In</TranslatedText></span>
                         <span className="font-medium text-green-600">
                           ${capitalEntries?.filter((e: any) => e.type === 'CapitalIn')
                             .reduce((sum: number, e: any) => sum + parseFloat(e.amount), 0)
@@ -788,7 +789,7 @@ export default function Reports() {
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Total Capital Out</span>
+                        <span className="text-sm text-muted-foreground"><TranslatedText>Total Capital Out</TranslatedText></span>
                         <span className="font-medium text-red-600">
                           ${capitalEntries?.filter((e: any) => e.type === 'CapitalOut')
                             .reduce((sum: number, e: any) => sum + parseFloat(e.amount), 0)
@@ -801,19 +802,19 @@ export default function Reports() {
 
                 <Card>
                   <CardHeader>
-                    <h3 className="text-lg font-semibold">Purchase Summary</h3>
+                    <h3 className="text-lg font-semibold"><TranslatedText>Purchase Summary</TranslatedText></h3>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Total Purchases</span>
+                        <span className="text-sm text-muted-foreground"><TranslatedText>Total Purchases</TranslatedText></span>
                         <span className="font-bold text-lg">
                           ${purchases?.reduce((sum: number, p: any) => sum + parseFloat(p.total), 0)
                             .toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Amount Paid</span>
+                        <span className="text-sm text-muted-foreground"><TranslatedText>Amount Paid</TranslatedText></span>
                         <span className="font-medium text-green-600">
                           ${purchases?.reduce((sum: number, p: any) => sum + parseFloat(p.amountPaid), 0)
                             .toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}
@@ -836,7 +837,7 @@ export default function Reports() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <h3 className="text-lg font-semibold">Inventory by Status</h3>
+                    <h3 className="text-lg font-semibold"><TranslatedText>Inventory by Status</TranslatedText></h3>
                   </CardHeader>
                   <CardContent>
                     <div className="h-80">
@@ -865,7 +866,7 @@ export default function Reports() {
 
                 <Card>
                   <CardHeader>
-                    <h3 className="text-lg font-semibold">Order Status Distribution</h3>
+                    <h3 className="text-lg font-semibold"><TranslatedText>Order Status Distribution</TranslatedText></h3>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -1125,7 +1126,7 @@ export default function Reports() {
                         {tradingActivity?.profitability ? (
                           <div className="space-y-3">
                             <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Inventory Value</span>
+                              <span className="text-sm text-muted-foreground"><TranslatedText>Inventory Value</TranslatedText></span>
                               <span className="font-medium">${(tradingActivity.profitability.totalInventoryValue || 0).toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between">
