@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth";
-import { supabaseAdmin } from "../core/auth/providers/supabaseProvider";
+import { supabaseAdmin, supabaseClient } from "../core/auth/providers/supabaseProvider";
 import { auditService } from "../auditService";
 import { approvalWorkflowService } from "../approvalWorkflowService";
 import { insertUserSchema, userRoleUpdateSchema } from "@shared/schema";
