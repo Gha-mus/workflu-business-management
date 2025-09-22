@@ -1999,6 +1999,78 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
+   * DEPENDENT RECORD CLEANUP: Clean up user-dependent records that block deletion
+   * Handles notification_queue, notification_settings, etc.
+   */
+  async cleanupUserDependentRecords(userId: string, auditContext?: AuditContext): Promise<void> {
+    try {
+      // Clean up notification queue entries
+      await db.delete(notificationQueue).where(eq(notificationQueue.userId, userId));
+      
+      // Clean up notification settings
+      await db.delete(notificationSettings).where(eq(notificationSettings.userId, userId));
+      
+      // For customers table, reassign to system user instead of deleting
+      // This preserves business data integrity
+      const systemUser = await this.getSystemUser();
+      if (systemUser) {
+        await db
+          .update(customers)
+          .set({ createdBy: systemUser.id })
+          .where(eq(customers.createdBy, userId));
+          
+        // Handle settings_history table
+        const { settingsHistory } = await import('@shared/schema');
+        await db
+          .update(settingsHistory)
+          .set({ createdBy: systemUser.id })
+          .where(eq(settingsHistory.createdBy, userId));
+          
+        // Handle configuration_snapshots table
+        const { configurationSnapshots } = await import('@shared/schema');
+        await db
+          .update(configurationSnapshots)
+          .set({ createdBy: systemUser.id })
+          .where(eq(configurationSnapshots.createdBy, userId));
+      }
+      
+      // Log cleanup action if audit context provided
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'users',
+          userId,
+          'update',
+          'user_role_change',
+          null,
+          null,
+          undefined,
+          undefined,
+          `Cleaned up dependent records for user ${userId} (notifications, settings, customer reassignment)`
+        );
+      }
+      
+    } catch (error) {
+      console.error(`Failed to cleanup dependent records for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get or create system user for reassigning records
+   */
+  private async getSystemUser(): Promise<User | null> {
+    try {
+      // Try to find existing system user
+      const [systemUser] = await db.select().from(users).where(eq(users.email, 'system@workflu.local')).limit(1);
+      return systemUser || null;
+    } catch (error) {
+      console.error('Error getting system user:', error);
+      return null;
+    }
+  }
+
+  /**
    * SECURE USER CLEANUP: Soft-delete with PII anonymization for GDPR compliance
    * This method deactivates user and anonymizes PII while preserving business audit trail
    */
@@ -2035,7 +2107,7 @@ export class DatabaseStorage implements IStorage {
         'users',
         id,
         'update',
-        'user_anonymize',
+        'user_role_change',
         oldUser,
         user,
         undefined,
@@ -2226,7 +2298,21 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
-        // Check business records
+        // Clean up dependent records first (notifications, settings, etc.)
+        try {
+          await this.cleanupUserDependentRecords(userId, auditContext);
+        } catch (error) {
+          results.push({
+            userId,
+            email: user.email!,
+            action: 'error',
+            reason: `Dependent cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          });
+          failed++;
+          continue;
+        }
+
+        // Check business records after dependent cleanup
         const businessCheck = await this.checkUserBusinessRecords(userId);
         
         if (businessCheck.hasRecords) {
