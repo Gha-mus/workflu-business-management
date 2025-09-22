@@ -492,3 +492,157 @@ superAdminRouter.delete("/:id",
     }
   }
 );
+
+// POST /api/super-admin/users/:id/anonymize - Anonymize user data with PII removal (super-admin only)
+superAdminRouter.post("/:id/anonymize",
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Get user data first
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // SECURITY: Prevent self-anonymization
+      if (req.user?.id === id) {
+        return res.status(400).json({ 
+          error: "Cannot anonymize your own account" 
+        });
+      }
+
+      // SECURITY: Prevent anonymizing super-admin users
+      if (user.isSuperAdmin) {
+        return res.status(400).json({ 
+          error: "Cannot anonymize super-admin users for security reasons" 
+        });
+      }
+
+      // SECURITY: Protect last active admin - check if this would leave system without admins
+      if (user.role === 'admin' && user.isActive) {
+        const activeAdminCount = await storage.countAdminUsers();
+        if (activeAdminCount <= 1) {
+          return res.status(400).json({ 
+            error: "Cannot anonymize the last active admin user. At least one active admin must remain to manage the system." 
+          });
+        }
+      }
+
+      // Check for business records first
+      const businessCheck = await storage.checkUserBusinessRecords(id);
+      
+      const context = auditService.extractRequestContext(req);
+      
+      if (businessCheck.hasRecords) {
+        // Anonymize user data
+        const anonymizedUser = await storage.anonymizeUserData(id, context);
+
+        // Invalidate sessions if using Supabase
+        if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
+          const admin = supabaseAdmin();
+          await admin.auth.admin.signOutUser(user.authProviderUserId);
+        }
+
+        res.json({ 
+          message: "User data anonymized successfully. All sessions have been invalidated.",
+          action: "anonymize",
+          anonymizedUser,
+          businessRecords: businessCheck
+        });
+      } else {
+        res.status(400).json({ 
+          error: "User has no business records. Consider permanent deletion instead of anonymization.",
+          suggestion: "Use DELETE /api/super-admin/users/:id for complete removal"
+        });
+      }
+    } catch (error) {
+      console.error("Error anonymizing user:", error);
+      res.status(500).json({ error: "Failed to anonymize user data" });
+    }
+  }
+);
+
+// GET /api/super-admin/users/:id/business-records - Check user's business record dependencies (super-admin only)
+superAdminRouter.get("/:id/business-records",
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Get user data first
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Check comprehensive business records
+      const businessCheck = await storage.checkUserBusinessRecords(id);
+      
+      res.json({ 
+        userId: id,
+        userEmail: user.email,
+        businessRecords: businessCheck
+      });
+    } catch (error) {
+      console.error("Error checking user business records:", error);
+      res.status(500).json({ error: "Failed to check user business records" });
+    }
+  }
+);
+
+// POST /api/super-admin/users/bulk-cleanup - Bulk cleanup of multiple users (super-admin only)
+superAdminRouter.post("/bulk-cleanup",
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const bulkCleanupSchema = z.object({
+        userIds: z.array(z.string()).min(1, "At least one user ID is required"),
+        confirm: z.literal(true, {
+          errorMap: () => ({ message: "Must confirm bulk cleanup operation by setting confirm: true" })
+        })
+      });
+
+      const { userIds, confirm } = bulkCleanupSchema.parse(req.body);
+      
+      if (userIds.length > 50) {
+        return res.status(400).json({ 
+          error: "Cannot process more than 50 users at once for safety reasons" 
+        });
+      }
+
+      // SECURITY: Prevent bulk cleanup if it includes the current user
+      if (userIds.includes(req.user?.id || '')) {
+        return res.status(400).json({ 
+          error: "Cannot include your own account in bulk cleanup" 
+        });
+      }
+
+      const context = auditService.extractRequestContext(req);
+      const results = await storage.bulkCleanupUsers(userIds, context);
+
+      // Create comprehensive audit log for bulk operation
+      await auditService.logOperation(context, {
+        action: "delete",
+        entityType: "user",
+        entityId: "bulk_operation",
+        operationType: "user_bulk_cleanup",
+        description: `Super-admin performed bulk user cleanup: ${results.successful}/${results.processed} users processed successfully`,
+        oldValues: { userIds, requestedCount: userIds.length },
+        newValues: results
+      });
+
+      res.json({ 
+        message: `Bulk cleanup completed: ${results.successful}/${results.processed} users processed successfully`,
+        summary: results
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("Error in bulk user cleanup:", error);
+      res.status(500).json({ error: "Failed to perform bulk user cleanup" });
+    }
+  }
+);
