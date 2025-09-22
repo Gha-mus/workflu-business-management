@@ -6,7 +6,7 @@ import ExcelJS from 'exceljs';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import archiver from 'archiver';
 import { storage } from './storage';
-import { aiService } from './aiService';
+import { aiService } from './services/openai/aiService';
 import type { 
   ExportHistory, 
   InsertExportHistory,

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { isAuthenticated } from "../core/auth";
 import { aiService } from "../services/openai/aiService";
+import { AIServiceError, AI_ERROR_CODES } from "../services/openai/client";
 import {
   aiPurchaseRecommendationRequestSchema,
   aiSupplierRecommendationRequestSchema,
@@ -19,7 +20,13 @@ aiRouter.post("/purchase-recommendation", isAuthenticated, async (req, res) => {
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting purchase recommendation:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -38,7 +45,13 @@ aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting supplier recommendation:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -57,7 +70,13 @@ aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
     res.json(optimization);
   } catch (error) {
     console.error("Error getting capital optimization:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -76,7 +95,13 @@ aiRouter.post("/chat", isAuthenticated, async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Error in AI chat:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -95,7 +120,13 @@ aiRouter.post("/contextual-help", isAuthenticated, async (req, res) => {
     res.json(help);
   } catch (error) {
     console.error("Error getting contextual help:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -113,7 +144,13 @@ aiRouter.get("/executive-summary", isAuthenticated, async (req, res) => {
     res.json(summary);
   } catch (error) {
     console.error("Error getting executive summary:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -131,7 +168,13 @@ aiRouter.get("/anomaly-detection", isAuthenticated, async (req, res) => {
     res.json(anomalies);
   } catch (error) {
     console.error("Error detecting anomalies:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -149,7 +192,13 @@ aiRouter.get("/market-timing", isAuthenticated, async (req, res) => {
     res.json(timing);
   } catch (error) {
     console.error("Error getting market timing:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"
@@ -168,7 +217,13 @@ aiRouter.post("/supplier-performance", isAuthenticated, async (req, res) => {
     res.json(analysis);
   } catch (error) {
     console.error("Error analyzing supplier performance:", error);
-    if (error instanceof Error && error.message.includes('parse')) {
+    if (error instanceof AIServiceError) {
+      const statusCode = error.code === AI_ERROR_CODES.RATE_LIMITED ? 429 : 503;
+      res.status(statusCode).json({ 
+        message: error.message,
+        code: error.code
+      });
+    } else if (error instanceof Error && error.message.includes('parse')) {
       res.status(422).json({ 
         message: "AI response could not be parsed. The service returned fallback data.",
         error: "Invalid AI response format"

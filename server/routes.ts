@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./core/auth";
-import { aiService } from "./aiService";
+import { aiService } from "./services/openai/aiService";
 import { AIServiceError, AI_ERROR_CODES, checkAIFeature, openaiGateway } from "./services/openai/client";
 import { exportService } from "./exportService";
 import { configurationService } from "./configurationService";
@@ -3661,7 +3661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stageResults: gapReport.stages,
         summary: gapReport.summary,
         validationMetadata: {
-          aiModel: 'gpt-5',
+          aiModel: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
           processingTime: Date.now(),
           version: '1.0'
         }

@@ -56,6 +56,16 @@ export default function Settings() {
   const [supplierTradeName, setSupplierTradeName] = useState("");
   const [supplierNotes, setSupplierNotes] = useState("");
   const [preventNegativeBalance, setPreventNegativeBalance] = useState(true);
+  const [aiSettings, setAiSettings] = useState({
+    enabled: false,
+    features: {
+      translation: false,
+      assistant: false,
+      reports: false
+    },
+    model: 'gpt-3.5-turbo',
+    hasApiKey: false
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -70,6 +80,20 @@ export default function Settings() {
       return;
     }
   }, [isAuthenticated, isLoading, toast]);
+
+  // Fetch AI status
+  const { data: aiStatus } = useQuery({
+    queryKey: ['/api/ai/status'],
+    enabled: user?.role === 'admin',
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Update local AI settings when status is fetched
+  useEffect(() => {
+    if (aiStatus) {
+      setAiSettings(aiStatus);
+    }
+  }, [aiStatus]);
 
   const { data: settings } = useQuery<SettingsResponse>({
     queryKey: ['/api/settings'],
@@ -671,7 +695,8 @@ export default function Settings() {
                       </div>
                       <Switch 
                         id="ai-master-toggle"
-                        defaultChecked={true}
+                        checked={aiSettings.enabled}
+                        disabled={true}
                         data-testid="switch-ai-master"
                       />
                     </div>
@@ -694,8 +719,8 @@ export default function Settings() {
                       </div>
                       <Switch 
                         id="ai-feature-translation"
-                        defaultChecked={false}
-                        disabled
+                        checked={aiSettings.features.translation}
+                        disabled={true}
                         data-testid="switch-ai-translation"
                       />
                     </div>
@@ -713,7 +738,8 @@ export default function Settings() {
                       </div>
                       <Switch 
                         id="ai-feature-assistant"
-                        defaultChecked={true}
+                        checked={aiSettings.features.assistant}
+                        disabled={true}
                         data-testid="switch-ai-assistant"
                       />
                     </div>
@@ -731,7 +757,8 @@ export default function Settings() {
                       </div>
                       <Switch 
                         id="ai-feature-reports"
-                        defaultChecked={true}
+                        checked={aiSettings.features.reports}
+                        disabled={true}
                         data-testid="switch-ai-reports"
                       />
                     </div>
@@ -749,7 +776,7 @@ export default function Settings() {
                           </p>
                         </div>
                         <Badge variant="secondary" className="font-mono">
-                          gpt-3.5-turbo
+                          {aiSettings.model}
                         </Badge>
                       </div>
                     </div>
@@ -762,7 +789,12 @@ export default function Settings() {
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         <div>
                           <span className="text-muted-foreground">API Status:</span>
-                          <Badge variant="default" className="ml-2 bg-green-100 text-green-800">Connected</Badge>
+                          <Badge 
+                            variant={aiSettings.hasApiKey ? "default" : "destructive"} 
+                            className={aiSettings.hasApiKey ? "ml-2 bg-green-100 text-green-800" : "ml-2"}
+                          >
+                            {aiSettings.hasApiKey ? "Connected" : "No API Key"}
+                          </Badge>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Rate Limit:</span>
@@ -776,13 +808,23 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  <Button 
-                    className="w-full"
-                    data-testid="save-ai-settings"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    Save AI Settings
-                  </Button>
+                  <div className="space-y-3">
+                    <div className="p-4 border rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Note:</strong> AI settings are configured via environment variables and cannot be changed from the UI.
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        To modify these settings, update your .env file with:
+                      </p>
+                      <ul className="text-xs font-mono mt-2 space-y-1 text-muted-foreground">
+                        <li>AI_ENABLED=true/false</li>
+                        <li>AI_FEATURE_ASSISTANT=true/false</li>
+                        <li>AI_FEATURE_REPORTS=true/false</li>
+                        <li>AI_FEATURE_TRANSLATION=true/false</li>
+                        <li>OPENAI_MODEL=gpt-3.5-turbo</li>
+                      </ul>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
