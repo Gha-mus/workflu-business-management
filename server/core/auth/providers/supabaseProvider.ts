@@ -91,6 +91,7 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
         role: appUser.role,
         roles: (appUser.roles as User['role'][]) || [],
         isActive: appUser.isActive,
+        isSuperAdmin: appUser.isSuperAdmin,
         authProvider: 'supabase' as const,
         authUserId: user.id
       };
@@ -130,6 +131,7 @@ const verifySupabaseToken = async (token: string): Promise<AuthUser | null> => {
         role: appUser.role,
         roles: (appUser.roles as User['role'][]) || [],
         isActive: appUser.isActive,
+        isSuperAdmin: appUser.isSuperAdmin,
         authProvider: 'supabase' as const,
         authUserId: supabaseUserId
       };
