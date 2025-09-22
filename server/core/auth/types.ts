@@ -15,6 +15,7 @@ export interface AuthUser {
   role: User['role'];
   roles?: User['role'][];
   isActive: boolean;
+  isSuperAdmin: boolean; // Super-admin protection flag
   authProvider: 'supabase';
   authUserId: string;  // Provider-specific user ID
 }
