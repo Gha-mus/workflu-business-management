@@ -513,7 +513,7 @@ export default function Warehouse() {
         <div className="flex-1 overflow-auto bg-background p-6">
           <Tabs defaultValue="first-warehouse" className="space-y-6">
             <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="first-warehouse">Inventory</TabsTrigger>
+              <TabsTrigger value="first-warehouse">First Warehouse</TabsTrigger>
               <TabsTrigger value="final-warehouse">Final Warehouse</TabsTrigger>
               <TabsTrigger value="quality-control">Quality Control</TabsTrigger>
               <TabsTrigger value="batch-management">Batches</TabsTrigger>
