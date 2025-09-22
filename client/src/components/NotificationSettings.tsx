@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useToast } from '@/hooks/use-toast';
 
@@ -85,9 +86,11 @@ export function NotificationSettings() {
   }
 
   return (
-    <div className="space-y-6" data-testid="notification-settings">
-      {/* Delivery Channels */}
-      <Card>
+    <div className="flex flex-col h-full" data-testid="notification-settings">
+      <ScrollArea className="flex-1 h-[600px] pr-4">
+        <div className="space-y-6">
+          {/* Delivery Channels */}
+          <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5" />
@@ -286,9 +289,11 @@ export function NotificationSettings() {
           )}
         </CardContent>
       </Card>
+        </div>
+      </ScrollArea>
 
       {/* Actions */}
-      <div className="flex items-center gap-3 pt-4 border-t">
+      <div className="flex items-center gap-3 pt-4 border-t mt-4">
         <Button
           onClick={handleSave}
           disabled={isSaving}
