@@ -7,7 +7,7 @@ import type { SettingsResponse, SuppliersResponse } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { Sidebar } from "@/components/Sidebar";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { 
   Settings as SettingsIcon,
   DollarSign,
@@ -42,7 +49,139 @@ import {
   Power,
   MessageSquare,
   FileText,
-  Globe
+  Globe,
+  Warehouse,
+  Bell,
+  Calculator,
+  Clock,
+  Archive,
+  Key,
+  RefreshCw,
+  Trash2,
+  History,
+  AlertTriangle,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  Copy,
+  Monitor,
+  Zap,
+  Target,
+  BarChart3,
+  PieChart,
+  TrendingUp,
+  Activity,
+  Lock,
+  Unlock,
+  Search,
+  Filter,
+  Download,
+  Upload,
+  Calendar,
+  Mail,
+  Phone,
+  MapPin,
+  Building,
+  CreditCard,
+  Percent,
+  Hash,
+  Type,
+  ToggleLeft,
+  ToggleRight,
+  Info,
+  HelpCircle,
+  ExternalLink,
+  Laptop,
+  Smartphone,
+  Tablet,
+  Server,
+  Cloud,
+  HardDrive,
+  Cpu,
+  Network,
+  Wifi,
+  Camera,
+  Printer,
+  Volume2,
+  Headphones,
+  Mic,
+  Video,
+  Image,
+  Folder,
+  FolderOpen,
+  File,
+  FileCheck,
+  FilePlus,
+  FileX,
+  Paperclip,
+  Link,
+  Tag,
+  Bookmark,
+  Star,
+  Heart,
+  ThumbsUp,
+  ThumbsDown,
+  MessageCircle,
+  Send,
+  Share,
+  Forward,
+  Reply,
+  ReplyAll,
+  Inbox,
+  Trash,
+  MailCheck,
+  MailOpen,
+  MailX,
+  UserPlus,
+  UserMinus,
+  UserCheck,
+  UserX,
+  Crown,
+  Award,
+  Trophy,
+  Medal,
+  Gift,
+  Package,
+  ShoppingCart,
+  ShoppingBag,
+  Store,
+  CreditCard as CardIcon,
+  Coins,
+  Banknote,
+  Receipt,
+  Calculator as CalcIcon,
+  TrendingDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  MoreVertical,
+  Menu,
+  X,
+  Maximize,
+  Minimize,
+  RotateCcw,
+  RotateCw,
+  FlipHorizontal,
+  FlipVertical,
+  Move,
+  Crop,
+  Scissors,
+  PaintBucket,
+  Brush,
+  Palette,
+  Pipette,
+  Ruler,
+  Grid,
+  Layout,
+  Layers,
+  Shapes,
+  Wrench
 } from "lucide-react";
 
 export default function Settings() {
@@ -67,6 +206,47 @@ export default function Settings() {
     hasApiKey: false
   });
   const [isSavingAI, setIsSavingAI] = useState(false);
+
+  // Management tab state and schemas
+  const [activeManagementTab, setActiveManagementTab] = useState('overview');
+  const [showSnapshotDialog, setShowSnapshotDialog] = useState(false);
+
+  // Zod schemas for Management forms
+  const settingUpdateSchema = z.object({
+    key: z.string().min(1, 'Setting key is required'),
+    value: z.string().min(1, 'Setting value is required'),
+    description: z.string().optional(),
+    category: z.enum(['financial', 'operational', 'security', 'numbering', 'notification', 'user', 'warehouse', 'general']),
+    dataType: z.enum(['string', 'number', 'boolean', 'json']),
+    isSystemCritical: z.boolean().default(false),
+    requiresApproval: z.boolean().default(false),
+    changeReason: z.string().min(1, 'Change reason is required'),
+  });
+
+  const numberingSchemeSchema = z.object({
+    entityType: z.string().min(1, 'Entity type is required'),
+    prefix: z.string().default(''),
+    currentNumber: z.number().min(0).default(0),
+    increment: z.number().min(1).default(1),
+    minDigits: z.number().min(1).max(10).default(4),
+    suffix: z.string().default(''),
+    format: z.string().default('{prefix}{number:0{minDigits}}{suffix}'),
+    resetPeriod: z.enum(['never', 'annual', 'monthly']).default('never'),
+  });
+
+  const snapshotCreateSchema = z.object({
+    name: z.string().min(1, 'Snapshot name is required'),
+    description: z.string().optional(),
+  });
+
+  // Forms for Management
+  const snapshotForm = useForm({
+    resolver: zodResolver(snapshotCreateSchema),
+    defaultValues: {
+      name: '',
+      description: ''
+    }
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -186,6 +366,28 @@ export default function Settings() {
         variant: "destructive",
       });
     },
+  });
+
+  // Management tab mutations
+  const createSnapshotMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof snapshotCreateSchema>) => {
+      return await apiRequest('/api/settings/snapshots', 'POST', data);
+    },
+    onSuccess: () => {
+      toast({ 
+        title: 'Snapshot Created',
+        description: 'Configuration snapshot has been created successfully.'
+      });
+      snapshotForm.reset();
+      setShowSnapshotDialog(false);
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Snapshot Creation Failed',
+        description: 'Failed to create configuration snapshot.',
+        variant: 'destructive'
+      });
+    }
   });
 
   const updateNegativeBalanceMutation = useMutation({
@@ -347,6 +549,7 @@ export default function Settings() {
               <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
               <TabsTrigger value="system">System</TabsTrigger>
               <TabsTrigger value="ai">AI</TabsTrigger>
+              <TabsTrigger value="management">Management</TabsTrigger>
             </TabsList>
 
             <TabsContent value="general" className="space-y-6">
@@ -898,9 +1101,342 @@ export default function Settings() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <TabsContent value="management" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <h3 className="text-lg font-semibold flex items-center">
+                    <Wrench className="w-5 h-5 mr-2" />
+                    Advanced Management Configuration
+                  </h3>
+                </CardHeader>
+                <CardContent>
+                  <Tabs value={activeManagementTab} onValueChange={setActiveManagementTab}>
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="overview">Overview</TabsTrigger>
+                      <TabsTrigger value="financial">Financial</TabsTrigger>
+                      <TabsTrigger value="operational">Operational</TabsTrigger>
+                      <TabsTrigger value="numbering">Numbering</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="overview" className="space-y-6 mt-6">
+                      {/* System Overview */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Monitor className="h-5 w-5" />
+                            System Overview
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="p-4 border rounded-lg">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Activity className="h-4 w-4 text-green-600" />
+                                <span className="text-sm font-medium">System Status</span>
+                              </div>
+                              <Badge variant="default" className="bg-green-100 text-green-800">
+                                Operational
+                              </Badge>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Database className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium">Database</span>
+                              </div>
+                              <Badge variant="secondary">PostgreSQL</Badge>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Clock className="h-4 w-4 text-purple-600" />
+                                <span className="text-sm font-medium">Version</span>
+                              </div>
+                              <Badge variant="outline">v1.0.0</Badge>
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          <div>
+                            <h4 className="font-semibold mb-3">Quick Actions</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="p-4 border rounded-lg">
+                                <h4 className="font-semibold mb-2">Configuration Backup</h4>
+                                <p className="text-sm text-muted-foreground mb-3">
+                                  Create a snapshot of current settings for recovery.
+                                </p>
+                                <Button 
+                                  variant="outline" 
+                                  className="w-full"
+                                  onClick={() => setShowSnapshotDialog(true)}
+                                  data-testid="button-create-backup"
+                                >
+                                  <Archive className="mr-2 h-4 w-4" />
+                                  Create Backup
+                                </Button>
+                              </div>
+
+                              <div className="p-4 border rounded-lg">
+                                <h4 className="font-semibold mb-2">System Health Check</h4>
+                                <p className="text-sm text-muted-foreground mb-3">
+                                  Run comprehensive system health and configuration checks.
+                                </p>
+                                <Button variant="outline" className="w-full" data-testid="button-health-check">
+                                  <Activity className="mr-2 h-4 w-4" />
+                                  Run Health Check
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="financial" className="space-y-6 mt-6">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <DollarSign className="h-5 w-5" />
+                            Financial Configuration
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <Label>Tax Rate (%)</Label>
+                              <Input 
+                                type="number" 
+                                step="0.01" 
+                                placeholder="15.00"
+                                data-testid="input-tax-rate"
+                              />
+                            </div>
+                            <div>
+                              <Label>Fiscal Year Start</Label>
+                              <Select defaultValue="january">
+                                <SelectTrigger data-testid="select-fiscal-year">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="january">January</SelectItem>
+                                  <SelectItem value="april">April</SelectItem>
+                                  <SelectItem value="july">July</SelectItem>
+                                  <SelectItem value="october">October</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Payment Terms (Days)</Label>
+                            <Input 
+                              type="number" 
+                              defaultValue="30" 
+                              data-testid="input-payment-terms"
+                            />
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <Switch id="auto-calculate-tax" defaultChecked />
+                            <Label htmlFor="auto-calculate-tax">Automatically calculate tax on transactions</Label>
+                          </div>
+
+                          <Button data-testid="save-financial-config">
+                            <Save className="w-4 h-4 mr-2" />
+                            Save Financial Configuration
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="operational" className="space-y-6 mt-6">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Warehouse className="h-5 w-5" />
+                            Operational Configuration
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                          <div className="space-y-4">
+                            <div>
+                              <Label>Default Warehouse Code</Label>
+                              <Input 
+                                defaultValue="WH001" 
+                                data-testid="input-default-warehouse"
+                              />
+                            </div>
+
+                            <div>
+                              <Label>Minimum Stock Alert Threshold</Label>
+                              <Input 
+                                type="number" 
+                                defaultValue="100" 
+                                data-testid="input-stock-threshold"
+                              />
+                            </div>
+
+                            <div className="flex items-center space-x-2">
+                              <Switch id="auto-approve-small" />
+                              <Label htmlFor="auto-approve-small">Auto-approve transactions under $1,000</Label>
+                            </div>
+
+                            <div className="flex items-center space-x-2">
+                              <Switch id="require-two-factor" />
+                              <Label htmlFor="require-two-factor">Require two-factor approval for critical operations</Label>
+                            </div>
+
+                            <div className="flex items-center space-x-2">
+                              <Switch id="enable-audit-trail" defaultChecked />
+                              <Label htmlFor="enable-audit-trail">Enable comprehensive audit trail</Label>
+                            </div>
+                          </div>
+
+                          <Button data-testid="save-operational-config">
+                            <Save className="w-4 h-4 mr-2" />
+                            Save Operational Configuration
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="numbering" className="space-y-6 mt-6">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Hash className="h-5 w-5" />
+                            Numbering Schemes
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            <div className="p-4 border rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-semibold">Purchase Orders</h4>
+                                <Badge variant="secondary">PO-{new Date().getFullYear()}-0001</Badge>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Prefix:</span> PO-
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Current:</span> 0001
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Min Digits:</span> 4
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Reset:</span> Annual
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-4 border rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-semibold">Sales Invoices</h4>
+                                <Badge variant="secondary">INV-{new Date().getFullYear()}-0001</Badge>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Prefix:</span> INV-
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Current:</span> 0001
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Min Digits:</span> 4
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Reset:</span> Annual
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-4 border rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-semibold">Shipments</h4>
+                                <Badge variant="secondary">SHIP-{new Date().getFullYear()}-0001</Badge>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Prefix:</span> SHIP-
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Current:</span> 0001
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Min Digits:</span> 4
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Reset:</span> Annual
+                                </div>
+                              </div>
+                            </div>
+
+                            <Button variant="outline" className="w-full" data-testid="button-reset-counters">
+                              <RotateCcw className="mr-2 h-4 w-4" />
+                              Reset All Counters for New Year
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs>
         </div>
       </main>
+
+      {/* Create Snapshot Dialog */}
+      {showSnapshotDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Create Configuration Snapshot</h2>
+            <Form {...snapshotForm}>
+              <form onSubmit={snapshotForm.handleSubmit((data) => createSnapshotMutation.mutate(data))} className="space-y-4">
+                <FormField
+                  control={snapshotForm.control as any}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Snapshot Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., Pre-Migration Backup" data-testid="input-snapshot-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={snapshotForm.control as any}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description (Optional)</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} placeholder="Describe the purpose of this snapshot..." data-testid="textarea-snapshot-description" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setShowSnapshotDialog(false)} data-testid="button-cancel-snapshot">
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createSnapshotMutation.isPending} data-testid="button-submit-snapshot">
+                    {createSnapshotMutation.isPending ? 'Creating...' : 'Create Snapshot'}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
