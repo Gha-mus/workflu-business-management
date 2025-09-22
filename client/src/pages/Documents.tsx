@@ -3,7 +3,6 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { TranslatedText } from '@/components/TranslatedText';
 import { 
   Select,
   SelectContent,
@@ -254,9 +253,9 @@ export default function Documents() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white"><TranslatedText>Document Management</TranslatedText></h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Document Management</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            <TranslatedText>Manage invoices, contracts, compliance records, and other business documents</TranslatedText>
+            Manage invoices, contracts, compliance records, and other business documents
           </p>
         </div>
         
@@ -269,9 +268,9 @@ export default function Documents() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle><TranslatedText>Upload New Document</TranslatedText></DialogTitle>
+              <DialogTitle>Upload New Document</DialogTitle>
               <DialogDescription>
-                <TranslatedText>Upload and categorize your business documents with metadata and compliance information.</TranslatedText>
+                Upload and categorize your business documents with metadata and compliance information.
               </DialogDescription>
             </DialogHeader>
             
@@ -446,7 +445,7 @@ export default function Documents() {
                     onClick={() => setIsUploadDialogOpen(false)}
                     data-testid="button-cancel-upload"
                   >
-                    <TranslatedText>Cancel</TranslatedText>
+                    Cancel
                   </Button>
                   <Button 
                     type="submit" 
@@ -456,10 +455,10 @@ export default function Documents() {
                     {uploadMutation.isPending ? (
                       <>
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        <TranslatedText>Uploading...</TranslatedText>
+                        Uploading...
                       </>
                     ) : (
-                      <TranslatedText>Upload Document</TranslatedText>
+                      'Upload Document'
                     )}
                   </Button>
                 </div>
@@ -582,7 +581,7 @@ export default function Documents() {
               </p>
               <Button onClick={() => setIsUploadDialogOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" />
-                <TranslatedText>Upload Document</TranslatedText>
+                Upload Document
               </Button>
             </CardContent>
           </Card>
