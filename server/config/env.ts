@@ -23,7 +23,14 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   
   // AI services
-  OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
+  OPENAI_API_KEY: z.string().optional(), // Made optional for fail-safe
+  OPENAI_MODEL: z.string().default('gpt-3.5-turbo'),
+  
+  // AI Feature Toggles
+  AI_ENABLED: z.string().transform(val => val === 'true').default('false'),
+  AI_FEATURE_TRANSLATION: z.string().transform(val => val === 'true').default('false'),
+  AI_FEATURE_ASSISTANT: z.string().transform(val => val === 'true').default('false'),
+  AI_FEATURE_REPORTS: z.string().transform(val => val === 'true').default('false'),
   
   // Environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

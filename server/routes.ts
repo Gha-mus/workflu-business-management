@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./core/auth";
 import { aiService } from "./aiService";
+import { AIServiceError, AI_ERROR_CODES, checkAIFeature, openaiGateway } from "./services/openai/client";
 import { exportService } from "./exportService";
 import { configurationService } from "./configurationService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
@@ -3025,7 +3026,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===============================================
+  // API endpoint to get AI status
+  app.get('/api/ai/status', requireRole(['admin']), (req, res) => {
+    const status = openaiGateway.getStatus();
+    res.json(status);
+  });
+
+  // API endpoint to update AI settings (Note: requires server restart to take effect)
+  app.post('/api/ai/settings', requireRole(['admin']), async (req, res) => {
+    try {
+      const { enabled, features } = req.body;
+      
+      // Note: These settings would need to be saved to a configuration file 
+      // or environment variables to persist across restarts
+      // For now, we return a message indicating manual configuration is needed
+      
+      res.json({
+        success: false,
+        message: 'AI settings must be configured via environment variables. Please update your .env file and restart the server.',
+        currentStatus: openaiGateway.getStatus(),
+        instructions: {
+          master: 'Set AI_ENABLED=true or AI_ENABLED=false',
+          features: {
+            translation: 'Set AI_FEATURE_TRANSLATION=true or AI_FEATURE_TRANSLATION=false',
+            assistant: 'Set AI_FEATURE_ASSISTANT=true or AI_FEATURE_ASSISTANT=false',
+            reports: 'Set AI_FEATURE_REPORTS=true or AI_FEATURE_REPORTS=false'
+          },
+          model: 'Set OPENAI_MODEL=gpt-3.5-turbo (currently locked to this model)'
+        }
+      });
+    } catch (error) {
+      console.error('Error updating AI settings:', error);
+      res.status(500).json({ message: 'Failed to update AI settings' });
+    }
+  });
+
   // AI Routes - Business Process Automation
+  // ===============================================
+  
+  // Helper function to handle AI service errors consistently
+  const handleAIError = (error: any, res: any) => {
+    console.error("AI Service Error:", error);
+    
+    // Check if it's an AIServiceError with specific code
+    if (error instanceof AIServiceError) {
+      switch (error.code) {
+        case AI_ERROR_CODES.AI_DISABLED:
+          return res.status(503).json({ 
+            code: 'AI_DISABLED',
+            message: 'AI features are currently disabled. Please enable AI in settings.'
+          });
+        case AI_ERROR_CODES.AI_FEATURE_DISABLED:
+          return res.status(503).json({ 
+            code: 'AI_FEATURE_DISABLED',
+            message: error.message
+          });
+        case AI_ERROR_CODES.OPENAI_KEY_MISSING:
+          return res.status(503).json({ 
+            code: 'AI_DISABLED',
+            message: 'AI service is not configured. Please add OpenAI API key.'
+          });
+        case AI_ERROR_CODES.RATE_LIMITED:
+          return res.status(429).json({ 
+            code: 'RATE_LIMITED',
+            message: 'AI service rate limit exceeded. Please try again later.'
+          });
+        default:
+          return res.status(503).json({ 
+            code: 'SERVICE_ERROR',
+            message: 'AI service temporarily unavailable.'
+          });
+      }
+    }
+    
+    // Legacy error handling for backward compatibility
+    if (error.message?.includes('OpenAI API key')) {
+      return res.status(503).json({ 
+        code: 'AI_DISABLED',
+        message: 'AI service is not configured. Please add OpenAI API key.'
+      });
+    }
+    
+    return res.status(500).json({ 
+      message: 'Failed to process AI request',
+      error: error.message
+    });
+  };
   app.post('/api/ai/purchase-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
     try {
       const requestData = aiPurchaseRecommendationRequestSchema.parse(req.body);
@@ -3066,12 +3153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(result);
     } catch (error) {
-      console.error("Error generating purchase recommendations:", error);
-      res.status(500).json({ 
-        message: error.message.includes('OpenAI API key') 
-          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
-          : "Failed to generate purchase recommendations" 
-      });
+      handleAIError(error, res);
     }
   });
 
@@ -3109,12 +3191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(result);
     } catch (error) {
-      console.error("Error generating supplier recommendations:", error);
-      res.status(500).json({ 
-        message: error.message.includes('OpenAI API key') 
-          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
-          : "Failed to generate supplier recommendations" 
-      });
+      handleAIError(error, res);
     }
   });
 
@@ -3163,12 +3240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(result);
     } catch (error) {
-      console.error("Error generating capital optimization:", error);
-      res.status(500).json({ 
-        message: error.message.includes('OpenAI API key') 
-          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
-          : "Failed to generate capital optimization suggestions" 
-      });
+      handleAIError(error, res);
     }
   });
 
@@ -3206,12 +3278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(result);
     } catch (error) {
-      console.error("Error generating inventory recommendations:", error);
-      res.status(500).json({ 
-        message: error.message.includes('OpenAI API key') 
-          ? "AI service not configured. Please set OPENAI_API_KEY environment variable."
-          : "Failed to generate inventory recommendations" 
-      });
+      handleAIError(error, res);
     }
   });
 
