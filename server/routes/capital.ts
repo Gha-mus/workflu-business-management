@@ -11,13 +11,14 @@ import { configurationService } from "../configurationService";
 export const capitalRouter = Router();
 
 // GET /api/capital/entries
-capitalRouter.get("/entries", isAuthenticated, async (req, res) => {
+capitalRouter.get("/entries", isAuthenticated, async (req, res, next) => {
   try {
     const entries = await storage.getCapitalEntries();
     res.json(entries);
   } catch (error) {
-    console.error("Error fetching capital entries:", error);
-    res.status(500).json({ message: "Failed to fetch capital entries" });
+    // Pass error to the global error handler instead of handling it directly
+    // The error handler will properly map the error to appropriate HTTP status code
+    next(error);
   }
 });
 

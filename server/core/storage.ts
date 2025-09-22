@@ -1,5 +1,6 @@
 import {
   users,
+  userWarehouseScopes,
   suppliers,
   orders,
   purchases,
@@ -19,6 +20,9 @@ import {
   carriers,
   shipments,
   shipmentItems,
+  shipmentLegs,
+  arrivalCosts,
+  salesReturns,
   shippingCosts,
   deliveryTracking,
   qualityStandards,
@@ -37,6 +41,7 @@ import {
   salesPerformanceMetrics,
   customerCreditLimits,
   pricingRules,
+  financialMetrics,
   // Stage 5 Operating Expenses tables
   supplies,
   operatingExpenseCategories,
@@ -247,6 +252,14 @@ import {
   type InsertReinvestment,
   type RevenueBalanceSummary,
   type InsertRevenueBalanceSummary,
+  // Missing types that were causing errors
+  type FinancialMetric,
+  type ShipmentLeg,
+  type InsertShipmentLeg,
+  type ArrivalCost,
+  type InsertArrivalCost,
+  type SalesReturn,
+  type InsertSalesReturn,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
@@ -565,13 +578,12 @@ class StorageApprovalGuard {
         userRole: 'system',
         source: 'storage_security_guard',
         severity: 'critical',
-        businessContext: `Security violation: ${violation.violation}`
+        businessContext: `Security violation: ${violation.violation} in operation ${violation.operationType} by user ${violation.userId}`
       }, {
         entityType: 'security_violation',
         entityId: `violation_${violation.violation}_${Date.now()}`,
         action: 'create',
         description: `CRITICAL SECURITY VIOLATION: ${violation.violation}`,
-        businessContext: `Security violation in operation ${violation.operationType} by user ${violation.userId}`,
         operationType: violation.operationType as any,
         newValues: {
           violationType: violation.violation,
@@ -649,7 +661,7 @@ class StorageApprovalGuard {
         operationType: operationType as any,
         oldValues: oldData,
         newValues: newData,
-        changedFields: oldData && newData ? Object.keys(newData).filter(key => newData[key] !== oldData[key]) : null,
+        changedFields: oldData && newData ? Object.keys(newData).filter(key => newData[key] !== oldData[key]) : undefined,
         financialImpact,
         currency: currency || 'USD'
       });
@@ -1921,7 +1933,10 @@ export class DatabaseStorage implements IStorage {
     // CRITICAL SECURITY: Audit logging for user role changes
     if (auditContext) {
       await StorageApprovalGuard.auditOperation(
-        auditContext,
+        {
+          ...auditContext,
+          businessContext: `Changed user role from ${oldUser.role} to ${role} for ${oldUser.email}`
+        },
         'users',
         id,
         'update',
@@ -1929,8 +1944,7 @@ export class DatabaseStorage implements IStorage {
         { role: oldUser.role },
         { role },
         undefined,
-        undefined,
-        `Changed user role from ${oldUser.role} to ${role} for ${oldUser.email}`
+        undefined
       );
     }
     
@@ -1951,33 +1965,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteUser(id: string, auditContext?: AuditContext): Promise<User> {
-    // Get old user data for audit trail
-    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
-    
-    if (!oldUser) {
-      throw new Error(`User not found: ${id}`);
-    }
+    // Use transaction to ensure atomicity of cleanup and deletion
+    return await db.transaction(async (tx) => {
+      // Get old user data for audit trail
+      const [oldUser] = await tx.select().from(users).where(eq(users.id, id));
+      
+      if (!oldUser) {
+        throw new Error(`User not found: ${id}`);
+      }
 
-    // Delete the user from the database
-    await db.delete(users).where(eq(users.id, id));
-    
-    // CRITICAL SECURITY: Audit logging for user deletion
-    if (auditContext) {
-      await StorageApprovalGuard.auditOperation(
-        auditContext,
-        'users',
-        id,
-        'delete',
-        'user_role_change',
-        oldUser,
-        undefined,
-        undefined,
-        undefined,
-        `Permanently deleted user: ${oldUser.email}`
-      );
-    }
-    
-    return oldUser;
+      // Clean up dependent records before deletion to avoid foreign key constraints
+      await this.cleanupUserDependentRecordsInTransaction(tx, id, auditContext);
+
+      // Delete the user from the database
+      await tx.delete(users).where(eq(users.id, id));
+      
+      // CRITICAL SECURITY: Audit logging for user deletion
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          {
+            ...auditContext,
+            businessContext: `Permanently deleted user: ${oldUser.email}`
+          },
+          'users',
+          id,
+          'delete',
+          'user_role_change',
+          oldUser,
+          undefined,
+          undefined,
+          undefined
+        );
+      }
+      
+      return oldUser;
+    });
   }
 
   async updateUserStatus(id: string, isActive: boolean): Promise<User> {
@@ -2003,32 +2025,43 @@ export class DatabaseStorage implements IStorage {
    * Handles notification_queue, notification_settings, etc.
    */
   async cleanupUserDependentRecords(userId: string, auditContext?: AuditContext): Promise<void> {
+    // Wrap in transaction for consistency
+    await db.transaction(async (tx) => {
+      await this.cleanupUserDependentRecordsInTransaction(tx, userId, auditContext);
+    });
+  }
+
+  /**
+   * DEPENDENT RECORD CLEANUP (Transaction version): Clean up user-dependent records within a transaction
+   * This version accepts a transaction context to ensure atomicity with other operations
+   */
+  private async cleanupUserDependentRecordsInTransaction(tx: any, userId: string, auditContext?: AuditContext): Promise<void> {
     try {
       // Clean up notification queue entries
-      await db.delete(notificationQueue).where(eq(notificationQueue.userId, userId));
+      await tx.delete(notificationQueue).where(eq(notificationQueue.userId, userId));
       
       // Clean up notification settings
-      await db.delete(notificationSettings).where(eq(notificationSettings.userId, userId));
+      await tx.delete(notificationSettings).where(eq(notificationSettings.userId, userId));
       
       // For customers table, reassign to system user instead of deleting
       // This preserves business data integrity
-      const systemUser = await this.getSystemUser();
+      const systemUser = await this.getSystemUserInTransaction(tx);
       if (systemUser) {
-        await db
+        await tx
           .update(customers)
           .set({ createdBy: systemUser.id })
           .where(eq(customers.createdBy, userId));
           
         // Handle settings_history table
         const { settingsHistory } = await import('@shared/schema');
-        await db
+        await tx
           .update(settingsHistory)
           .set({ createdBy: systemUser.id })
           .where(eq(settingsHistory.createdBy, userId));
           
         // Handle configuration_snapshots table
         const { configurationSnapshots } = await import('@shared/schema');
-        await db
+        await tx
           .update(configurationSnapshots)
           .set({ createdBy: systemUser.id })
           .where(eq(configurationSnapshots.createdBy, userId));
@@ -2037,7 +2070,10 @@ export class DatabaseStorage implements IStorage {
       // Log cleanup action if audit context provided
       if (auditContext) {
         await StorageApprovalGuard.auditOperation(
-          auditContext,
+          {
+            ...auditContext,
+            businessContext: `Cleaned up dependent records for user ${userId} (notifications, settings, customer reassignment)`
+          },
           'users',
           userId,
           'update',
@@ -2045,8 +2081,7 @@ export class DatabaseStorage implements IStorage {
           null,
           null,
           undefined,
-          undefined,
-          `Cleaned up dependent records for user ${userId} (notifications, settings, customer reassignment)`
+          undefined
         );
       }
       
@@ -2063,6 +2098,20 @@ export class DatabaseStorage implements IStorage {
     try {
       // Try to find existing system user
       const [systemUser] = await db.select().from(users).where(eq(users.email, 'system@workflu.local')).limit(1);
+      return systemUser || null;
+    } catch (error) {
+      console.error('Error getting system user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get or create system user for reassigning records (Transaction version)
+   */
+  private async getSystemUserInTransaction(tx: any): Promise<User | null> {
+    try {
+      // Try to find existing system user within the transaction
+      const [systemUser] = await tx.select().from(users).where(eq(users.email, 'system@workflu.local')).limit(1);
       return systemUser || null;
     } catch (error) {
       console.error('Error getting system user:', error);
@@ -2103,7 +2152,10 @@ export class DatabaseStorage implements IStorage {
     // CRITICAL: Audit logging for PII anonymization
     if (auditContext) {
       await StorageApprovalGuard.auditOperation(
-        auditContext,
+        {
+          ...auditContext,
+          businessContext: `Anonymized user PII data for: ${oldUser.email} (compliance deletion)`
+        },
         'users',
         id,
         'update',
@@ -2111,8 +2163,7 @@ export class DatabaseStorage implements IStorage {
         oldUser,
         user,
         undefined,
-        undefined,
-        `Anonymized user PII data for: ${oldUser.email} (compliance deletion)`
+        undefined
       );
     }
 
@@ -2469,7 +2520,10 @@ export class DatabaseStorage implements IStorage {
     // CRITICAL SECURITY: Audit logging for system setting changes
     if (auditContext) {
       await StorageApprovalGuard.auditOperation(
-        auditContext,
+        {
+          ...auditContext,
+          businessContext: `${oldSetting ? 'Updated' : 'Created'} system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+        },
         'settings',
         result.id,
         oldSetting ? 'update' : 'create',
@@ -2477,8 +2531,7 @@ export class DatabaseStorage implements IStorage {
         oldSetting ? { value: oldSetting.value } : undefined,
         { value: setting.value },
         undefined,
-        undefined,
-        `${oldSetting ? 'Updated' : 'Created'} system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+        undefined
       );
     }
     
@@ -2539,7 +2592,10 @@ export class DatabaseStorage implements IStorage {
     // CRITICAL SECURITY: Audit logging for system setting changes
     if (auditContext) {
       await StorageApprovalGuard.auditOperation(
-        auditContext,
+        {
+          ...auditContext,
+          businessContext: `Updated system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+        },
         'settings',
         result.id,
         'update',
@@ -2547,8 +2603,7 @@ export class DatabaseStorage implements IStorage {
         { value: oldSetting.value },
         { value: setting.value },
         undefined,
-        undefined,
-        `Updated system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+        undefined
       );
     }
     
@@ -2909,7 +2964,8 @@ export class DatabaseStorage implements IStorage {
     // STAGE 1 COMPLIANCE: Normalize entry amount to USD for consistent comparisons
     let entryAmountUSD = new Decimal(entry.amount);
     if (entry.paymentCurrency === 'ETB') {
-      const rate = entry.exchangeRate ? parseFloat(entry.exchangeRate) : await config.getCentralExchangeRate();
+      // Exchange rate is not provided in InsertCapitalEntry, use central rate
+      const rate = await config.getCentralExchangeRate();
       if (!Number.isFinite(rate) || rate <= 0) {
         throw new Error(`Invalid exchange rate for capital entry: ${rate}. Must be a positive finite number.`);
       }
@@ -2928,7 +2984,8 @@ export class DatabaseStorage implements IStorage {
       
       // Convert from purchase currency to USD if needed
       if (purchase.currency === 'ETB') {
-        const rate = purchase.exchangeRate ? parseFloat(purchase.exchangeRate) : await config.getCentralExchangeRate();
+        // Use the purchase's stored exchange rate or central rate
+        const rate = purchase.exchangeRate ? parseFloat(purchase.exchangeRate as string) : await config.getCentralExchangeRate();
         if (!Number.isFinite(rate) || rate <= 0) {
           throw new Error(`Invalid exchange rate for purchase: ${rate}. Must be a positive finite number.`);
         }
@@ -3128,21 +3185,23 @@ export class DatabaseStorage implements IStorage {
         
         // STAGE 2 SECURITY: Convert amount to USD using central exchange rate (never trust client)
         let amountInUsd = amountPaid;
+        const config = ConfigurationService.getInstance();
+        let exchangeRate: number | undefined;
         if (purchaseData.currency === 'ETB') {
-          // Use central exchange rate - purchaseData.exchangeRate is already set by routes validation
-          const centralRate = new Decimal(purchaseData.exchangeRate as string);
+          // Get central exchange rate from configuration
+          exchangeRate = await config.getCentralExchangeRate();
+          const centralRate = new Decimal(exchangeRate);
           amountInUsd = amountPaid.div(centralRate);
         }
         
         // Create capital entry with atomic balance checking
+        // Note: entryId and exchangeRate are set by the database, not provided in InsertCapitalEntry
         await this.createCapitalEntryInTransaction(tx, {
-          entryId: `PUR-${purchase.id}`,
           amount: amountInUsd.toFixed(2),
           type: 'CapitalOut',
           reference: purchase.id,
-          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${purchaseData.exchangeRate})` : ''}`,
+          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${exchangeRate})` : ''}`,
           paymentCurrency: purchaseData.currency,
-          exchangeRate: purchaseData.exchangeRate || undefined,
           createdBy: userId,
         });
       }
@@ -3151,7 +3210,7 @@ export class DatabaseStorage implements IStorage {
       const pricePerKg = new Decimal(purchaseData.pricePerKg);
       const unitCostCleanUsd = purchaseData.currency === 'USD' 
         ? purchaseData.pricePerKg 
-        : pricePerKg.div(new Decimal(purchaseData.exchangeRate as string)).toFixed(4);
+        : pricePerKg.div(new Decimal(exchangeRate || await config.getCentralExchangeRate())).toFixed(4);
 
       await tx.insert(warehouseStock).values({
         purchaseId: purchase.id,
@@ -3395,7 +3454,7 @@ export class DatabaseStorage implements IStorage {
         .returning();
 
       // STAGE 2 SECURITY: Enforce central FX rate for currency conversion
-      const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+      const centralRate = await ConfigurationService.getInstance().getCentralExchangeRate();
       
       // If there's a balance difference and purchase is capital-funded, create adjustment entry
       if (purchase.fundingSource === 'capital' && !balanceDiff.isZero()) {
@@ -3409,13 +3468,11 @@ export class DatabaseStorage implements IStorage {
           : `Advance settlement - credit refund (${purchase.purchaseNumber})`;
 
         await this.createCapitalEntryInTransaction(tx, {
-          entryId: `ADV-${purchase.id}-${Date.now()}`,
           amount: balanceImpactUSD.toFixed(2),
           type: entryType,
           reference: purchase.id,
           description,
           paymentCurrency: 'USD', // Normalized to USD
-          exchangeRate: '1.00', // USD base currency
           createdBy: auditContext?.userId || 'system',
         });
       }
@@ -3429,7 +3486,7 @@ export class DatabaseStorage implements IStorage {
         auditContext,
         'purchases',
         result.id,
-        'settle_advance',
+        'update' as const,
         'purchase_advance_settlement',
         {
           originalTotal: new Decimal(result.total).add(new Decimal(settlementData.settledAmount)).sub(new Decimal(result.amountPaid)).toFixed(2),
@@ -3613,19 +3670,17 @@ export class DatabaseStorage implements IStorage {
       let capitalAdjustment;
       if (!refundAmount.isZero() && purchase.fundingSource === 'capital') {
         // STAGE 2 SECURITY: Enforce central FX rate for refund conversion
-        const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+        const centralRate = await ConfigurationService.getInstance().getCentralExchangeRate();
         let refundUsd = purchase.currency === 'ETB' 
-          ? refundAmount.div(centralRate)
+          ? refundAmount.div(new Decimal(centralRate))
           : refundAmount;
 
         capitalAdjustment = await this.createCapitalEntryInTransaction(tx, {
-          entryId: `RET-${purchase.id}-${Date.now()}`,
           amount: refundUsd.toFixed(2),
           type: 'CapitalIn',
           reference: purchase.id,
           description: `Supplier return refund - ${returnedWeight}kg returned (${returnData.returnReason})`,
           paymentCurrency: 'USD', // Normalized to USD
-          exchangeRate: '1.00', // USD base currency
           createdBy: auditContext?.userId || 'system',
         });
       }
@@ -3639,7 +3694,7 @@ export class DatabaseStorage implements IStorage {
         auditContext,
         'purchases',
         result.purchase.id,
-        'supplier_return',
+        'update' as const,
         'purchase_return',
         null,
         result.purchase,

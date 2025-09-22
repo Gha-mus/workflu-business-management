@@ -154,18 +154,46 @@ adminRouter.delete("/users/:id",
       }
 
       // No business records, proceed with hard delete
-      // First delete from Supabase if using Supabase auth
+      // First attempt to delete from Supabase if using Supabase auth and user has a Supabase ID
+      let supabaseDeleted = false;
+      let supabaseDeletionNote = '';
+      
       if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
-        const admin = supabaseAdmin();
-        const { error: deleteError } = await admin.auth.admin.deleteUser(user.authProviderUserId);
-        
-        if (deleteError) {
-          console.error("Supabase user deletion error:", deleteError);
-          return res.status(500).json({ error: "Failed to delete authentication account" });
+        try {
+          const admin = supabaseAdmin();
+          const { error: deleteError } = await admin.auth.admin.deleteUser(user.authProviderUserId);
+          
+          if (deleteError) {
+            // Check if it's a 404 "User not found" error - this is OK (idempotent deletion)
+            if (deleteError.status === 404 || 
+                deleteError.message?.toLowerCase().includes('user not found') ||
+                deleteError.message?.toLowerCase().includes('not found')) {
+              // User doesn't exist in Supabase (legacy user or already deleted) - this is fine
+              console.info(`Supabase user not found for ${user.email} (ID: ${user.authProviderUserId}) - treating as already deleted`);
+              supabaseDeleted = true;
+              supabaseDeletionNote = ' (Supabase account was already absent)';
+            } else {
+              // Non-404 error - log warning but continue with local deletion
+              console.warn(`Failed to delete Supabase user for ${user.email}, continuing with local deletion:`, deleteError);
+              supabaseDeletionNote = ' (Supabase deletion failed but local deletion proceeded)';
+            }
+          } else {
+            // Successfully deleted from Supabase
+            supabaseDeleted = true;
+            supabaseDeletionNote = ' (Supabase account deleted)';
+          }
+        } catch (supabaseError: any) {
+          // Unexpected error - log warning but continue with local deletion
+          console.warn(`Unexpected error during Supabase deletion for ${user.email}, continuing with local deletion:`, supabaseError);
+          supabaseDeletionNote = ' (Supabase deletion error but local deletion proceeded)';
         }
+      } else if (process.env.AUTH_PROVIDER === 'supabase' && !user.authProviderUserId) {
+        // Legacy user without Supabase account
+        console.info(`User ${user.email} has no Supabase account (legacy user) - skipping Supabase deletion`);
+        supabaseDeletionNote = ' (legacy user without Supabase account)';
       }
 
-      // Delete from local database
+      // Always proceed with local database deletion regardless of Supabase result
       const context = auditService.extractRequestContext(req);
       const deletedUser = await storage.deleteUser(id, context);
 
@@ -175,13 +203,13 @@ adminRouter.delete("/users/:id",
         entityType: "user",
         entityId: id,
         operationType: "user_role_change",
-        description: `Admin permanently deleted user ${user.email} (no business records)`,
+        description: `Admin permanently deleted user ${user.email} (no business records)${supabaseDeletionNote}`,
         oldValues: user,
         newValues: undefined
       });
 
       res.json({ 
-        message: "User account permanently deleted successfully.",
+        message: `User account permanently deleted successfully${supabaseDeletionNote}`,
         action: "hard_delete",
         deletedUser
       });
