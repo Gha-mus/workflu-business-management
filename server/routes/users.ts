@@ -283,8 +283,8 @@ usersRouter.post("/:id/reset-password",
       }
 
       // Use Supabase's direct email sending for password reset
-      const admin = supabaseAdmin();
-      const { error } = await admin.auth.resetPasswordForEmail(user.email, {
+      const client = supabaseClient();
+      const { error } = await client.auth.resetPasswordForEmail(user.email, {
         redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/auth/reset-password`
       });
 
