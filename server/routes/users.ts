@@ -9,6 +9,7 @@ import { requireApproval } from "../approvalMiddleware";
 import { z } from "zod";
 import { isSystemUser } from "../core/systemUserGuard";
 import rateLimit from "express-rate-limit";
+import { notificationService } from "../notificationService";
 
 // Rate limiter for password reset operations
 const passwordResetRateLimiter = rateLimit({
@@ -258,6 +259,18 @@ usersRouter.post("/:id/reset-password",
       // Get user from our database
       const user = await storage.getUser(id);
       if (!user) {
+        // Create audit log for failed admin reset attempt
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_failed",
+          entityType: "user",
+          entityId: id,
+          operationType: "security_operation",
+          description: `Admin password reset failed for user ID ${id}: User not found`,
+          oldValues: undefined,
+          newValues: { userId: id, error: "user_not_found", initiatedBy: req.user?.email }
+        });
+        
         return res.status(404).json({ 
           success: false,
           code: "user_not_found",
@@ -267,6 +280,18 @@ usersRouter.post("/:id/reset-password",
 
       // Validate user has an email address
       if (!user.email || user.email.trim() === '') {
+        // Create audit log for failed admin reset attempt
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_failed",
+          entityType: "user",
+          entityId: id,
+          operationType: "security_operation",
+          description: `Admin password reset failed for user ${user.firstName} ${user.lastName}: No valid email address`,
+          oldValues: undefined,
+          newValues: { userId: id, error: "email_missing", initiatedBy: req.user?.email }
+        });
+        
         return res.status(400).json({ 
           success: false,
           code: "email_missing",
@@ -276,6 +301,18 @@ usersRouter.post("/:id/reset-password",
 
       // Check if AUTH_PROVIDER is supabase
       if (process.env.AUTH_PROVIDER !== 'supabase') {
+        // Create audit log for failed admin reset attempt
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_failed",
+          entityType: "user",
+          entityId: id,
+          operationType: "security_operation",
+          description: `Admin password reset failed for ${user.email}: Auth provider mismatch (${process.env.AUTH_PROVIDER})`,
+          oldValues: undefined,
+          newValues: { userId: id, email: user.email, error: "auth_provider_mismatch", currentProvider: process.env.AUTH_PROVIDER, initiatedBy: req.user?.email }
+        });
+        
         return res.status(400).json({ 
           success: false,
           code: "auth_provider_mismatch",
@@ -283,36 +320,131 @@ usersRouter.post("/:id/reset-password",
         });
       }
 
-      // Use Supabase's direct email sending for password reset
-      const client = supabaseClient();
-      const { error } = await client.auth.resetPasswordForEmail(user.email, {
-        redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/auth/reset-password`
-      });
+      // Generate password reset link using Supabase admin (bypasses rate limits)
+      try {
+        const admin = supabaseAdmin();
+        const { data, error } = await admin.auth.admin.generateLink({
+          type: 'recovery',
+          email: user.email,
+          options: {
+            redirectTo: `${req.get('origin') || 'http://localhost:5000'}/auth/reset-password`
+          }
+        });
 
-      if (error) {
-        console.error("Supabase password reset error:", error);
+        if (error) {
+          console.error(`Admin password reset failed for ${user.email}:`, error);
+          
+          // Check for rate limiting in error object
+          const errorMessage = error.message?.toLowerCase() || '';
+          const isRateLimit = error.status === 429 || 
+                            errorMessage.includes('rate') || 
+                            errorMessage.includes('limit') || 
+                            errorMessage.includes('too many requests');
+          
+          // Create audit log for failed admin reset attempt
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "password_reset_failed",
+            entityType: "user",
+            entityId: user.id,
+            operationType: "security_operation",
+            description: `Admin password reset failed for ${user.email}: ${error.message}`,
+            oldValues: undefined,
+            newValues: { email: user.email, error: error.message, isRateLimit, initiatedBy: req.user?.email }
+          });
+          
+          if (isRateLimit) {
+            return res.status(429).json({ 
+              success: false,
+              code: "supabase_rate_limited",
+              message: "Too many reset requests. Please try again later." 
+            });
+          }
+          
+          return res.status(500).json({ 
+            success: false,
+            code: "link_generation_failed",
+            message: "Failed to generate password reset link" 
+          });
+        }
+
+        if (!data?.properties?.action_link) {
+          console.error(`No action link returned for admin reset: ${user.email}`);
+          
+          // Create audit log for failed admin reset attempt
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "password_reset_failed",
+            entityType: "user",
+            entityId: user.id,
+            operationType: "security_operation",
+            description: `Admin password reset failed for ${user.email}: No action link returned`,
+            oldValues: undefined,
+            newValues: { email: user.email, error: "no_action_link", initiatedBy: req.user?.email }
+          });
+          
+          return res.status(500).json({ 
+            success: false,
+            code: "no_action_link",
+            message: "Failed to generate password reset link" 
+          });
+        }
+
+        // Send email via our own SMTP service (bypasses Supabase email rate limits)
+        await notificationService.sendPasswordResetEmail(user.email, data.properties.action_link);
+        
+      } catch (supabaseError: any) {
+        console.error(`Supabase admin link generation failed for ${user.email}:`, supabaseError);
+        
+        // Check for specific Supabase rate limiting errors in thrown exceptions
+        const errorMessage = supabaseError.message?.toLowerCase() || '';
+        const isRateLimit = errorMessage.includes('rate') || 
+                          errorMessage.includes('limit') || 
+                          errorMessage.includes('too many requests') ||
+                          supabaseError.status === 429;
+        
+        // Create audit log for failed admin reset attempt
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_failed",
+          entityType: "user",
+          entityId: user.id,
+          operationType: "security_operation",
+          description: `Admin password reset exception for ${user.email}: ${supabaseError.message}`,
+          oldValues: undefined,
+          newValues: { email: user.email, error: supabaseError.message, isRateLimit, initiatedBy: req.user?.email }
+        });
+        
+        if (isRateLimit) {
+          return res.status(429).json({ 
+            success: false,
+            code: "supabase_rate_limited",
+            message: "Too many reset requests. Please try again later." 
+          });
+        }
+        
         return res.status(500).json({ 
           success: false,
-          code: "reset_email_failed",
-          message: "Failed to send password reset email through Supabase" 
+          code: "service_error",
+          message: "Failed to process password reset request" 
         });
       }
 
       // Create audit log
       const context = auditService.extractRequestContext(req);
       await auditService.logOperation(context, {
-        action: "update",
+        action: "password_reset_initiated",
         entityType: "user",
         entityId: id,
-        operationType: "user_role_change",
-        description: `Admin initiated password reset for user ${user.email} via Supabase SMTP`,
+        operationType: "security_operation",
+        description: `Admin initiated password reset for user ${user.email} via admin link generation + SMTP`,
         oldValues: undefined,
-        newValues: { action: 'password_reset_initiated_supabase' }
+        newValues: { email: user.email, resetLinkGenerated: true, initiatedBy: req.user?.email }
       });
 
       res.json({ 
         success: true,
-        message: "Password reset email sent successfully via Supabase" 
+        message: "Password reset email sent successfully via admin link generation" 
       });
     } catch (error) {
       console.error("Error initiating password reset:", error);
@@ -365,6 +497,182 @@ usersRouter.put("/:id/display-name",
         return res.status(400).json({ message: "Invalid input", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to update display name" });
+    }
+  }
+);
+
+// POST /api/users/reset-password - Server-side password reset with admin link generation
+usersRouter.post("/reset-password",
+  passwordResetRateLimiter,
+  async (req, res) => {
+    try {
+      const resetPasswordSchema = z.object({
+        email: z.string().email("Valid email is required")
+      });
+      
+      const { email } = resetPasswordSchema.parse(req.body);
+      
+      // Check if user exists in our database
+      const existingUser = await storage.getUserByEmail(email);
+      if (!existingUser) {
+        // Don't reveal if email exists or not for security
+        return res.status(200).json({ 
+          success: true, 
+          message: "If an account with this email exists, a password reset link has been sent." 
+        });
+      }
+      
+      // Check if user has Supabase authentication (don't reveal this in response to prevent enumeration)
+      if (existingUser.authProvider !== 'supabase' || !existingUser.authProviderUserId) {
+        console.log(`Password reset attempted for non-Supabase account: ${email} (provider: ${existingUser.authProvider})`);
+        
+        // Create audit log for failed reset attempt
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_failed",
+          entityType: "user",
+          entityId: existingUser.id,
+          operationType: "security_operation",
+          description: `Password reset blocked for ${email} - incompatible auth provider: ${existingUser.authProvider}`,
+          oldValues: undefined,
+          newValues: { email, reason: "invalid_auth_provider" }
+        });
+        
+        // Return generic success message to prevent enumeration
+        return res.status(200).json({ 
+          success: true, 
+          message: "If an account with this email exists, a password reset link has been sent." 
+        });
+      }
+      
+      try {
+        // Generate password reset link using Supabase admin (bypasses rate limits)
+        const admin = supabaseAdmin();
+        const { data, error } = await admin.auth.admin.generateLink({
+          type: 'recovery',
+          email: email,
+          options: {
+            redirectTo: `${req.get('origin') || 'http://localhost:5000'}/auth/reset-password`
+          }
+        });
+        
+        if (error) {
+          console.error(`Failed to generate reset link for ${email}:`, error);
+          
+          // Check for rate limiting in error object
+          const errorMessage = error.message?.toLowerCase() || '';
+          const isRateLimit = error.status === 429 || 
+                            errorMessage.includes('rate') || 
+                            errorMessage.includes('limit') || 
+                            errorMessage.includes('too many requests');
+          
+          // Log internal details but always return generic 200 to prevent enumeration
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "password_reset_failed",
+            entityType: "user",
+            entityId: existingUser.id,
+            operationType: "security_operation",
+            description: `Password reset link generation failed for ${email}: ${error.message}`,
+            oldValues: undefined,
+            newValues: { email, error: error.message, isRateLimit }
+          });
+          
+          return res.status(200).json({ 
+            success: true,
+            message: "If an account with this email exists, a password reset link has been sent." 
+          });
+        }
+        
+        if (!data?.properties?.action_link) {
+          console.error(`No action link returned for ${email}`);
+          
+          // Log internal details but return generic 200 to prevent enumeration
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "password_reset_failed",
+            entityType: "user",
+            entityId: existingUser.id,
+            operationType: "security_operation",
+            description: `Password reset failed for ${email}: No action link returned from Supabase`,
+            oldValues: undefined,
+            newValues: { email, error: "no_action_link" }
+          });
+          
+          return res.status(200).json({ 
+            success: true,
+            message: "If an account with this email exists, a password reset link has been sent." 
+          });
+        }
+        
+        // Send email via our own SMTP service (bypasses Supabase email rate limits)
+        await notificationService.sendPasswordResetEmail(email, data.properties.action_link);
+        
+        // Create audit log for password reset action (even for unauthenticated requests)
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_initiated",
+          entityType: "user",
+          entityId: existingUser.id,
+          operationType: "security_operation",
+          description: `Password reset link generated and sent to ${email}${req.user ? ` by admin user ${req.user.email}` : ' via self-service'}`,
+          oldValues: undefined,
+          newValues: { email, resetLinkGenerated: true, initiatedBy: req.user?.email || 'self-service' }
+        });
+        
+        console.log(`✅ Password reset link sent to ${email} via admin generation`);
+        
+        res.status(200).json({ 
+          success: true, 
+          message: "If an account with this email exists, a password reset link has been sent." 
+        });
+        
+      } catch (supabaseError: any) {
+        console.error(`Supabase admin link generation failed for ${email}:`, supabaseError);
+        
+        // Check for specific Supabase rate limiting errors
+        const errorMessage = supabaseError.message?.toLowerCase() || '';
+        const isRateLimit = errorMessage.includes('rate') || 
+                          errorMessage.includes('limit') || 
+                          errorMessage.includes('too many requests') ||
+                          supabaseError.status === 429;
+        
+        // Log internal details but always return generic 200 to prevent enumeration
+        const context = auditService.extractRequestContext(req);
+        await auditService.logOperation(context, {
+          action: "password_reset_failed",
+          entityType: "user",
+          entityId: existingUser.id,
+          operationType: "security_operation",
+          description: `Password reset exception for ${email}: ${supabaseError.message}`,
+          oldValues: undefined,
+          newValues: { email, error: supabaseError.message, isRateLimit }
+        });
+        
+        // Always return generic 200 response to prevent email enumeration
+        return res.status(200).json({ 
+          success: true,
+          message: "If an account with this email exists, a password reset link has been sent." 
+        });
+      }
+      
+    } catch (error) {
+      console.error("Error in password reset endpoint:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          success: false,
+          code: "validation_error",
+          message: "Invalid email format", 
+          errors: error.errors 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false,
+        code: "internal_error",
+        message: "Internal server error" 
+      });
     }
   }
 );
