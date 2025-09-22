@@ -759,6 +759,9 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   countAdminUsers(): Promise<number>;
   updateUserRole(id: string, role: User['role'], auditContext?: AuditContext): Promise<User>;
+  updateUserStatus(id: string, isActive: boolean): Promise<User>;
+  updateSuperAdminStatus(id: string, isSuperAdmin: boolean): Promise<User>;
+  updateDisplayName(id: string, firstName: string, lastName: string): Promise<User>;
   deleteUser(id: string, auditContext?: AuditContext): Promise<User>;
   
   // Settings operations
@@ -1971,6 +1974,24 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     // Removed duplicate audit logging - handled by route layer
+    return user;
+  }
+
+  async updateSuperAdminStatus(id: string, isSuperAdmin: boolean): Promise<User> {
+    // Get old user data for audit trail
+    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!oldUser) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    const [user] = await db
+      .update(users)
+      .set({ isSuperAdmin, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    
+    // Audit logging is handled by route layer
     return user;
   }
 

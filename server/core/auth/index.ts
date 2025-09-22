@@ -33,6 +33,38 @@ export const requireRole = (allowedRoles: any[]) => async (req: any, res: any, n
   return provider.requireRole(allowedRoles)(req, res, next);
 };
 
+export const requireSuperAdmin: RequestHandler = async (req, res, next) => {
+  const provider = await getAuthProvider();
+  // First check authentication
+  provider.isAuthenticated(req, res, async () => {
+    if (res.headersSent) return;
+
+    try {
+      const user = req.user as AuthUser;
+      if (!user) {
+        return res.status(403).json({ message: 'Access forbidden: User not found' });
+      }
+
+      if (!user.isActive) {
+        return res.status(403).json({ message: 'Access forbidden: User account is inactive' });
+      }
+
+      if (!user.isSuperAdmin) {
+        return res.status(403).json({ 
+          message: 'Access forbidden: Super-admin privileges required' 
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('Error in requireSuperAdmin middleware:', error);
+      if (!res.headersSent) {
+        return res.status(500).json({ message: 'Internal server error' });
+      }
+    }
+  });
+};
+
 export const requireWarehouseScope = (warehouseCode?: string) => async (req: any, res: any, next: any) => {
   const provider = await getAuthProvider();
   return provider.requireWarehouseScope(warehouseCode)(req, res, next);

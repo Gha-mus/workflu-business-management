@@ -16,6 +16,7 @@ import { settingsRouter } from "./settings";
 import { usersRouter } from "./users";
 import { adminRouter } from "./admin";
 import userManagementRouter from "./userManagement";
+import { superAdminRouter } from "./superAdmin";
 
 export function setupModuleRoutes(app: Express): void {
   // Business stage modules
@@ -40,4 +41,5 @@ export function setupModuleRoutes(app: Express): void {
   app.use("/api/users", usersRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/admin/users", userManagementRouter);
+  app.use("/api/super-admin/users", superAdminRouter);
 }
