@@ -231,7 +231,7 @@ export function NotificationCenter({ trigger, className }: NotificationCenterPro
             </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="settings" className="mt-4">
+          <TabsContent value="settings" className="mt-4 h-[650px] overflow-auto">
             <NotificationSettings />
           </TabsContent>
         </Tabs>

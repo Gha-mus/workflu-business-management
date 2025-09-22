@@ -86,9 +86,8 @@ export function NotificationSettings() {
   }
 
   return (
-    <div className="flex flex-col h-full" data-testid="notification-settings">
-      <ScrollArea className="flex-1 h-[600px] pr-4">
-        <div className="space-y-6">
+    <ScrollArea className="h-full w-full" data-testid="notification-settings">
+      <div className="space-y-6 pr-4 pb-20">
           {/* Delivery Channels */}
           <Card>
         <CardHeader>
@@ -289,11 +288,9 @@ export function NotificationSettings() {
           )}
         </CardContent>
       </Card>
-        </div>
-      </ScrollArea>
 
-      {/* Actions */}
-      <div className="flex items-center gap-3 pt-4 border-t mt-4">
+        {/* Actions */}
+        <div className="flex items-center gap-3 pt-4 mt-6 border-t">
         <Button
           onClick={handleSave}
           disabled={isSaving}
@@ -312,7 +309,8 @@ export function NotificationSettings() {
           <Bell className="h-4 w-4 mr-2" />
           Send Test
         </Button>
+        </div>
       </div>
-    </div>
+    </ScrollArea>
   );
 }
