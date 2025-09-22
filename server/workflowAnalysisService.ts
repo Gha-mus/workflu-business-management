@@ -1,9 +1,7 @@
-import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
-
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { openaiGateway, AIServiceError, AI_ERROR_CODES } from './services/openai/client';
+import type OpenAI from "openai";
 
 interface WorkflowAnalysis {
   stage: number;
@@ -76,21 +74,27 @@ export class WorkflowAnalysisService {
         Focus on actionable implementation details, not just summaries.
       `;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5",
-        messages: [
-          { role: "system", content: "You are a senior software architect specializing in business workflow systems and regulatory compliance." },
-          { role: "user", content: `${analysisPrompt}\n\nWorkflow Reference:\n${workflowContent}` }
-        ],
-        response_format: { type: "json_object" },
-        max_completion_tokens: 4000
-      });
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: "system", content: "You are a senior software architect specializing in business workflow systems and regulatory compliance." },
+        { role: "user", content: `${analysisPrompt}\n\nWorkflow Reference:\n${workflowContent}` }
+      ];
+      
+      const response = await openaiGateway.createChatCompletion(
+        messages,
+        { 
+          feature: 'reports' as const,
+          useJson: true
+        }
+      );
 
-      const analysis = JSON.parse(response.choices[0].message.content || '{}');
+      const analysis = JSON.parse(response || '{}');
       return analysis as ComplianceMatrix;
       
     } catch (error) {
       console.error('Failed to analyze workflow reference:', error);
+      if (error instanceof AIServiceError) {
+        throw new Error(`AI service unavailable: ${error.message}`);
+      }
       throw new Error(`Workflow analysis failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -112,19 +116,26 @@ export class WorkflowAnalysisService {
         Be specific about file paths, function names, and architectural decisions.
       `;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5", 
-        messages: [
-          { role: "system", content: "You are a senior full-stack developer creating technical implementation plans." },
-          { role: "user", content: `${planPrompt}\n\nAnalysis:\n${JSON.stringify(analysis, null, 2)}` }
-        ],
-        max_completion_tokens: 4000
-      });
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: "system", content: "You are a senior full-stack developer creating technical implementation plans." },
+        { role: "user", content: `${planPrompt}\n\nAnalysis:\n${JSON.stringify(analysis, null, 2)}` }
+      ];
+      
+      const response = await openaiGateway.createChatCompletion(
+        messages,
+        { 
+          feature: 'reports' as const,
+          useJson: false
+        }
+      );
 
-      return response.choices[0].message.content || '';
+      return response || '';
       
     } catch (error) {
       console.error('Failed to generate implementation plan:', error);
+      if (error instanceof AIServiceError) {
+        throw new Error(`AI service unavailable: ${error.message}`);
+      }
       throw new Error(`Implementation plan generation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
