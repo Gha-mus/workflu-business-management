@@ -246,7 +246,7 @@ import {
   type InsertRevenueBalanceSummary,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
+import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { auditService } from "./auditService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
@@ -761,6 +761,8 @@ export interface IStorage {
   getSetting(key: string): Promise<Setting | undefined>;
   setSetting(setting: InsertSetting, auditContext?: AuditContext): Promise<Setting>;
   getExchangeRate(): Promise<number>;
+  getSettingsBulk(keys: string[]): Promise<Record<string, Setting>>;
+  upsertSetting(key: string, value: string, description?: string, category?: string, dataType?: string, isSystemCritical?: boolean): Promise<Setting>;
 
   // Approval chain operations
   getApprovalChains(): Promise<ApprovalChain[]>;
@@ -1965,6 +1967,58 @@ export class DatabaseStorage implements IStorage {
         `${oldSetting ? 'Updated' : 'Created'} system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
       );
     }
+    
+    return result;
+  }
+
+  async getSettingsBulk(keys: string[]): Promise<Record<string, Setting>> {
+    const settingsList = await db
+      .select()
+      .from(settings)
+      .where(and(
+        inArray(settings.key, keys),
+        eq(settings.isActive, true)
+      ));
+    
+    const result: Record<string, Setting> = {};
+    settingsList.forEach(setting => {
+      result[setting.key] = setting;
+    });
+    return result;
+  }
+
+  async upsertSetting(
+    key: string, 
+    value: string, 
+    description?: string, 
+    category?: string, 
+    dataType?: string, 
+    isSystemCritical?: boolean
+  ): Promise<Setting> {
+    const [result] = await db
+      .insert(settings)
+      .values({
+        key,
+        value,
+        description: description || null,
+        category: category || 'general',
+        dataType: dataType || 'string',
+        isSystemCritical: isSystemCritical || false,
+        requiresApproval: false,
+        isActive: true,
+        version: 1
+      })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: {
+          value,
+          description: description || sql`EXCLUDED.description`,
+          category: category || sql`EXCLUDED.category`,
+          dataType: dataType || sql`EXCLUDED.data_type`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
     
     return result;
   }

@@ -3,6 +3,7 @@
  */
 import OpenAI from 'openai';
 import { config } from '../../config';
+import { aiSettingsService, type AISettings } from '../ai/settingsService';
 
 // AI Feature Types
 export type AIFeature = 'translation' | 'assistant' | 'reports';
@@ -48,6 +49,7 @@ export const OPENAI_CONFIG = {
 class OpenAIGateway {
   private client: OpenAI | null = null;
   private initialized = false;
+  private settings: AISettings | null = null;
 
   constructor() {
     this.initialize();
@@ -56,10 +58,23 @@ class OpenAIGateway {
   /**
    * Initialize OpenAI client if AI is enabled and API key exists
    */
-  private initialize() {
+  private async initialize() {
+    // Get settings from database or env
+    try {
+      this.settings = await aiSettingsService.getSettings();
+    } catch (error) {
+      console.error('Failed to load AI settings:', error);
+      this.settings = {
+        enabled: config.ai.enabled,
+        features: config.ai.features,
+        model: config.openai.model,
+        hasApiKey: !!config.openai.apiKey
+      };
+    }
+
     // Check master toggle
-    if (!config.ai.enabled) {
-      console.log('AI features disabled via AI_ENABLED flag');
+    if (!this.settings.enabled) {
+      console.log('AI features disabled via settings');
       this.initialized = false;
       return;
     }
@@ -87,9 +102,14 @@ class OpenAIGateway {
   /**
    * Check if a specific AI feature is enabled
    */
-  private isFeatureEnabled(feature?: AIFeature): boolean {
+  private async isFeatureEnabled(feature?: AIFeature): Promise<boolean> {
+    // Ensure settings are loaded
+    if (!this.settings) {
+      await this.initialize();
+    }
+
     // Master toggle check
-    if (!config.ai.enabled) {
+    if (!this.settings?.enabled) {
       return false;
     }
 
@@ -104,15 +124,20 @@ class OpenAIGateway {
     }
 
     // Check specific feature toggle
-    return config.ai.features[feature] === true;
+    return this.settings.features[feature] === true;
   }
 
   /**
    * Validate AI availability before making requests
    */
-  private validateAvailability(feature?: AIFeature): void {
+  private async validateAvailability(feature?: AIFeature): Promise<void> {
+    // Ensure settings are loaded
+    if (!this.settings) {
+      await this.initialize();
+    }
+
     // Check master toggle
-    if (!config.ai.enabled) {
+    if (!this.settings?.enabled) {
       throw new AIServiceError(
         'AI features are currently disabled',
         AI_ERROR_CODES.AI_DISABLED,
@@ -130,7 +155,7 @@ class OpenAIGateway {
     }
 
     // Check specific feature if provided
-    if (feature && !config.ai.features[feature]) {
+    if (feature && !this.settings.features[feature]) {
       throw new AIServiceError(
         `AI feature '${feature}' is currently disabled`,
         AI_ERROR_CODES.AI_FEATURE_DISABLED,
@@ -160,7 +185,7 @@ class OpenAIGateway {
     } = {}
   ): Promise<string | null> {
     // Validate availability
-    this.validateAvailability(options.feature);
+    await this.validateAvailability(options.feature);
 
     const { useJson = false, maxRetries = 3 } = options;
 
@@ -169,7 +194,7 @@ class OpenAIGateway {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const response = await this.client!.chat.completions.create({
-          model: OPENAI_CONFIG.model, // Uses gpt-3.5-turbo from env
+          model: this.settings?.model || OPENAI_CONFIG.model, // Uses model from settings or env
           messages,
           max_tokens: OPENAI_CONFIG.maxTokens,
           temperature: OPENAI_CONFIG.temperature,
@@ -221,16 +246,21 @@ class OpenAIGateway {
   /**
    * Check AI status
    */
-  getStatus() {
+  async getStatus() {
+    // Ensure settings are loaded
+    if (!this.settings) {
+      await this.initialize();
+    }
+
     return {
-      enabled: config.ai.enabled,
+      enabled: this.settings?.enabled || false,
       initialized: this.initialized,
       hasApiKey: !!config.openai.apiKey && config.openai.apiKey !== '',
-      model: OPENAI_CONFIG.model,
+      model: this.settings?.model || OPENAI_CONFIG.model,
       features: {
-        translation: this.isFeatureEnabled('translation'),
-        assistant: this.isFeatureEnabled('assistant'),
-        reports: this.isFeatureEnabled('reports'),
+        translation: await this.isFeatureEnabled('translation'),
+        assistant: await this.isFeatureEnabled('assistant'),
+        reports: await this.isFeatureEnabled('reports'),
       },
     };
   }
@@ -238,10 +268,12 @@ class OpenAIGateway {
   /**
    * Re-initialize the gateway (useful after config changes)
    */
-  reinitialize() {
+  async reinitialize() {
     this.client = null;
     this.initialized = false;
-    this.initialize();
+    this.settings = null;
+    aiSettingsService.clearCache();
+    await this.initialize();
   }
 }
 
@@ -266,8 +298,8 @@ export const openaiClient = {
 };
 
 // Export helper to check feature availability
-export function checkAIFeature(feature?: AIFeature): { enabled: boolean; error?: string } {
-  const status = openaiGateway.getStatus();
+export async function checkAIFeature(feature?: AIFeature): Promise<{ enabled: boolean; error?: string }> {
+  const status = await openaiGateway.getStatus();
   
   if (!status.enabled) {
     return { enabled: false, error: 'AI features are disabled' };

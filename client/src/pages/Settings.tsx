@@ -66,6 +66,7 @@ export default function Settings() {
     model: 'gpt-3.5-turbo',
     hasApiKey: false
   });
+  const [isSavingAI, setIsSavingAI] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -94,6 +95,43 @@ export default function Settings() {
       setAiSettings(aiStatus);
     }
   }, [aiStatus]);
+
+  // Mutation for updating AI settings
+  const updateAISettingsMutation = useMutation({
+    mutationFn: async (updates: typeof aiSettings) => {
+      return await apiRequest('/api/ai/settings', {
+        method: 'POST',
+        body: JSON.stringify(updates)
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ai/status'] });
+      toast({
+        title: 'AI Settings Updated',
+        description: 'AI settings have been successfully updated.',
+      });
+      if (data.settings) {
+        setAiSettings(data.settings);
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: 'Update Failed',
+        description: 'Failed to update AI settings. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  });
+
+  // Handle AI settings update
+  const handleAISettingsUpdate = async () => {
+    setIsSavingAI(true);
+    try {
+      await updateAISettingsMutation.mutateAsync(aiSettings);
+    } finally {
+      setIsSavingAI(false);
+    }
+  };
 
   const { data: settings } = useQuery<SettingsResponse>({
     queryKey: ['/api/settings'],
@@ -696,7 +734,10 @@ export default function Settings() {
                       <Switch 
                         id="ai-master-toggle"
                         checked={aiSettings.enabled}
-                        disabled={true}
+                        disabled={!user || user.role !== 'admin'}
+                        onCheckedChange={(checked) => 
+                          setAiSettings(prev => ({ ...prev, enabled: checked }))
+                        }
                         data-testid="switch-ai-master"
                       />
                     </div>
@@ -720,7 +761,13 @@ export default function Settings() {
                       <Switch 
                         id="ai-feature-translation"
                         checked={aiSettings.features.translation}
-                        disabled={true}
+                        disabled={!aiSettings.enabled || !user || user.role !== 'admin'}
+                        onCheckedChange={(checked) => 
+                          setAiSettings(prev => ({ 
+                            ...prev, 
+                            features: { ...prev.features, translation: checked }
+                          }))
+                        }
                         data-testid="switch-ai-translation"
                       />
                     </div>
@@ -739,7 +786,13 @@ export default function Settings() {
                       <Switch 
                         id="ai-feature-assistant"
                         checked={aiSettings.features.assistant}
-                        disabled={true}
+                        disabled={!aiSettings.enabled || !user || user.role !== 'admin'}
+                        onCheckedChange={(checked) => 
+                          setAiSettings(prev => ({ 
+                            ...prev, 
+                            features: { ...prev.features, assistant: checked }
+                          }))
+                        }
                         data-testid="switch-ai-assistant"
                       />
                     </div>
@@ -758,7 +811,13 @@ export default function Settings() {
                       <Switch 
                         id="ai-feature-reports"
                         checked={aiSettings.features.reports}
-                        disabled={true}
+                        disabled={!aiSettings.enabled || !user || user.role !== 'admin'}
+                        onCheckedChange={(checked) => 
+                          setAiSettings(prev => ({ 
+                            ...prev, 
+                            features: { ...prev.features, reports: checked }
+                          }))
+                        }
                         data-testid="switch-ai-reports"
                       />
                     </div>
@@ -809,21 +868,35 @@ export default function Settings() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="p-4 border rounded-lg bg-muted/50">
-                      <p className="text-sm text-muted-foreground">
-                        <strong>Note:</strong> AI settings are configured via environment variables and cannot be changed from the UI.
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        To modify these settings, update your .env file with:
-                      </p>
-                      <ul className="text-xs font-mono mt-2 space-y-1 text-muted-foreground">
-                        <li>AI_ENABLED=true/false</li>
-                        <li>AI_FEATURE_ASSISTANT=true/false</li>
-                        <li>AI_FEATURE_REPORTS=true/false</li>
-                        <li>AI_FEATURE_TRANSLATION=true/false</li>
-                        <li>OPENAI_MODEL=gpt-3.5-turbo</li>
-                      </ul>
-                    </div>
+                    {!aiSettings.hasApiKey && (
+                      <div className="p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+                        <p className="text-sm text-yellow-800">
+                          <strong>Warning:</strong> No OpenAI API key is configured. AI features will not work without an API key.
+                        </p>
+                        <p className="text-sm text-yellow-800 mt-2">
+                          Please set the OPENAI_API_KEY environment variable and restart the server.
+                        </p>
+                      </div>
+                    )}
+                    
+                    <Button 
+                      className="w-full"
+                      onClick={handleAISettingsUpdate}
+                      disabled={isSavingAI || !user || user.role !== 'admin'}
+                      data-testid="save-ai-settings"
+                    >
+                      {isSavingAI ? (
+                        <>
+                          <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-current border-r-transparent" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save AI Settings
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
