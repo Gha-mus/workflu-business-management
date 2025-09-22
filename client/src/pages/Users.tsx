@@ -247,10 +247,26 @@ function Users() {
       setUserToDelete(null);
     },
     onError: (error: any) => {
+      // Parse the error message which comes as "400: {error: '...'}"
+      let errorMessage = "Failed to delete user. Please try again.";
+      
+      if (error.message) {
+        try {
+          // Extract JSON part from error message like "400: {error: '...'}"
+          const jsonPart = error.message.substring(error.message.indexOf('{'));
+          const parsed = JSON.parse(jsonPart);
+          errorMessage = parsed.error || parsed.message || errorMessage;
+        } catch {
+          // If parsing fails, use the raw message
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Delete Failed",
-        description: error.message || "Failed to delete user. Please try again.",
+        description: errorMessage,
         variant: "destructive",
+        duration: 7000,
       });
     },
   });
