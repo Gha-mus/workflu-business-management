@@ -1,11 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import './styles/rtl.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import RTL support styles */
-@import './styles/rtl.css';
 
 :root {
   --background: hsl(210, 40%, 98%);

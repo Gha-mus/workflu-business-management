@@ -9,6 +9,8 @@ import { QuickActions } from "@/components/QuickActions";
 import { AiChatInterface, ContextualHelp } from "@/components/AiChatInterface";
 import { DashboardAiInsights } from "@/components/AiInsightsPanels";
 import { Card, CardContent } from "@/components/ui/card";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { TranslatedText } from "@/components/TranslatedText";
 import { 
   Select,
   SelectContent,
@@ -55,13 +57,19 @@ export default function Dashboard() {
         <header className="bg-card border-b border-border px-4 sm:px-6 py-4 pt-16 md:pt-4" data-testid="dashboard-header">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
             <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-foreground">Dashboard</h2>
-              <p className="text-sm text-muted-foreground">Overview of your business operations</p>
+              <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+                <TranslatedText>Dashboard</TranslatedText>
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                <TranslatedText>Overview of your business operations</TranslatedText>
+              </p>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Currency Toggle */}
               <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">Currency:</span>
+                <span className="text-sm text-muted-foreground">
+                  <TranslatedText>Currency</TranslatedText>:
+                </span>
                 <Select defaultValue="USD">
                   <SelectTrigger className="w-20" data-testid="currency-select">
                     <SelectValue />
