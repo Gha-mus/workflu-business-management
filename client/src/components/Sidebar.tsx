@@ -136,11 +136,13 @@ export function Sidebar() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <LanguageSwitcher />
-                <NotificationBell className="ml-2 flex-shrink-0" data-testid="sidebar-notification-bell" />
-              </div>
+              <NotificationBell className="flex-shrink-0" data-testid="sidebar-notification-bell" />
             </div>
+          </div>
+          
+          {/* Language Switcher Section */}
+          <div className="mt-3 p-2 bg-accent/50 rounded-lg border border-border/50">
+            <LanguageSwitcher />
           </div>
         </div>
 

@@ -16,18 +16,19 @@ export const LanguageSwitcher: React.FC = () => {
 
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
       onClick={handleToggle}
-      className="flex items-center gap-2 hover:bg-accent"
+      className="w-full flex items-center justify-center gap-2 hover:bg-accent transition-colors"
       data-testid="language-switcher"
     >
       <Globe className="h-4 w-4" />
-      <span className="hidden sm:inline-block font-medium">
+      <span className="font-medium">
         {language === 'en' ? 'English' : 'العربية'}
       </span>
-      <span className="sm:hidden font-medium">
-        {language === 'en' ? 'EN' : 'AR'}
+      <span className="text-xs text-muted-foreground mx-2">→</span>
+      <span className="text-sm text-muted-foreground">
+        {language === 'en' ? 'العربية' : 'English'}
       </span>
     </Button>
   );
