@@ -185,11 +185,15 @@ export default function Warehouse() {
     queryKey: ['/api/warehouse/inventory-adjustments'],
   });
 
-  const { data: consumptionAnalytics } = useQuery({
+  const { data: consumptionAnalytics } = useQuery<{
+    totalConsumed?: number;
+    averageCostPerKg?: number;
+    fifoCompliance?: number;
+  }>({
     queryKey: ['/api/warehouse/consumption-analytics'],
   });
 
-  const { data: stockAging } = useQuery({
+  const { data: stockAging } = useQuery<any[]>({
     queryKey: ['/api/warehouse/stock-aging'],
   });
 
@@ -199,7 +203,7 @@ export default function Warehouse() {
 
   const getSupplierName = (supplierId: string) => {
     const supplier = suppliers?.find((s: any) => s.id === supplierId);
-    return supplier?.companyName || 'Unknown Supplier';
+    return supplier?.name || 'Unknown Supplier';
   };
 
   const getStatusColor = (status: string) => {
@@ -588,7 +592,7 @@ export default function Warehouse() {
                 </CardContent>
               </Card>
 
-              {/* Summary Cards */>
+              {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="p-4">
