@@ -7,6 +7,21 @@ import { approvalWorkflowService } from "../approvalWorkflowService";
 import { insertUserSchema, userRoleUpdateSchema } from "@shared/schema";
 import { requireApproval } from "../approvalMiddleware";
 import { z } from "zod";
+import { isSystemUser } from "../core/systemUserGuard";
+import rateLimit from "express-rate-limit";
+
+// Rate limiter for password reset operations
+const passwordResetRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes window
+  max: 3, // limit to 3 password reset requests per windowMs per IP
+  message: { 
+    success: false,
+    code: "rate_limit_exceeded",
+    message: "Too many password reset requests, please try again later" 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export const usersRouter = Router();
 
@@ -17,7 +32,9 @@ usersRouter.get("/",
   async (req, res) => {
     try {
       const users = await storage.getUsers();
-      res.json(users);
+      // Filter out system user from the UI using centralized guard
+      const filteredUsers = users.filter(user => !isSystemUser(user));
+      res.json(filteredUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
@@ -228,10 +245,11 @@ usersRouter.put("/:id/status",
   }
 );
 
-// POST /api/users/:id/reset-password - Admin password reset (Supabase)
+// POST /api/users/:id/reset-password - Admin password reset (Supabase) with improved validation
 usersRouter.post("/:id/reset-password",
   isAuthenticated,
   requireRole(["admin"]),
+  passwordResetRateLimiter,
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -239,19 +257,46 @@ usersRouter.post("/:id/reset-password",
       // Get user from our database
       const user = await storage.getUser(id);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        return res.status(404).json({ 
+          success: false,
+          code: "user_not_found",
+          message: "User not found" 
+        });
+      }
+
+      // Validate user has an email address
+      if (!user.email || user.email.trim() === '') {
+        return res.status(400).json({ 
+          success: false,
+          code: "email_missing",
+          message: "User does not have a valid email address" 
+        });
       }
 
       // Check if AUTH_PROVIDER is supabase
       if (process.env.AUTH_PROVIDER !== 'supabase') {
-        return res.status(400).json({ message: "Password reset is only available when using Supabase authentication" });
+        return res.status(400).json({ 
+          success: false,
+          code: "auth_provider_mismatch",
+          message: "Password reset is only available when using Supabase authentication" 
+        });
       }
 
-      // Send password reset email via Supabase Admin API
+      // Validate notification service is available
+      const { notificationService } = await import('../notificationService');
+      if (!notificationService || !notificationService.emailTransporter) {
+        return res.status(500).json({ 
+          success: false,
+          code: "email_service_unavailable",
+          message: "Email service is not configured. Please contact administrator." 
+        });
+      }
+
+      // Generate password reset link via Supabase Admin API
       const admin = supabaseAdmin();
-      const { error } = await admin.auth.admin.generateLink({
+      const { data, error } = await admin.auth.admin.generateLink({
         type: 'recovery',
-        email: user.email!,
+        email: user.email,
         options: {
           redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/auth/reset-password`
         }
@@ -259,7 +304,33 @@ usersRouter.post("/:id/reset-password",
 
       if (error) {
         console.error("Supabase password reset error:", error);
-        return res.status(500).json({ message: "Failed to send password reset email" });
+        return res.status(500).json({ 
+          success: false,
+          code: "reset_link_generation_failed",
+          message: "Failed to generate password reset link" 
+        });
+      }
+
+      // Validate that Supabase returned a valid reset link
+      if (!data.properties?.action_link) {
+        console.error("Supabase returned no action_link for password reset");
+        return res.status(500).json({ 
+          success: false,
+          code: "reset_link_generation_failed",
+          message: "Failed to generate password reset link" 
+        });
+      }
+
+      // Send email using our notification system
+      try {
+        await notificationService.sendPasswordResetEmail(user.email, data.properties.action_link);
+      } catch (emailError) {
+        console.error("Failed to send password reset email:", emailError);
+        return res.status(500).json({ 
+          success: false,
+          code: "email_send_failed",
+          message: "Failed to send password reset email" 
+        });
       }
 
       // Create audit log
@@ -274,10 +345,17 @@ usersRouter.post("/:id/reset-password",
         newValues: { action: 'password_reset_initiated' }
       });
 
-      res.json({ message: "Password reset email sent successfully" });
+      res.json({ 
+        success: true,
+        message: "Password reset email sent successfully" 
+      });
     } catch (error) {
       console.error("Error initiating password reset:", error);
-      res.status(500).json({ message: "Failed to initiate password reset" });
+      res.status(500).json({ 
+        success: false,
+        code: "internal_error",
+        message: "Failed to initiate password reset" 
+      });
     }
   }
 );

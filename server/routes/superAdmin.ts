@@ -6,6 +6,7 @@ import { auditService } from "../auditService";
 import { insertUserSchema, userRoleUpdateSchema } from "@shared/schema";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
+import { guardSystemUser, SystemUserProtectionError } from "../core/systemUserGuard";
 
 // Rate limiter for delete operations - super admins get more lenient limits
 const deleteRateLimiter = rateLimit({
@@ -355,6 +356,32 @@ superAdminRouter.delete("/:id",
           code: "user_not_found",
           message: "User not found"
         });
+      }
+
+      // CRITICAL: Prevent deletion of system user using centralized guard
+      try {
+        guardSystemUser(id, 'deleted');
+      } catch (error) {
+        if (error instanceof SystemUserProtectionError) {
+          // Log the system user deletion attempt
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "delete",
+            entityType: "user",
+            entityId: id,
+            operationType: "user_role_change",
+            description: `Attempted to delete system user (blocked - required for platform operations)`,
+            oldValues: undefined,
+            newValues: { blocked: true, reason: error.code }
+          });
+          
+          return res.status(400).json({ 
+            success: false,
+            code: error.code,
+            message: error.userFriendlyMessage 
+          });
+        }
+        throw error; // Re-throw non-system-user errors
       }
 
       // Check if user is already deleted/anonymized (idempotency)

@@ -856,6 +856,55 @@ class NotificationService {
       return { sent: 0, failed: 0 };
     }
   }
+
+  /**
+   * Send password reset email directly using our SMTP transporter
+   */
+  async sendPasswordResetEmail(email: string, resetLink: string): Promise<void> {
+    try {
+      if (!this.emailTransporter) {
+        throw new Error('Email transporter not initialized');
+      }
+
+      const emailContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Password Reset Request</h2>
+          <p>You have requested to reset your password for your WorkFlu account.</p>
+          <p>Click the button below to reset your password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetLink}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+          </div>
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #666;">${resetLink}</p>
+          <p>This link will expire in 24 hours for security reasons.</p>
+          <p>If you didn't request this password reset, you can safely ignore this email.</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+          <p style="color: #666; font-size: 12px;">This email was sent from the WorkFlu business management system.</p>
+        </div>
+      `;
+
+      const info = await this.emailTransporter.sendMail({
+        from: process.env.SMTP_FROM || 'WorkFlu System <notifications@workflu.com>',
+        to: email,
+        subject: 'Reset Your WorkFlu Password',
+        html: emailContent,
+        text: `Password Reset Request\n\nYou have requested to reset your password for your WorkFlu account.\n\nClick this link to reset your password: ${resetLink}\n\nThis link will expire in 24 hours for security reasons.\n\nIf you didn't request this password reset, you can safely ignore this email.`,
+      });
+
+      console.log(`📧 Password reset email sent to ${email}: ${info.messageId}`);
+
+      // For development with Ethereal, log preview URL
+      if (process.env.NODE_ENV === 'development') {
+        const previewUrl = nodemailer.getTestMessageUrl(info);
+        if (previewUrl) {
+          console.log(`📧 Preview password reset email: ${previewUrl}`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send password reset email:', error);
+      throw error;
+    }
+  }
 }
 
 export const notificationService = NotificationService.getInstance();
