@@ -105,6 +105,7 @@ usersRouter.post("/",
         profileImageUrl: validatedData.profileImageUrl ?? null,
         role: validatedData.role || 'worker',
         isActive: validatedData.isActive ?? true,
+        isSuperAdmin: false, // Default to false for new users
         authProvider: process.env.AUTH_PROVIDER === 'supabase' ? 'supabase' : null,
         authProviderUserId: supabaseUserId || null,
         roles: validatedData.roles ? [...validatedData.roles] : null
