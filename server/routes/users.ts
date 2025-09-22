@@ -364,7 +364,12 @@ usersRouter.post("/:id/reset-password",
           return res.status(500).json({ 
             success: false,
             code: "link_generation_failed",
-            message: "Failed to generate password reset link" 
+            message: `Failed to generate password reset link: ${error.message}`,
+            details: {
+              supabaseError: error.message,
+              errorCode: error.code,
+              status: error.status
+            }
           });
         }
 
@@ -386,12 +391,43 @@ usersRouter.post("/:id/reset-password",
           return res.status(500).json({ 
             success: false,
             code: "no_action_link",
-            message: "Failed to generate password reset link" 
+            message: "No action link returned from Supabase admin generateLink",
+            details: {
+              supabaseResponse: data,
+              error: "no_action_link"
+            }
           });
         }
 
         // Send email via our own SMTP service (bypasses Supabase email rate limits)
-        await notificationService.sendPasswordResetEmail(user.email, data.properties.action_link);
+        try {
+          await notificationService.sendPasswordResetEmail(user.email, data.properties.action_link);
+        } catch (smtpError: any) {
+          console.error(`SMTP error sending admin reset email to ${user.email}:`, smtpError);
+          
+          // Create audit log for SMTP failure
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "password_reset_failed",
+            entityType: "user",
+            entityId: user.id,
+            operationType: "security_operation",
+            description: `Admin password reset SMTP failure for ${user.email}: ${smtpError.message}`,
+            oldValues: undefined,
+            newValues: { email: user.email, error: smtpError.message, errorType: "smtp", initiatedBy: req.user?.email }
+          });
+          
+          return res.status(500).json({ 
+            success: false,
+            code: "smtp_error",
+            message: `Failed to send password reset email: ${smtpError.message}`,
+            details: {
+              smtpError: smtpError.message,
+              errorCode: smtpError.code,
+              stack: smtpError.stack
+            }
+          });
+        }
         
       } catch (supabaseError: any) {
         console.error(`Supabase admin link generation failed for ${user.email}:`, supabaseError);
@@ -426,7 +462,13 @@ usersRouter.post("/:id/reset-password",
         return res.status(500).json({ 
           success: false,
           code: "service_error",
-          message: "Failed to process password reset request" 
+          message: `Admin link generation exception: ${supabaseError.message}`,
+          details: {
+            error: supabaseError.message,
+            stack: supabaseError.stack,
+            code: supabaseError.code,
+            status: supabaseError.status
+          }
         });
       }
 
@@ -451,7 +493,11 @@ usersRouter.post("/:id/reset-password",
       res.status(500).json({ 
         success: false,
         code: "internal_error",
-        message: "Failed to initiate password reset" 
+        message: `Internal error during admin password reset: ${error instanceof Error ? error.message : String(error)}`,
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        }
       });
     }
   }
@@ -606,7 +652,29 @@ usersRouter.post("/reset-password",
         }
         
         // Send email via our own SMTP service (bypasses Supabase email rate limits)
-        await notificationService.sendPasswordResetEmail(email, data.properties.action_link);
+        try {
+          await notificationService.sendPasswordResetEmail(email, data.properties.action_link);
+        } catch (smtpError: any) {
+          console.error(`SMTP error sending public reset email to ${email}:`, smtpError);
+          
+          // Create audit log for SMTP failure but return generic 200 to prevent enumeration
+          const context = auditService.extractRequestContext(req);
+          await auditService.logOperation(context, {
+            action: "password_reset_failed",
+            entityType: "user",
+            entityId: existingUser.id,
+            operationType: "security_operation",
+            description: `Public password reset SMTP failure for ${email}: ${smtpError.message}`,
+            oldValues: undefined,
+            newValues: { email, error: smtpError.message, errorType: "smtp" }
+          });
+          
+          // For public route, return generic message to prevent enumeration
+          return res.status(200).json({ 
+            success: true,
+            message: "If an account with this email exists, a password reset link has been sent." 
+          });
+        }
         
         // Create audit log for password reset action (even for unauthenticated requests)
         const context = auditService.extractRequestContext(req);
@@ -671,7 +739,11 @@ usersRouter.post("/reset-password",
       res.status(500).json({ 
         success: false,
         code: "internal_error",
-        message: "Internal server error" 
+        message: `Internal server error in public password reset: ${error instanceof Error ? error.message : String(error)}`,
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        }
       });
     }
   }
