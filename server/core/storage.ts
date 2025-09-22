@@ -252,6 +252,7 @@ import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { auditService } from "../auditService";
+import { supabaseAdmin } from "./auth/providers/supabaseProvider";
 import { approvalWorkflowService } from "../approvalWorkflowService";
 import { ConfigurationService } from "../configurationService";
 
@@ -763,6 +764,26 @@ export interface IStorage {
   updateSuperAdminStatus(id: string, isSuperAdmin: boolean): Promise<User>;
   updateDisplayName(id: string, firstName: string, lastName: string): Promise<User>;
   deleteUser(id: string, auditContext?: AuditContext): Promise<User>;
+  
+  // Enhanced user cleanup methods
+  anonymizeUserData(id: string, auditContext?: AuditContext): Promise<User>;
+  checkUserBusinessRecords(userId: string): Promise<{
+    hasRecords: boolean;
+    recordsSummary: Record<string, number>;
+    details: string[];
+  }>;
+  bulkCleanupUsers(userIds: string[], auditContext?: AuditContext): Promise<{
+    processed: number;
+    successful: number;
+    failed: number;
+    results: Array<{
+      userId: string;
+      email: string;
+      action: 'hard_delete' | 'soft_delete_anonymize' | 'protected' | 'error';
+      reason: string;
+      recordCount?: number;
+    }>;
+  }>;
   
   // Settings operations
   getSetting(key: string): Promise<Setting | undefined>;
@@ -1975,6 +1996,295 @@ export class DatabaseStorage implements IStorage {
     
     // Removed duplicate audit logging - handled by route layer
     return user;
+  }
+
+  /**
+   * SECURE USER CLEANUP: Soft-delete with PII anonymization for GDPR compliance
+   * This method deactivates user and anonymizes PII while preserving business audit trail
+   */
+  async anonymizeUserData(id: string, auditContext?: AuditContext): Promise<User> {
+    // Get old user data for audit trail
+    const [oldUser] = await db.select().from(users).where(eq(users.id, id));
+    
+    if (!oldUser) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    // Generate anonymized data while preserving audit trail requirements
+    const anonymizedEmail = `deleted-user-${id.substring(0, 8)}@anonymized.local`;
+    const anonymizedFirstName = `[DELETED]`;
+    const anonymizedLastName = `[DELETED]`;
+
+    const [user] = await db
+      .update(users)
+      .set({ 
+        isActive: false,
+        email: anonymizedEmail,
+        firstName: anonymizedFirstName,
+        lastName: anonymizedLastName,
+        profileImageUrl: null,
+        updatedAt: new Date() 
+      })
+      .where(eq(users.id, id))
+      .returning();
+    
+    // CRITICAL: Audit logging for PII anonymization
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'users',
+        id,
+        'update',
+        'user_anonymize',
+        oldUser,
+        user,
+        undefined,
+        undefined,
+        `Anonymized user PII data for: ${oldUser.email} (compliance deletion)`
+      );
+    }
+
+    return user;
+  }
+
+  /**
+   * COMPREHENSIVE BUSINESS RECORD CHECK: Enhanced version for secure cleanup
+   * Checks all business modules for user involvement to prevent data loss
+   */
+  async checkUserBusinessRecords(userId: string): Promise<{
+    hasRecords: boolean;
+    recordsSummary: Record<string, number>;
+    details: string[];
+  }> {
+    try {
+      const recordsSummary: Record<string, number> = {};
+      const details: string[] = [];
+      let totalRecords = 0;
+
+      // Get all business data and check for user involvement
+      const [
+        capitalEntries,
+        purchases,
+        operatingExpenses,
+        auditLogsCheck,
+        sales,
+        suppliers
+      ] = await Promise.all([
+        this.getCapitalEntries(),
+        this.getPurchases(),
+        this.getOperatingExpenses(),
+        // Check audit logs by directly querying the database for user involvement
+        db.select().from(auditLogs).where(eq(auditLogs.userId, userId)),
+        // Check sales orders if the getSalesOrders method exists
+        this.getSalesOrders ? this.getSalesOrders() : Promise.resolve([]),
+        // Check suppliers if the getSuppliers method exists  
+        this.getSuppliers ? this.getSuppliers() : Promise.resolve([])
+      ]);
+
+      // Check capital entries
+      const capitalCount = capitalEntries.filter((entry: any) => 
+        entry.createdBy === userId || entry.userId === userId
+      ).length;
+      if (capitalCount > 0) {
+        recordsSummary.capitalEntries = capitalCount;
+        details.push(`${capitalCount} capital entries`);
+        totalRecords += capitalCount;
+      }
+
+      // Check purchases
+      const purchaseCount = purchases.filter((purchase: any) => 
+        purchase.createdBy === userId || purchase.userId === userId
+      ).length;
+      if (purchaseCount > 0) {
+        recordsSummary.purchases = purchaseCount;
+        details.push(`${purchaseCount} purchases`);
+        totalRecords += purchaseCount;
+      }
+
+      // Check operating expenses
+      const expenseCount = operatingExpenses.filter((expense: any) => 
+        expense.createdBy === userId
+      ).length;
+      if (expenseCount > 0) {
+        recordsSummary.operatingExpenses = expenseCount;
+        details.push(`${expenseCount} operating expenses`);
+        totalRecords += expenseCount;
+      }
+
+      // Check audit logs (direct database query result)
+      const auditCount = auditLogsCheck.length;
+      if (auditCount > 0) {
+        recordsSummary.auditLogs = auditCount;
+        details.push(`${auditCount} audit log entries`);
+        totalRecords += auditCount;
+      }
+
+      // Check sales orders
+      const salesCount = sales.filter((sale: any) => 
+        sale.createdBy === userId || sale.userId === userId
+      ).length;
+      if (salesCount > 0) {
+        recordsSummary.sales = salesCount;
+        details.push(`${salesCount} sales orders`);
+        totalRecords += salesCount;
+      }
+
+      // Check suppliers (if user is associated with supplier creation/management)
+      const supplierCount = suppliers.filter((supplier: any) => 
+        supplier.createdBy === userId
+      ).length;
+      if (supplierCount > 0) {
+        recordsSummary.suppliers = supplierCount;
+        details.push(`${supplierCount} suppliers`);
+        totalRecords += supplierCount;
+      }
+
+      return {
+        hasRecords: totalRecords > 0,
+        recordsSummary,
+        details
+      };
+    } catch (error) {
+      console.error("Error checking comprehensive user business records:", error);
+      // If we can't check, err on the side of caution
+      return {
+        hasRecords: true,
+        recordsSummary: { error: 1 },
+        details: ["Error checking records - defaulting to safe mode"]
+      };
+    }
+  }
+
+  /**
+   * BULK USER CLEANUP: Efficient cleanup of multiple users with safety checks
+   * Returns detailed results for each user processed
+   */
+  async bulkCleanupUsers(userIds: string[], auditContext?: AuditContext): Promise<{
+    processed: number;
+    successful: number;
+    failed: number;
+    results: Array<{
+      userId: string;
+      email: string;
+      action: 'hard_delete' | 'soft_delete_anonymize' | 'protected' | 'error';
+      reason: string;
+      recordCount?: number;
+    }>;
+  }> {
+    const results: Array<{
+      userId: string;
+      email: string;
+      action: 'hard_delete' | 'soft_delete_anonymize' | 'protected' | 'error';
+      reason: string;
+      recordCount?: number;
+    }> = [];
+
+    let processed = 0;
+    let successful = 0;
+    let failed = 0;
+
+    for (const userId of userIds) {
+      processed++;
+      try {
+        // Get user data
+        const user = await this.getUser(userId);
+        if (!user) {
+          results.push({
+            userId,
+            email: 'unknown',
+            action: 'error',
+            reason: 'User not found'
+          });
+          failed++;
+          continue;
+        }
+
+        // Protect critical admin users - enhanced guard
+        if (user.role === 'admin' && user.isActive) {
+          const adminCount = await this.countAdminUsers();
+          if (adminCount <= 2) { // Keep at least 2 admins for safety
+            results.push({
+              userId,
+              email: user.email!,
+              action: 'protected',
+              reason: 'Protected admin user - too few admins remaining'
+            });
+            failed++;
+            continue;
+          }
+        }
+
+        // Protect ALL super-admin users - CRITICAL security control
+        if (user.isSuperAdmin) {
+          results.push({
+            userId,
+            email: user.email!,
+            action: 'protected',
+            reason: 'Protected super-admin user - cannot be bulk deleted'
+          });
+          failed++;
+          continue;
+        }
+
+        // Check business records
+        const businessCheck = await this.checkUserBusinessRecords(userId);
+        
+        if (businessCheck.hasRecords) {
+          // Soft delete with PII anonymization
+          await this.anonymizeUserData(userId, auditContext);
+          
+          // Invalidate sessions if using Supabase
+          if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
+            const admin = supabaseAdmin();
+            await admin.auth.admin.signOutUser(user.authProviderUserId);
+          }
+
+          results.push({
+            userId,
+            email: user.email!,
+            action: 'soft_delete_anonymize',
+            reason: `Has business records: ${businessCheck.details.join(', ')}`,
+            recordCount: Object.values(businessCheck.recordsSummary).reduce((a, b) => a + b, 0)
+          });
+          successful++;
+        } else {
+          // Hard delete - no business records
+          
+          // Delete from Supabase first if using Supabase auth
+          if (process.env.AUTH_PROVIDER === 'supabase' && user.authProviderUserId) {
+            const admin = supabaseAdmin();
+            await admin.auth.admin.deleteUser(user.authProviderUserId);
+          }
+
+          // Delete from local database
+          await this.deleteUser(userId, auditContext);
+
+          results.push({
+            userId,
+            email: user.email!,
+            action: 'hard_delete',
+            reason: 'No business records found - safe to permanently delete',
+            recordCount: 0
+          });
+          successful++;
+        }
+      } catch (error) {
+        results.push({
+          userId,
+          email: 'unknown',
+          action: 'error',
+          reason: `Processing failed: ${error instanceof Error ? error.message : error}`
+        });
+        failed++;
+      }
+    }
+
+    return {
+      processed,
+      successful,
+      failed,
+      results
+    };
   }
 
   async updateSuperAdminStatus(id: string, isSuperAdmin: boolean): Promise<User> {
