@@ -282,54 +282,18 @@ usersRouter.post("/:id/reset-password",
         });
       }
 
-      // Validate notification service is available
-      const { notificationService } = await import('../notificationService');
-      if (!notificationService || !notificationService.emailTransporter) {
-        return res.status(500).json({ 
-          success: false,
-          code: "email_service_unavailable",
-          message: "Email service is not configured. Please contact administrator." 
-        });
-      }
-
-      // Generate password reset link via Supabase Admin API
+      // Use Supabase's direct email sending for password reset
       const admin = supabaseAdmin();
-      const { data, error } = await admin.auth.admin.generateLink({
-        type: 'recovery',
-        email: user.email,
-        options: {
-          redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/auth/reset-password`
-        }
+      const { error } = await admin.auth.admin.resetPasswordForEmail(user.email, {
+        redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:5000'}/auth/reset-password`
       });
 
       if (error) {
         console.error("Supabase password reset error:", error);
         return res.status(500).json({ 
           success: false,
-          code: "reset_link_generation_failed",
-          message: "Failed to generate password reset link" 
-        });
-      }
-
-      // Validate that Supabase returned a valid reset link
-      if (!data.properties?.action_link) {
-        console.error("Supabase returned no action_link for password reset");
-        return res.status(500).json({ 
-          success: false,
-          code: "reset_link_generation_failed",
-          message: "Failed to generate password reset link" 
-        });
-      }
-
-      // Send email using our notification system
-      try {
-        await notificationService.sendPasswordResetEmail(user.email, data.properties.action_link);
-      } catch (emailError) {
-        console.error("Failed to send password reset email:", emailError);
-        return res.status(500).json({ 
-          success: false,
-          code: "email_send_failed",
-          message: "Failed to send password reset email" 
+          code: "reset_email_failed",
+          message: "Failed to send password reset email through Supabase" 
         });
       }
 
@@ -340,14 +304,14 @@ usersRouter.post("/:id/reset-password",
         entityType: "user",
         entityId: id,
         operationType: "user_role_change",
-        description: `Admin initiated password reset for user ${user.email}`,
+        description: `Admin initiated password reset for user ${user.email} via Supabase SMTP`,
         oldValues: undefined,
-        newValues: { action: 'password_reset_initiated' }
+        newValues: { action: 'password_reset_initiated_supabase' }
       });
 
       res.json({ 
         success: true,
-        message: "Password reset email sent successfully" 
+        message: "Password reset email sent successfully via Supabase" 
       });
     } catch (error) {
       console.error("Error initiating password reset:", error);
