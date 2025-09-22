@@ -91,26 +91,23 @@ export default function Settings() {
 
   // Update local AI settings when status is fetched
   useEffect(() => {
-    if (aiStatus) {
-      setAiSettings(aiStatus);
+    if (aiStatus && typeof aiStatus === 'object' && 'enabled' in aiStatus) {
+      setAiSettings(aiStatus as typeof aiSettings);
     }
   }, [aiStatus]);
 
   // Mutation for updating AI settings
   const updateAISettingsMutation = useMutation({
     mutationFn: async (updates: typeof aiSettings) => {
-      return await apiRequest('/api/ai/settings', {
-        method: 'POST',
-        body: JSON.stringify(updates)
-      });
+      return await apiRequest('/api/ai/settings', 'POST', updates);
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/ai/status'] });
       toast({
         title: 'AI Settings Updated',
         description: 'AI settings have been successfully updated.',
       });
-      if (data.settings) {
+      if (data?.settings) {
         setAiSettings(data.settings);
       }
     },
@@ -444,7 +441,7 @@ export default function Settings() {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Current rate: {settings?.financial?.exchangeRate?.toFixed(4) || 'Not set'}
+                        Current rate: {settings?.exchangeRate?.toFixed(4) || 'Not set'}
                       </p>
                     </div>
 
