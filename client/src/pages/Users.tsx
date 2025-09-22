@@ -225,8 +225,8 @@ function Users() {
   // Delete user mutation (Super-Admin Only)
   const deleteUserMutation = useMutation({
     mutationFn: async ({ userId }: { userId: string }) => {
-      // Use apiRequest for consistency with other mutations
-      const response = await apiRequest("POST", `/api/super-admin/users/${userId}/anonymize`, { confirm: true });
+      // Use DELETE endpoint which handles both hard delete and soft delete automatically
+      const response = await apiRequest("DELETE", `/api/super-admin/users/${userId}`);
       return await response.json();
     },
     onSuccess: (data, { userId }) => {
@@ -237,7 +237,9 @@ function Users() {
         title: "User Deleted Successfully",
         description: data.action === 'hard_delete' 
           ? `${deletedUser?.email} has been permanently deleted.`
-          : `${deletedUser?.email} has been anonymized to preserve business data integrity.`,
+          : data.action === 'soft_delete'
+          ? `${deletedUser?.email} has been deactivated (has business records).`
+          : `${deletedUser?.email} has been removed from the system.`,
         duration: 5000,
       });
       
@@ -433,7 +435,7 @@ function Users() {
                         <p className="font-semibold text-sm">Deletion Process:</p>
                         <ul className="text-sm space-y-1">
                           <li>• If user has <strong>no business records</strong>: Account will be permanently deleted</li>
-                          <li>• If user has <strong>linked business data</strong>: Account will be anonymized to preserve data integrity</li>
+                          <li>• If user has <strong>linked business data</strong>: Account will be deactivated to preserve data integrity</li>
                           <li>• This action cannot be undone</li>
                           <li>• All operations are fully audited</li>
                         </ul>
