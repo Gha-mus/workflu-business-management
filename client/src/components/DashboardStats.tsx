@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { OrdersResponse, FinancialSummaryResponse, TradingActivityResponse } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
-import { TranslatedText } from "@/components/TranslatedText";
 import { 
   DollarSign, 
   Package, 
@@ -81,9 +80,7 @@ export function DashboardStats() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">
-                    <TranslatedText>{stat.title}</TranslatedText>
-                  </p>
+                  <p className="text-sm text-muted-foreground">{stat.title}</p>
                   <p className="text-2xl font-bold text-foreground" data-testid={`${stat.testId}-value`}>
                     {stat.value}
                   </p>
@@ -94,7 +91,7 @@ export function DashboardStats() {
                       ? 'text-red-600'
                       : 'text-muted-foreground'
                   }`}>
-                    <TranslatedText>{stat.change}</TranslatedText>
+                    {stat.change}
                   </p>
                 </div>
                 <div className={`p-3 rounded-full ${stat.bgColor}`}>
