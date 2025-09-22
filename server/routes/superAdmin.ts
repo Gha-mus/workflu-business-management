@@ -627,7 +627,7 @@ superAdminRouter.post("/bulk-cleanup",
         action: "delete",
         entityType: "user",
         entityId: "bulk_operation",
-        operationType: "user_bulk_cleanup",
+        operationType: "user_role_change",
         description: `Super-admin performed bulk user cleanup: ${results.successful}/${results.processed} users processed successfully`,
         oldValues: { userIds, requestedCount: userIds.length },
         newValues: results
