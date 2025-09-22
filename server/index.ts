@@ -9,6 +9,7 @@ import { approvalStartupValidator } from "./approvalStartupValidator";
 import { notificationService } from "./notificationService";
 import { alertMonitoringService } from "./alertMonitoringService";
 import { notificationSchedulerService } from "./notificationSchedulerService";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
 app.use(express.json());
@@ -90,13 +91,13 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-      log(`Error ${status}: ${message}`);
-      if (!res.headersSent) res.status(status).json({ message });
-      // do not throw - prevents process crashes
-    });
+    // Add not found handler for undefined routes
+    // This should come before the error handler
+    app.use('*', notFoundHandler);
+
+    // Add comprehensive error handler as the last middleware
+    // This will catch all errors from previous middleware and routes
+    app.use(errorHandler);
 
     // Vite setup already handled above - removed duplicate
 

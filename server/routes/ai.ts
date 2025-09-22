@@ -19,7 +19,14 @@ aiRouter.post("/purchase-recommendation", isAuthenticated, async (req, res) => {
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting purchase recommendation:", error);
-    res.status(500).json({ message: "Failed to get purchase recommendation" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to get purchase recommendation" });
+    }
   }
 });
 
@@ -31,7 +38,14 @@ aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting supplier recommendation:", error);
-    res.status(500).json({ message: "Failed to get supplier recommendation" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to get supplier recommendation" });
+    }
   }
 });
 
@@ -43,7 +57,14 @@ aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
     res.json(optimization);
   } catch (error) {
     console.error("Error getting capital optimization:", error);
-    res.status(500).json({ message: "Failed to get capital optimization" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to get capital optimization" });
+    }
   }
 });
 
@@ -55,7 +76,14 @@ aiRouter.post("/chat", isAuthenticated, async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Error in AI chat:", error);
-    res.status(500).json({ message: "Failed to process AI chat" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to process AI chat" });
+    }
   }
 });
 
@@ -67,7 +95,14 @@ aiRouter.post("/contextual-help", isAuthenticated, async (req, res) => {
     res.json(help);
   } catch (error) {
     console.error("Error getting contextual help:", error);
-    res.status(500).json({ message: "Failed to get contextual help" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to get contextual help" });
+    }
   }
 });
 
@@ -78,7 +113,14 @@ aiRouter.get("/executive-summary", isAuthenticated, async (req, res) => {
     res.json(summary);
   } catch (error) {
     console.error("Error getting executive summary:", error);
-    res.status(500).json({ message: "Failed to get executive summary" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to get executive summary" });
+    }
   }
 });
 
@@ -89,7 +131,14 @@ aiRouter.get("/anomaly-detection", isAuthenticated, async (req, res) => {
     res.json(anomalies);
   } catch (error) {
     console.error("Error detecting anomalies:", error);
-    res.status(500).json({ message: "Failed to detect anomalies" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to detect anomalies" });
+    }
   }
 });
 
@@ -100,6 +149,32 @@ aiRouter.get("/market-timing", isAuthenticated, async (req, res) => {
     res.json(timing);
   } catch (error) {
     console.error("Error getting market timing:", error);
-    res.status(500).json({ message: "Failed to get market timing" });
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to get market timing" });
+    }
+  }
+});
+
+// POST /api/ai/supplier-performance
+aiRouter.post("/supplier-performance", isAuthenticated, async (req, res) => {
+  try {
+    const { supplierData, performanceMetrics } = req.body;
+    const analysis = await aiService.getSupplierPerformanceAnalysis(supplierData || [], performanceMetrics || {});
+    res.json(analysis);
+  } catch (error) {
+    console.error("Error analyzing supplier performance:", error);
+    if (error instanceof Error && error.message.includes('parse')) {
+      res.status(422).json({ 
+        message: "AI response could not be parsed. The service returned fallback data.",
+        error: "Invalid AI response format"
+      });
+    } else {
+      res.status(500).json({ message: "Failed to analyze supplier performance" });
+    }
   }
 });

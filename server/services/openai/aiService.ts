@@ -87,6 +87,105 @@ export interface GapReport {
 
 // Use the centralized OpenAI client from config
 
+// Helper function for safe AI response parsing with multiple fallback strategies
+function safeParseAIResponse<T>(response: string | null | undefined, fallbackData: T): T {
+  if (!response) {
+    console.warn('No AI response received, returning fallback data');
+    return fallbackData;
+  }
+
+  // Strategy 1: Try direct JSON.parse
+  try {
+    const parsed = JSON.parse(response);
+    console.log('Successfully parsed AI response with direct JSON.parse');
+    return parsed as T;
+  } catch (directError) {
+    console.log('Direct JSON.parse failed, trying extraction strategies');
+  }
+
+  // Strategy 2: Try to extract JSON from markdown code blocks
+  const codeBlockPatterns = [
+    /```json\s*([\s\S]*?)\s*```/i,  // ```json ... ```
+    /```\s*([\s\S]*?)\s*```/,        // ``` ... ```
+  ];
+
+  for (const pattern of codeBlockPatterns) {
+    const match = response.match(pattern);
+    if (match && match[1]) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        console.log('Successfully extracted JSON from markdown code block');
+        return parsed as T;
+      } catch (blockError) {
+        console.log('Code block extraction failed:', blockError.message);
+      }
+    }
+  }
+
+  // Strategy 3: Try to extract first well-formed JSON object
+  const jsonPatterns = [
+    /(\{[\s\S]*?\})\s*(?:```|$)/,    // JSON ending with ``` or end of string
+    /(\{[\s\S]*\})/                   // Any JSON-like structure
+  ];
+
+  for (const pattern of jsonPatterns) {
+    const match = response.match(pattern);
+    if (match && match[1]) {
+      try {
+        // Balance braces to find complete JSON object
+        let braceCount = 0;
+        let inString = false;
+        let escapeNext = false;
+        let jsonEnd = -1;
+        
+        for (let i = 0; i < match[1].length; i++) {
+          const char = match[1][i];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') braceCount++;
+            if (char === '}') {
+              braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+          }
+        }
+        
+        if (jsonEnd > 0) {
+          const completeJson = match[1].substring(0, jsonEnd);
+          const parsed = JSON.parse(completeJson);
+          console.log('Successfully extracted well-formed JSON object');
+          return parsed as T;
+        }
+      } catch (extractError) {
+        console.log('JSON extraction failed:', extractError.message);
+      }
+    }
+  }
+
+  // Strategy 4: Return fallback data with warning
+  console.warn('All JSON parsing strategies failed. AI Response preview:', response.substring(0, 200));
+  console.warn('Returning fallback data to prevent 500 error');
+  return fallbackData;
+}
+
 // AI Service class for WorkFlu business automation
 export class WorkFluAIService {
   private static instance: WorkFluAIService;
@@ -194,38 +293,12 @@ Please provide strategic purchase recommendations considering:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for purchase recommendations
+    return safeParseAIResponse(result, {
+      recommendations: [],
+      marketInsights: "Unable to generate market insights at this time. Please try again.",
+      riskAssessment: "Unable to perform risk assessment. Using conservative approach is recommended."
+    });
   }
 
   /**
@@ -294,38 +367,11 @@ Rank suppliers considering:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for supplier recommendations
+    return safeParseAIResponse(result, {
+      rankedSuppliers: [],
+      insights: "Unable to generate supplier insights at this time. Please review suppliers manually."
+    });
   }
 
   /**
@@ -393,38 +439,12 @@ Provide recommendations for:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for capital optimization
+    return safeParseAIResponse(result, {
+      optimizations: [],
+      cashFlowForecast: "Unable to generate cash flow forecast. Please review financial data manually.",
+      riskAlerts: []
+    });
   }
 
   /**
@@ -492,38 +512,12 @@ Recommend actions considering:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for inventory recommendations
+    return safeParseAIResponse(result, {
+      actions: [],
+      insights: "Unable to generate inventory insights at this time. Please review stock manually.",
+      qualityAlerts: []
+    });
   }
 
   // Financial Insights and Analytics
@@ -597,38 +591,16 @@ Analyze trends in:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for financial trends
+    return safeParseAIResponse(result, {
+      trends: [],
+      predictions: {
+        nextQuarter: {},
+        risks: [],
+        opportunities: []
+      },
+      insights: "Unable to analyze financial trends at this time. Please review data manually."
+    });
   }
 
   // Trading Decision Support
@@ -694,38 +666,18 @@ Provide timing analysis considering:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for market timing
+    return safeParseAIResponse(result, {
+      recommendation: 'hold_position',
+      confidence: 0,
+      reasoning: "Unable to analyze market conditions. Recommend holding current position.",
+      priceTargets: {
+        buyBelow: 0,
+        sellAbove: 0
+      },
+      marketOutlook: "Market analysis unavailable. Please review market data manually.",
+      riskFactors: []
+    });
   }
 
   // Intelligent Reporting and Alerts
@@ -799,38 +751,13 @@ Create executive summary covering:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for executive summary
+    return safeParseAIResponse(result, {
+      summary: "Unable to generate executive summary at this time. Please review business data manually.",
+      keyMetrics: [],
+      priorities: [],
+      recommendations: []
+    });
   }
 
   /**
@@ -894,38 +821,12 @@ Identify anomalies in:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for anomaly detection
+    return safeParseAIResponse(result, {
+      anomalies: [],
+      patterns: [],
+      alerts: []
+    });
   }
 
   /**
@@ -984,38 +885,12 @@ Provide:
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback for contextual help
+    return safeParseAIResponse(result, {
+      help: "Help is temporarily unavailable. Please refer to documentation or contact support.",
+      suggestions: [],
+      quickActions: []
+    });
   }
 
   /**
@@ -1062,38 +937,93 @@ Provide a helpful response with actionable suggestions and any relevant action i
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
+    // Use safe parser with appropriate fallback for chat assistant
+    return safeParseAIResponse(result, {
+      response: "I apologize, but I'm unable to process your request at the moment. Please try again.",
+      suggestions: [],
+      actionItems: []
+    });
+  }
+
+  /**
+   * Analyze supplier performance for strategic decision making
+   */
+  async getSupplierPerformanceAnalysis(
+    supplierData: any[],
+    performanceMetrics: any
+  ): Promise<{
+    analysis: string;
+    topPerformers: Array<{
+      supplierId: string;
+      name: string;
+      score: number;
+      metrics: any;
+    }>;
+    underperformers: Array<{
+      supplierId: string;
+      name: string;
+      issues: string[];
+      recommendations: string[];
+    }>;
+    insights: string;
+  }> {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: `You are a supplier performance analyst. Analyze supplier data and provide detailed performance insights.
+                  Respond with JSON in this exact format:
+                  {
+                    "analysis": "string",
+                    "topPerformers": [
+                      {
+                        "supplierId": "string",
+                        "name": "string",
+                        "score": number,
+                        "metrics": {}
+                      }
+                    ],
+                    "underperformers": [
+                      {
+                        "supplierId": "string",
+                        "name": "string",
+                        "issues": ["string"],
+                        "recommendations": ["string"]
+                      }
+                    ],
+                    "insights": "string"
+                  }`
+      },
+      {
+        role: "user",
+        content: `Analyze supplier performance data:
+
+Supplier Data:
+${JSON.stringify(supplierData, null, 2)}
+
+Performance Metrics:
+${JSON.stringify(performanceMetrics, null, 2)}
+
+Provide analysis on:
+1. Overall supplier performance trends
+2. Top performing suppliers and their strengths
+3. Underperforming suppliers and improvement areas
+4. Strategic recommendations for supplier management
+5. Risk factors and mitigation strategies`
       }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
+    ];
+
+    const result = await this.createCompletion(messages, true);
+    if (!result) {
+      throw new Error('No response received from AI service');
     }
+    
+    // Use safe parser with appropriate fallback for supplier performance analysis
+    return safeParseAIResponse(result, {
+      analysis: "Unable to analyze supplier performance at this time. Please review data manually.",
+      topPerformers: [],
+      underperformers: [],
+      insights: "Performance analysis temporarily unavailable."
+    });
   }
 
   // ======================================
@@ -1152,38 +1082,8 @@ Ensure comprehensive coverage of all operational aspects mentioned in the docume
       throw new Error('No response received from AI service');
     }
     
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      console.error('Failed to parse AI JSON response:', error);
-      console.error('Raw AI response:', result);
-      
-      // Enhanced JSON extraction - try multiple patterns
-      const patterns = [
-        /```json\s*(\{[\s\S]*?\})\s*```/,  // JSON code blocks
-        /```\s*(\{[\s\S]*?\})\s*```/,      // Generic code blocks
-        /(\{[\s\S]*?\})\s*(?:```|$)/,      // JSON ending with ``` or end of string
-        /(\{[\s\S]*\})/                    // Last resort: any JSON-like structure
-      ];
-      
-      for (const pattern of patterns) {
-        const match = result.match(pattern);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[1]);
-            console.log('Successfully extracted JSON with pattern:', pattern.source);
-            return parsed;
-          } catch (parseError) {
-            console.log('Pattern matched but failed to parse:', pattern.source, parseError.message);
-            continue;
-          }
-        }
-      }
-      
-      // Return a structured error response with fallback data
-      console.error('All JSON extraction patterns failed, returning fallback');
-      throw new Error(`AI returned invalid JSON. Raw response: ${result.substring(0, 200)}...`);
-    }
+    // Use safe parser with appropriate fallback  
+    return safeParseAIResponse(result, {});
   }
 
   /**
