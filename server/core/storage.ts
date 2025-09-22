@@ -268,6 +268,7 @@ import { auditService } from "../auditService";
 import { supabaseAdmin } from "./auth/providers/supabaseProvider";
 import { approvalWorkflowService } from "../approvalWorkflowService";
 import { ConfigurationService } from "../configurationService";
+import { guardSystemUser } from "./systemUserGuard";
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -1877,6 +1878,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // CRITICAL: Prevent modification of system user data
+    if (userData.id) {
+      guardSystemUser(userData.id, 'modified');
+    }
+
     const [user] = await db
       .insert(users)
       .values(userData)
@@ -1907,6 +1913,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUserRole(id: string, role: User['role'], auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<User> {
+    // CRITICAL: Prevent modification of system user role
+    guardSystemUser(id, 'role changed');
+
     // Get old user data for audit trail
     const [oldUser] = await db.select().from(users).where(eq(users.id, id));
     
@@ -1967,6 +1976,9 @@ export class DatabaseStorage implements IStorage {
   async deleteUser(id: string, auditContext?: AuditContext): Promise<User> {
     // Use transaction to ensure atomicity of cleanup and deletion
     return await db.transaction(async (tx) => {
+      // CRITICAL: Prevent deletion of system user using centralized guard
+      guardSystemUser(id, 'deleted');
+
       // Get old user data for audit trail
       const [oldUser] = await tx.select().from(users).where(eq(users.id, id));
       
@@ -2003,6 +2015,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUserStatus(id: string, isActive: boolean): Promise<User> {
+    // CRITICAL: Prevent modification of system user status
+    guardSystemUser(id, 'status changed');
+
     // Get old user data for audit trail
     const [oldUser] = await db.select().from(users).where(eq(users.id, id));
     
