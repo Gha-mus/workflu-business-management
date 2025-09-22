@@ -11,9 +11,8 @@ export const LanguageSwitcher: React.FC = () => {
     setLanguage(language === 'en' ? 'ar' : 'en');
   };
 
-  if (!translationEnabled) {
-    return null; // Don't show switcher if translation is disabled
-  }
+  // Always show the language switcher
+  // Translation will fallback to original text if AI is disabled
 
   return (
     <Button
@@ -38,9 +37,7 @@ export const LanguageSwitcher: React.FC = () => {
 export const LanguageSwitcherCompact: React.FC = () => {
   const { language, setLanguage, translationEnabled } = useLanguage();
 
-  if (!translationEnabled) {
-    return null;
-  }
+  // Always show the language switcher
 
   return (
     <Badge
