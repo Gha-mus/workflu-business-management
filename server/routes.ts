@@ -3028,33 +3028,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===============================================
   // API endpoint to get AI status
-  app.get('/api/ai/status', requireRole(['admin']), (req, res) => {
-    const status = openaiGateway.getStatus();
+  app.get('/api/ai/status', requireRole(['admin']), async (req, res) => {
+    const status = await openaiGateway.getStatus();
     res.json(status);
   });
 
-  // API endpoint to update AI settings (Note: requires server restart to take effect)
+  // API endpoint to update AI settings (persisted to database)
   app.post('/api/ai/settings', requireRole(['admin']), async (req, res) => {
     try {
-      const { enabled, features } = req.body;
+      const { enabled, features, model } = req.body;
+      const { aiSettingsService } = await import('./services/ai/settingsService');
       
-      // Note: These settings would need to be saved to a configuration file 
-      // or environment variables to persist across restarts
-      // For now, we return a message indicating manual configuration is needed
+      // Update settings in database
+      const updates: any = {};
+      if (enabled !== undefined) updates.enabled = enabled;
+      if (features !== undefined) updates.features = features;
+      if (model !== undefined) updates.model = model;
+      
+      const updatedSettings = await aiSettingsService.updateSettings(updates);
+      
+      // Reinitialize the gateway with new settings
+      await openaiGateway.reinitialize();
       
       res.json({
-        success: false,
-        message: 'AI settings must be configured via environment variables. Please update your .env file and restart the server.',
-        currentStatus: openaiGateway.getStatus(),
-        instructions: {
-          master: 'Set AI_ENABLED=true or AI_ENABLED=false',
-          features: {
-            translation: 'Set AI_FEATURE_TRANSLATION=true or AI_FEATURE_TRANSLATION=false',
-            assistant: 'Set AI_FEATURE_ASSISTANT=true or AI_FEATURE_ASSISTANT=false',
-            reports: 'Set AI_FEATURE_REPORTS=true or AI_FEATURE_REPORTS=false'
-          },
-          model: 'Set OPENAI_MODEL=gpt-3.5-turbo (currently locked to this model)'
-        }
+        success: true,
+        message: 'AI settings updated successfully',
+        settings: updatedSettings
       });
     } catch (error) {
       console.error('Error updating AI settings:', error);
