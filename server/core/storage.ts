@@ -3223,8 +3223,15 @@ export class DatabaseStorage implements IStorage {
 
       // STAGE 2 COMPLIANCE: Create warehouse stock entry in FIRST warehouse with central FX rate
       const pricePerKg = new Decimal(purchaseData.pricePerKg);
-      const config2 = ConfigurationService.getInstance();
-      const finalExchangeRate = exchangeRateValue || await config2.getCentralExchangeRate();
+      let finalExchangeRate: number;
+      if (purchaseData.currency === 'USD') {
+        finalExchangeRate = 1; // USD to USD is 1:1
+      } else {
+        // Use the exchangeRateValue from above if available, otherwise fetch fresh
+        const config2 = ConfigurationService.getInstance();
+        finalExchangeRate = exchangeRateValue || await config2.getCentralExchangeRate();
+      }
+      
       const unitCostCleanUsd = purchaseData.currency === 'USD' 
         ? purchaseData.pricePerKg 
         : pricePerKg.div(new Decimal(finalExchangeRate)).toFixed(4);
