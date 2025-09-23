@@ -66,6 +66,7 @@ export default function Purchases() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
+  const [isPaymentValid, setIsPaymentValid] = useState(true);
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -108,6 +109,20 @@ export default function Purchases() {
       return;
     }
   }, [isAuthenticated, isLoading, toast]);
+
+  // Real-time payment validation
+  useEffect(() => {
+    if (selectedPurchase && showPaymentModal) {
+      const amount = paymentForm.watch('amount');
+      if (amount) {
+        const paymentAmount = parseFloat(amount);
+        const remaining = parseFloat(selectedPurchase.remaining);
+        setIsPaymentValid(paymentAmount <= remaining && paymentAmount > 0);
+      } else {
+        setIsPaymentValid(true);
+      }
+    }
+  }, [paymentForm.watch('amount'), selectedPurchase, showPaymentModal]);
 
   // Queries
   const { data: purchases, isLoading: purchasesLoading } = useQuery<Purchase[]>({
@@ -818,6 +833,11 @@ export default function Purchases() {
                   <p className="text-sm">Total: {formatCurrency(selectedPurchase.total, selectedPurchase.currency)}</p>
                   <p className="text-sm">Already Paid: {formatCurrency(selectedPurchase.amountPaid, selectedPurchase.currency)}</p>
                   <p className="text-sm font-medium text-red-600">Remaining: {formatCurrency(selectedPurchase.remaining, selectedPurchase.currency)}</p>
+                  {!isPaymentValid && paymentForm.watch('amount') && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                      <p className="text-sm text-red-600 font-medium">⚠️ Payment amount exceeds remaining balance!</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -945,10 +965,10 @@ export default function Purchases() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={recordPaymentMutation.isPending}
+                    disabled={recordPaymentMutation.isPending || !isPaymentValid}
                     data-testid="button-record-payment"
                   >
-                    {recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment'}
+                    {recordPaymentMutation.isPending ? 'Recording...' : !isPaymentValid ? 'Invalid Amount' : 'Record Payment'}
                   </Button>
                 </div>
               </form>
