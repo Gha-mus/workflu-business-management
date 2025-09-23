@@ -94,14 +94,23 @@ export default function Purchases() {
   const [cartonCount, setCartonCount] = useState('');
   const [showCartonEquivalents, setShowCartonEquivalents] = useState(false);
 
+  // Form default values for consistent resets
+  const purchaseFormDefaults: Partial<PurchaseFormData> = {
+    supplierId: "",
+    orderId: "",
+    weight: "",
+    pricePerKg: "",
+    currency: "USD",
+    paymentMethod: "cash",
+    fundingSource: "capital",
+    country: "",
+    quality: "",
+  };
+
   // Forms
   const purchaseForm = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
-    defaultValues: {
-      currency: "USD",
-      paymentMethod: "cash",
-      fundingSource: "capital",
-    },
+    defaultValues: purchaseFormDefaults,
   });
 
   const paymentForm = useForm<PaymentFormData>({
@@ -186,7 +195,7 @@ export default function Purchases() {
       toast({ title: "Success", description: "Purchase created successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       setShowNewPurchaseModal(false);
-      purchaseForm.reset();
+      purchaseForm.reset(purchaseFormDefaults);
       // Reset carton input states
       setInputMethod('kg');
       setCartonCount('');
@@ -249,7 +258,7 @@ export default function Purchases() {
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       setShowEditModal(false);
       setSelectedPurchase(null);
-      purchaseForm.reset();
+      purchaseForm.reset(purchaseFormDefaults);
     },
     onError: (error: any) => {
       const errorMessage = typeof error === 'string' 
@@ -621,8 +630,8 @@ export default function Purchases() {
       <Dialog open={showNewPurchaseModal} onOpenChange={(open) => {
         setShowNewPurchaseModal(open);
         if (!open) {
-          // Reset form and carton helper states on modal close
-          purchaseForm.reset();
+          // Reset form and carton helper states on modal close with explicit defaults
+          purchaseForm.reset(purchaseFormDefaults);
           setInputMethod('kg');
           setCartonCount('');
           setShowCartonEquivalents(false);
@@ -1491,7 +1500,7 @@ export default function Purchases() {
                   onClick={() => {
                     setShowEditModal(false);
                     setSelectedPurchase(null);
-                    purchaseForm.reset();
+                    purchaseForm.reset(purchaseFormDefaults);
                   }}
                   data-testid="button-cancel-edit"
                 >
