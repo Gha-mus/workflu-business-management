@@ -4497,7 +4497,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWarehouseStockByStatus(status: string): Promise<WarehouseStock[]> {
-    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, status));
+    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, status as any));
   }
 
   async getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]> {
@@ -6245,7 +6245,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (filter?.method) {
-      conditions.push(eq(shipments.method, filter.method));
+      conditions.push(eq(shipments.method, filter.method as any));
     }
 
     if (filter?.carrierId) {
@@ -6374,8 +6374,8 @@ export class DatabaseStorage implements IStorage {
         status: 'pending',
         originAddress: shipmentData.originAddress,
         destinationAddress: shipmentData.destinationAddress,
-        estimatedDepartureDate: shipmentData.estimatedDepartureDate ? new Date(shipmentData.estimatedDepartureDate) : undefined,
-        estimatedArrivalDate: shipmentData.estimatedArrivalDate ? new Date(shipmentData.estimatedArrivalDate) : undefined,
+        estimatedDepartureDate: shipmentData.estimatedDepartureDate ? new Date(shipmentData.estimatedDepartureDate) : null,
+        estimatedArrivalDate: shipmentData.estimatedArrivalDate ? new Date(shipmentData.estimatedArrivalDate) : null,
         totalWeight: totalWeight.toString(),
         notes: shipmentData.notes,
         createdBy: userId,
@@ -6939,7 +6939,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(warehouseBatches.supplierId, filter.supplierId));
     }
     if (filter?.qualityGrade) {
-      conditions.push(eq(warehouseBatches.qualityGrade, filter.qualityGrade));
+      conditions.push(eq(warehouseBatches.qualityGrade, filter.qualityGrade as any));
     }
     if (filter?.isActive !== undefined) {
       conditions.push(eq(warehouseBatches.isActive, filter.isActive));
@@ -7016,7 +7016,7 @@ export class DatabaseStorage implements IStorage {
           qualityGrade: originalBatch.qualityGrade,
           totalQuantityKg: splitQuantityKg,
           notes: `Split from batch ${originalBatch.batchNumber}`,
-          createdById: userId,
+          createdBy: userId,
         })
         .returning();
 
@@ -7062,7 +7062,7 @@ export class DatabaseStorage implements IStorage {
           qualityGrade: firstBatch.qualityGrade,
           totalQuantityKg: totalQuantity.toString(),
           notes: `Merged from batches: ${batches.map(b => b.batchNumber).join(', ')}`,
-          createdById: userId,
+          createdBy: userId,
         })
         .returning();
 
@@ -7386,7 +7386,7 @@ export class DatabaseStorage implements IStorage {
           consumptionType,
           unitCostUsd: stock.unitCostCleanUsd || '0',
           totalCostUsd: (parseFloat(stock.unitCostCleanUsd || '0') * consumeQty).toString(),
-          createdById: userId,
+          createdBy: userId,
         })
         .returning();
 
