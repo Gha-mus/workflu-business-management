@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
@@ -110,19 +110,24 @@ export default function Purchases() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
+  // Watch payment amount for real-time validation
+  const watchedAmount = useWatch({
+    control: paymentForm.control,
+    name: 'amount'
+  });
+
   // Real-time payment validation
   useEffect(() => {
     if (selectedPurchase && showPaymentModal) {
-      const amount = paymentForm.watch('amount');
-      if (amount) {
-        const paymentAmount = parseFloat(amount);
+      if (watchedAmount) {
+        const paymentAmount = parseFloat(watchedAmount);
         const remaining = parseFloat(selectedPurchase.remaining);
         setIsPaymentValid(paymentAmount <= remaining && paymentAmount > 0);
       } else {
         setIsPaymentValid(true);
       }
     }
-  }, [paymentForm.watch('amount'), selectedPurchase, showPaymentModal]);
+  }, [watchedAmount, selectedPurchase, showPaymentModal]);
 
   // Queries
   const { data: purchases, isLoading: purchasesLoading } = useQuery<Purchase[]>({
@@ -833,7 +838,7 @@ export default function Purchases() {
                   <p className="text-sm">Total: {formatCurrency(selectedPurchase.total, selectedPurchase.currency)}</p>
                   <p className="text-sm">Already Paid: {formatCurrency(selectedPurchase.amountPaid, selectedPurchase.currency)}</p>
                   <p className="text-sm font-medium text-red-600">Remaining: {formatCurrency(selectedPurchase.remaining, selectedPurchase.currency)}</p>
-                  {!isPaymentValid && paymentForm.watch('amount') && (
+                  {!isPaymentValid && watchedAmount && (
                     <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
                       <p className="text-sm text-red-600 font-medium">⚠️ Payment amount exceeds remaining balance!</p>
                     </div>
