@@ -1011,9 +1011,9 @@ export default function Reports() {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
-                                data={inventoryAnalytics?.statusSummary ? Object.entries(inventoryAnalytics.statusSummary).map(([status, data]: [string, any]) => ({
-                                  name: status.replace(/_/g, ' '),
-                                  value: data.totalKg
+                                data={inventoryAnalytics?.statusBreakdown ? inventoryAnalytics.statusBreakdown.map((item: any) => ({
+                                  name: item.status.replace(/_/g, ' '),
+                                  value: item.totalKg
                                 })) : []}
                                 cx="50%"
                                 cy="50%"
@@ -1023,7 +1023,7 @@ export default function Reports() {
                                 fill="#8884d8"
                                 dataKey="value"
                               >
-                                {inventoryAnalytics?.statusSummary ? Object.keys(inventoryAnalytics.statusSummary).map((_, index) => (
+                                {inventoryAnalytics?.statusBreakdown ? inventoryAnalytics.statusBreakdown.map((_, index) => (
                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 )) : null}
                               </Pie>

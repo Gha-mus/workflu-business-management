@@ -443,17 +443,69 @@ export function validateApprovalExecution() {
     
     try {
       const auditContext = auditService.extractRequestContext(req);
-      // Proper approval validation using workflow service
-      const approval = await approvalWorkflowService.getApprovalsByStatus('approved')
-        .then(approvals => approvals.find(a => a.id === approvalId));
-      const isValid = approval && approval.status === 'approved';
       
-      if (!isValid) {
+      // CRITICAL SECURITY: Proper approval validation with user ownership and workflow guards
+      const approval = await approvalWorkflowService.getApprovalById(approvalId);
+      
+      // Security validation: Check existence, status, and user ownership
+      if (!approval) {
         return res.status(403).json({
-          message: "Invalid or expired approval",
+          message: "Invalid approval request",
           approvalRequestId: approvalId,
-          error: "The provided approval request is not approved or has expired"
+          error: "The provided approval request does not exist"
         });
+      }
+      
+      if (approval.status !== 'approved') {
+        return res.status(403).json({
+          message: "Approval not in approved status",
+          approvalRequestId: approvalId,
+          currentStatus: approval.status,
+          error: "Only approved requests can be executed"
+        });
+      }
+      
+      // CRITICAL SECURITY: User ownership validation - only requester or current approver can execute
+      const hasPermission = (approval.requestedBy === auditContext.userId || 
+                           approval.currentApprover === auditContext.userId);
+      
+      if (!hasPermission) {
+        return res.status(403).json({
+          message: "Insufficient permissions",
+          approvalRequestId: approvalId,
+          error: "You lack permission to execute this approval - only the requester or current approver can execute approved requests"
+        });
+      }
+      
+      // CRITICAL SECURITY: Operation binding validation - ensure approval matches current operation
+      const currentOperation = extractOperationContext(req, approval.operationType);
+      
+      // Validate operation type matches
+      if (approval.operationType !== currentOperation.operationType) {
+        return res.status(403).json({
+          message: "Operation type mismatch",
+          approvalRequestId: approvalId,
+          approvedType: approval.operationType,
+          requestedType: currentOperation.operationType,
+          error: "This approval is for a different operation type"
+        });
+      }
+      
+      // CRITICAL SECURITY: Amount validation for financial operations
+      if (currentOperation.amount && approval.amount) {
+        const approvedAmount = parseFloat(approval.amount.toString());
+        const requestedAmount = currentOperation.amount;
+        
+        // Allow small tolerance for rounding (0.01)
+        if (Math.abs(approvedAmount - requestedAmount) > 0.01) {
+          return res.status(403).json({
+            message: "Amount mismatch",
+            approvalRequestId: approvalId,
+            approvedAmount: approvedAmount,
+            requestedAmount: requestedAmount,
+            error: "This approval is for a different amount"
+          });
+        }
       }
       
       next();
