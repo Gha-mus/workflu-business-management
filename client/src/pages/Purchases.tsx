@@ -55,7 +55,10 @@ const purchaseFormSchema = z.object({
 const paymentFormSchema = z.object({
   amount: z.string()
     .min(1, "Amount is required")
-    .refine((val) => parseFloat(val) > 0, "Amount must be greater than 0"),
+    .refine((val) => {
+      const parsed = parseFloat(val);
+      return !isNaN(parsed) && parsed > 0;
+    }, "Amount must be a valid positive number"),
   paymentMethod: z.enum(["cash", "credit", "advance", "other"]),
   fundingSource: z.enum(["capital", "external"]),
   currency: z.enum(["USD", "ETB"]),
@@ -992,12 +995,19 @@ export default function Purchases() {
           {selectedPurchase && (
             <Form {...paymentForm}>
               <form onSubmit={paymentForm.handleSubmit((data) => {
-                // Validate overpayment
-                const amount = parseFloat(data.amount);
-                const remaining = parseFloat(selectedPurchase.remaining);
+                // Validate overpayment using safe parsing
+                const amount = safeParseFloat(data.amount);
+                const remaining = safeParseFloat(selectedPurchase.remaining);
                 if (amount > remaining) {
                   paymentForm.setError("amount", {
                     message: `Payment amount cannot exceed remaining balance of ${formatCurrency(selectedPurchase.remaining, selectedPurchase.currency)}`
+                  });
+                  return;
+                }
+                // Additional validation: ensure positive amount
+                if (amount <= 0) {
+                  paymentForm.setError("amount", {
+                    message: "Payment amount must be greater than 0"
                   });
                   return;
                 }
