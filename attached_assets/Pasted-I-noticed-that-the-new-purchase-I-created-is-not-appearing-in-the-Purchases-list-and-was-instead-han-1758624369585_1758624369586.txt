@@ -1,0 +1,57 @@
+I noticed that the new purchase I created is not appearing in the Purchases list and was instead handled as a "Pending Approval." This logic does not match the workflow we defined. Let me clarify the correct behavior so you can adjust the implementation accordingly:
+
+🔹 Purchases
+
+Direct Recording
+
+When we create a purchase, it should be recorded immediately and directly in the database.
+
+Purchases must not be blocked or hidden under "Pending Approval."
+
+Approval Logic
+
+Approval is only required if someone tries to modify an already existing purchase record (for example, changing supplier, weight, unit price, or total amount after it has been created).
+
+New purchases = always accepted immediately, no approval step.
+
+Integration with Warehouse
+
+Every purchase line (supplier, quantity in kg, price, etc.) must directly appear as a row in the First Warehouse view for evaluation.
+
+🔹 First Warehouse
+
+Initial Status
+
+Each purchase appears as a line under its supplier in the First Warehouse.
+
+The warehouse team must decide for each line:
+
+✅ Clean → The goods go directly into “Ready in First Warehouse” (eligible for shipping).
+
+🟠 Filter/Cleaning → The goods go into “Awaiting Filter.”
+
+After Filtering
+
+Staff will enter:
+
+Clean Output (kg) → Added automatically to First Warehouse (ready for shipping).
+
+Non-Clean Output (kg) → Remains permanently in First Warehouse as "Non-Clean" (to be sold as-is).
+
+Loss/Discarded (kg) → Recorded as system loss.
+
+Approval in Warehouse
+
+No approval is required for normal evaluation (Clean vs Filter).
+
+Approval is only triggered if someone tries to manually change warehouse quantities after the system has already registered them.
+
+🔑 Summary
+
+Purchases: Always recorded immediately, never stuck as “pending.”
+
+Approvals: Only when modifying existing purchases or manually altering warehouse stock.
+
+Warehouse Flow: Purchases → First Warehouse rows → Marked Clean or Awaiting Filter → Outputs handled accordingly (Clean / Non-Clean / Loss).
+
+Please update the implementation to reflect this exact workflow. Purchases should appear instantly, flow into the First Warehouse, and follow the clean/filter/loss process there.
