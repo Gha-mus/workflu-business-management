@@ -132,7 +132,6 @@ class SupplierEnhancementService {
             assessedBy: assessment.assessedBy,
             notes: assessment.notes,
           },
-          businessContext: `Supplier quality assessment completed`,
         }
       );
 
@@ -189,7 +188,8 @@ class SupplierEnhancementService {
         ));
 
       const alerts: OverdueAdvanceAlert[] = [];
-      const advanceTermsDays = await configurationService.getNumericSetting('SUPPLIER_ADVANCE_TERMS_DAYS', 30);
+      const settingValue = await configurationService.getSystemSetting('SUPPLIER_ADVANCE_TERMS_DAYS', 'supplier');
+      const advanceTermsDays = settingValue ? parseInt(settingValue) : 30;
 
       for (const supplier of suppliersWithAdvances) {
         if (!supplier.lastAdvanceDate) continue;
@@ -351,7 +351,6 @@ class SupplierEnhancementService {
             qualityIssues: returnRequest.qualityIssues,
             approvedBy: returnRequest.approvedBy,
           },
-          businessContext: `Purchase return: ${returnRequest.returnQuantityKg}kg valued at $${returnRequest.returnAmountUsd}`,
         }
       );
 
@@ -413,17 +412,12 @@ class SupplierEnhancementService {
         await db
           .insert(capitalEntries)
           .values({
-            entryId: `${purchaseNumber}-PAY`,
             amount: amountPaidUsd.toString(),
             type: 'CapitalOut',
             reference: purchase.id,
             description: `Purchase payment: ${request.weight}kg from supplier`,
             paymentCurrency: request.currency,
             exchangeRate: exchangeRate.toString(),
-            fundingSource: 'external',
-            isValidated: true,
-            validatedBy: userId,
-            validatedAt: new Date(),
             createdBy: userId,
           });
       }
@@ -473,7 +467,6 @@ class SupplierEnhancementService {
             paymentMethod: request.paymentMethod,
             fundingSource: request.fundingSource,
           },
-          businessContext: `Purchase with ${request.currency} pricing and historical FX rate ${exchangeRate}`,
         }
       );
 
@@ -513,7 +506,7 @@ class SupplierEnhancementService {
         // Get purchase metrics for this supplier
         const purchaseMetrics = await db
           .select({
-            totalPurchases: sql`COUNT(*)::int`,
+            totalPurchases: sql<number>`COUNT(*)::int`,
             totalVolumeKg: sum(sql`CAST(${purchases.weight} AS DECIMAL)`),
             totalValueUsd: sum(sql`CAST(${purchases.total} AS DECIMAL)`),
           })

@@ -16,7 +16,7 @@ export const aiRouter = Router();
 aiRouter.post("/purchase-recommendation", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiPurchaseRecommendationRequestSchema.parse(req.body);
-    const recommendation = await aiService.getPurchaseRecommendations(validatedData.historicalPurchases, validatedData.currentMarketConditions, validatedData.availableCapital);
+    const recommendation = await aiService.getPurchaseRecommendations(validatedData.historicalPurchases || [], validatedData.currentMarketConditions || {}, validatedData.availableCapital || 0);
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting purchase recommendation:", error);
@@ -41,7 +41,23 @@ aiRouter.post("/purchase-recommendation", isAuthenticated, async (req, res) => {
 aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiSupplierRecommendationRequestSchema.parse(req.body);
-    const recommendation = await aiService.getSupplierRecommendations(validatedData.suppliers, validatedData.supplierPerformance, validatedData.currentNeeds);
+    const recommendation = await aiService.getSupplierRecommendations(
+      validatedData.suppliers || [],
+      (validatedData.supplierPerformance || {
+        suppliers: [],
+        summary: {
+          totalSuppliers: 0,
+          averageRating: 0,
+          topPerformers: [],
+          riskFactors: []
+        }
+      }) as any,
+      (validatedData.currentNeeds || {
+        quantity: validatedData.quantity || 0,
+        quality: validatedData.quality || '',
+        budget: validatedData.budget || 0
+      }) as any
+    );
     res.json(recommendation);
   } catch (error) {
     console.error("Error getting supplier recommendation:", error);
@@ -66,7 +82,27 @@ aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
 aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiCapitalOptimizationRequestSchema.parse(req.body);
-    const optimization = await aiService.getCapitalOptimizationSuggestions(validatedData.capitalEntries, validatedData.financialSummary, validatedData.upcomingPayments);
+    const optimization = await aiService.getCapitalOptimizationSuggestions(
+      validatedData.capitalEntries || [],
+      (validatedData.financialSummary || {
+        exchangeRate: 1,
+        summary: {
+          totalPurchases: 0,
+          currentBalance: 0,
+          capitalIn: 0,
+          capitalOut: 0,
+          totalPaid: 0,
+          totalOutstanding: 0,
+          totalInventoryValue: 0,
+          netPosition: 0
+        },
+        currencyBreakdown: {
+          usd: { amount: 0, count: 0 },
+          etb: { amount: 0, count: 0 }
+        }
+      }) as any,
+      validatedData.upcomingPayments || []
+    );
     res.json(optimization);
   } catch (error) {
     console.error("Error getting capital optimization:", error);
@@ -91,7 +127,11 @@ aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
 aiRouter.post("/chat", isAuthenticated, async (req, res) => {
   try {
     const validatedData = aiChatRequestSchema.parse(req.body);
-    const response = await aiService.chatAssistant(validatedData.message, validatedData.businessContext, validatedData.conversationHistory);
+    const response = await aiService.chatAssistant(
+      validatedData.message,
+      validatedData.conversationHistory || [],
+      validatedData.businessContext || ''
+    );
     res.json(response);
   } catch (error) {
     console.error("Error in AI chat:", error);
@@ -140,7 +180,31 @@ aiRouter.post("/contextual-help", isAuthenticated, async (req, res) => {
 // GET /api/ai/executive-summary
 aiRouter.get("/executive-summary", isAuthenticated, async (req, res) => {
   try {
-    const summary = await aiService.generateExecutiveSummary({}, {}, {}, {});
+    const summary = await aiService.generateExecutiveSummary(
+      {
+        exchangeRate: 1,
+        summary: {
+          totalPurchases: 0,
+          currentBalance: 0,
+          capitalIn: 0,
+          capitalOut: 0,
+          totalPaid: 0,
+          totalOutstanding: 0,
+          totalInventoryValue: 0,
+          netPosition: 0
+        },
+        currencyBreakdown: {
+          usd: { amount: 0, count: 0 },
+          etb: { amount: 0, count: 0 }
+        }
+      },
+      { orderFulfillment: { 
+        stats: { total: 0, pending: 0, cancelled: 0, completed: 0 }, 
+        analysis: [] 
+      } },
+      { total: 0, pending: 0, cancelled: 0, completed: 0 },
+      { total: 0, pending: 0, cancelled: 0, completed: 0 }
+    );
     res.json(summary);
   } catch (error) {
     console.error("Error getting executive summary:", error);
