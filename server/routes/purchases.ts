@@ -21,12 +21,12 @@ purchasesRouter.get("/", isAuthenticated, async (req, res) => {
   }
 });
 
-// POST /api/purchases
+// POST /api/purchases - Direct recording without approval
 purchasesRouter.post("/", 
   isAuthenticated,
   requireRole(["admin", "purchasing", "finance"]),
   purchasePeriodGuard,
-  requireApproval("purchase"),
+  // NO APPROVAL REQUIRED FOR NEW PURCHASES - They should be recorded immediately
   async (req, res) => {
     try {
       // Stage 1 Compliance: Strip client exchangeRate and use central rate
@@ -75,12 +75,12 @@ purchasesRouter.post("/",
   }
 );
 
-// PATCH /api/purchases/:id
+// PATCH /api/purchases/:id - Modifications require approval
 purchasesRouter.patch("/:id", 
   isAuthenticated,
   requireRole(["admin", "purchasing", "finance"]),
   purchasePeriodGuard,
-  requireApproval("purchase"),
+  requireApproval("purchase_update"),  // APPROVAL REQUIRED FOR MODIFICATIONS
   async (req, res) => {
     try {
       const purchaseId = req.params.id;
@@ -131,12 +131,12 @@ purchasesRouter.patch("/:id",
   }
 );
 
-// DELETE /api/purchases/:id
+// DELETE /api/purchases/:id - Deletions require approval
 purchasesRouter.delete("/:id", 
   isAuthenticated,
   requireRole(["admin", "purchasing", "finance"]),
   purchasePeriodGuard,
-  requireApproval("purchase"),
+  requireApproval("purchase_delete"),  // APPROVAL REQUIRED FOR DELETIONS
   async (req, res) => {
     try {
       const purchaseId = req.params.id;
