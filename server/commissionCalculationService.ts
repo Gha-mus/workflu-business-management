@@ -97,7 +97,7 @@ class CommissionCalculationService {
           transferCommissionUsd: commissionUsd.toString(),
           legTotalCost: legTotalCostUsd.toString(),
           paymentCurrency: request.currency, // Track original currency for reference
-          exchangeRateUsed: exchangeRate.toString(), // Track exchange rate used
+          exchangeRate: exchangeRate.toString(), // Track exchange rate used
           updatedAt: new Date()
         })
         .where(eq(shipmentLegs.id, request.shipmentLegId));
@@ -113,7 +113,24 @@ class CommissionCalculationService {
       }
       
       // Audit log the commission calculation
-      await auditService.logOperation(userId, 'update', 'shipment_legs', request.shipmentLegId);
+      const auditContext = {
+        userId,
+        userName: 'System',
+        userRole: 'system',
+        source: 'commission_calculation',
+        severity: 'info' as const
+      };
+      await auditService.logOperation(auditContext, {
+        entityType: 'shipment_legs',
+        entityId: request.shipmentLegId,
+        action: 'update',
+        description: `Commission calculated: base=${legBaseCostUsd.toFixed(2)}, commission=${commissionUsd.toFixed(2)}`,
+        newValues: {
+          legBaseCost: legBaseCostUsd.toString(),
+          transferCommissionUsd: commissionUsd.toString(),
+          legTotalCost: legTotalCostUsd.toString()
+        }
+      });
       
       console.log(`✅ Commission calculated for leg ${request.shipmentLegId}: base=${legBaseCostUsd.toFixed(2)}, commission=${commissionUsd.toFixed(2)}, total=${legTotalCostUsd.toFixed(2)}`);
       
@@ -162,18 +179,17 @@ class CommissionCalculationService {
       
       // Route through approval workflow - respects thresholds and role-based approvals
       const approvalResult = await approvalWorkflowService.createApprovalRequest({
-        entityType: 'capital_entry',
-        entityId: shipmentLegId, // Link to shipment leg for context
+        operationType: 'capital_entry',
         requestedBy: userId,
         description: `Shipping commission payment: ${commissionUsd} USD for leg ${shipmentLegId}`,
-        metadata: capitalEntryData,
+        operationData: capitalEntryData,
         priority: 'normal'
       });
       
-      console.log(`✅ Capital entry approval request ${approvalResult.requestId} created for commission ${commissionUsd}`);
+      console.log(`✅ Capital entry approval request ${approvalResult.id} created for commission ${commissionUsd}`);
       console.log(`⚠️ Commission capital entry requires approval - status: ${approvalResult.status}`);
       
-      return approvalResult.requestId; // Return approval request ID, not capital entry ID
+      return approvalResult.id; // Return approval request ID, not capital entry ID
       
     } catch (error) {
       console.error(`Error creating commission capital entry approval request:`, error);
