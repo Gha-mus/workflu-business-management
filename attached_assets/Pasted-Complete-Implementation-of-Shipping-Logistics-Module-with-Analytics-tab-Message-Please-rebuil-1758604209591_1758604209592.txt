@@ -1,0 +1,194 @@
+Complete Implementation of Shipping & Logistics Module (with Analytics tab)
+
+Message:
+
+Please rebuild the Shipping & Logistics module from the ground up. The current version is incomplete and does not follow our required workflow. Below are the exact specifications you must implement step by step.
+
+Page Layout
+
+The page must have 4 tabs only (in this exact order):
+
+Legs (Shipping Legs)
+
+Arrival Costs
+
+Inspection
+
+Analytics (keep as the 4th tab)
+
+1. Legs Tab (Shipping Legs)
+Fields & Data
+
+Identifiers & Links:
+
+order_id (required)
+
+shipment_id (auto-generated if not provided)
+
+Leg number, carrier
+
+Route & Dates:
+
+Origin, Destination
+
+ETD (Estimated Departure), ATD (Actual Departure)
+
+ETA (Estimated Arrival), ATA (Actual Arrival)
+
+Weights:
+
+net_kg (required)
+
+carton_kg
+
+gross_kg = auto (net_kg + carton_kg)
+
+chargeable_kg (optional, overrides for cost if provided)
+
+Pricing & Finance:
+
+rate_per_kg
+
+transfer_commission_percent OR transfer_commission_usd
+
+Currency (USD/ETB)
+
+Historical FX (read-only, from Settings)
+
+Funding source (Capital / External)
+
+Payment method
+
+Calculations
+
+leg_base_cost = (chargeable_kg OR gross_kg) * rate_per_kg
+
+commission_cost = (percent ? leg_base_cost * pct : transfer_commission_usd)
+
+leg_total = leg_base_cost + commission_cost
+
+Actions
+
+Confirm Leg: reserve & deduct weight from FIRST warehouse stock (linked to order).
+
+Cancel Leg: revert reservation/deduction.
+
+Validation
+
+order_id, net_kg, and rate_per_kg must be provided.
+
+No negative or zero weights.
+
+2. Arrival Costs Tab
+Fields & Data
+
+Linked to order_id and/or shipment_id
+
+Multiple cost lines: Broker, Handling, Delivery, Storage, Other
+
+Each line has: amount, currency, FX (read-only, central only)
+
+Behavior
+
+Costs must roll up per order and per shipment.
+
+No manual FX input — must use central FX values only.
+
+3. Inspection Tab
+Fields & Data
+
+Linked to order_id (and shipment/leg if applicable)
+
+Inputs:
+
+received_gross_kg
+
+clean_kg
+
+damaged_kg = auto (received_gross_kg - clean_kg)
+
+Notes, photos, inspector, date
+
+Posting Rules
+
+clean_kg → move to FINAL warehouse (ready for sale)
+
+damaged_kg → post as Operating Expense (Loss)
+
+4. Landed Cost Allocation (calculated after inspection)
+
+For each order:
+
+landed_cost_total = purchase_cost + SUM(legs_total) + SUM(arrival_costs)
+landed_cost_per_kg = landed_cost_total / clean_kg
+landed_cost_per_carton_8kg = landed_cost_per_kg * 8
+
+
+Values must be persisted and shown in Inventory/Sales modules.
+
+5. Analytics Tab (keep as tab 4)
+Show KPIs:
+
+Average shipping cost per kg
+
+Cost per 8kg carton
+
+% of landed cost attributed to shipping
+
+Transit times (ETD→ATA)
+
+Variance between chargeable vs gross weights
+
+Filters: date range, carrier, origin/destination, order
+
+6. UX & Data Integrity
+
+Central FX = always read-only (no manual edits).
+
+Inline calculators update totals live.
+
+Full audit log on:
+
+Confirm/cancel leg
+
+Add arrival cost
+
+Complete inspection
+
+All totals must recompute automatically if weights or rates are changed.
+
+7. Acceptance Criteria
+
+I must be able to:
+
+Create and confirm a leg → stock reserved/deducted from FIRST warehouse.
+
+Add arrival costs → totals roll up correctly.
+
+Complete inspection → clean moved to FINAL warehouse, damaged posted to expense.
+
+Landed costs correctly calculated and visible.
+
+Analytics show accurate KPIs.
+
+All operations protected by RBAC (roles & permissions).
+
+Auth must work with Supabase JWT tokens only.
+
+Automated tests must pass for:
+
+Calculations
+
+Stock movements
+
+Landed cost math
+
+RBAC enforcement
+
+8. Cleanup
+
+Remove all unused/placeholder tabs.
+
+Keep only the 4 tabs above.
+
+This is the final required structure for the Shipping & Logistics module. Please implement exactly as described, with no missing steps, and test end-to-end before delivery.
