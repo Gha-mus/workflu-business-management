@@ -3201,11 +3201,11 @@ export class DatabaseStorage implements IStorage {
         // STAGE 2 SECURITY: Convert amount to USD using central exchange rate (never trust client)
         let amountInUsd = amountPaid;
         const config = ConfigurationService.getInstance();
-        let exchangeRate: number | undefined;
+        let exchangeRateValue: number | undefined;
         if (purchaseData.currency === 'ETB') {
           // Get central exchange rate from configuration
-          exchangeRate = await config.getCentralExchangeRate();
-          const centralRate = new Decimal(exchangeRate);
+          exchangeRateValue = await config.getCentralExchangeRate();
+          const centralRate = new Decimal(exchangeRateValue);
           amountInUsd = amountPaid.div(centralRate);
         }
         
@@ -3215,7 +3215,7 @@ export class DatabaseStorage implements IStorage {
           amount: amountInUsd.toFixed(2),
           type: 'CapitalOut',
           reference: purchase.id,
-          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${exchangeRate})` : ''}`,
+          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${exchangeRateValue})` : ''}`,
           paymentCurrency: purchaseData.currency,
           createdBy: userId,
         });
@@ -3223,13 +3223,15 @@ export class DatabaseStorage implements IStorage {
 
       // STAGE 2 COMPLIANCE: Create warehouse stock entry in FIRST warehouse with central FX rate
       const pricePerKg = new Decimal(purchaseData.pricePerKg);
+      const config2 = ConfigurationService.getInstance();
+      const finalExchangeRate = exchangeRateValue || await config2.getCentralExchangeRate();
       const unitCostCleanUsd = purchaseData.currency === 'USD' 
         ? purchaseData.pricePerKg 
-        : pricePerKg.div(new Decimal(exchangeRate || await config.getCentralExchangeRate())).toFixed(4);
+        : pricePerKg.div(new Decimal(finalExchangeRate)).toFixed(4);
 
       await tx.insert(warehouseStock).values({
         purchaseId: purchase.id,
-        orderId: purchase.orderId,
+        orderId: purchase.orderId || null,
         supplierId: purchase.supplierId,
         warehouse: 'FIRST',
         status: 'AWAITING_DECISION',
