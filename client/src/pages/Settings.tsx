@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { SettingsResponse, SuppliersResponse } from "@shared/schema";
+import type { EnhancedSettingsResponse, SuppliersResponse } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { Sidebar } from "@/components/Sidebar";
@@ -310,23 +310,23 @@ export default function Settings() {
     }
   };
 
-  const { data: settings } = useQuery<SettingsResponse>({
+  const { data: settings } = useQuery<EnhancedSettingsResponse>({
     queryKey: ['/api/settings'],
   });
 
   // Update exchange rate when settings data changes
   useEffect(() => {
-    if (settings?.exchangeRate) {
-      setExchangeRate(settings.exchangeRate.toString());
+    if (settings?.financial?.exchangeRate) {
+      setExchangeRate(settings.financial.exchangeRate.toString());
     }
-  }, [settings]);
+  }, [settings?.financial?.exchangeRate]);
 
   // Update preventNegativeBalance when settings data changes
   useEffect(() => {
-    if (settings !== undefined) {
-      setPreventNegativeBalance(settings.preventNegativeBalance);
+    if (settings?.financial !== undefined) {
+      setPreventNegativeBalance(settings.financial.preventNegativeBalance);
     }
-  }, [settings]);
+  }, [settings?.financial?.preventNegativeBalance]);
 
   const { data: suppliers } = useQuery<SuppliersResponse>({
     queryKey: ['/api/suppliers'],
@@ -644,7 +644,7 @@ export default function Settings() {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Current rate: {settings?.exchangeRate?.toFixed(4) || 'Not set'}
+                        Current rate: {settings?.financial?.exchangeRate?.toFixed(4) || 'Not set'}
                       </p>
                     </div>
 

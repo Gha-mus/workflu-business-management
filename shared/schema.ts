@@ -3390,6 +3390,34 @@ export interface SettingsResponse {
   preventNegativeBalance: boolean;
 }
 
+// Enhanced settings response from /api/settings endpoint
+export interface EnhancedSettingsResponse {
+  financial: {
+    exchangeRate: number;
+    preventNegativeBalance: boolean;
+    approvalThreshold: number;
+    currencyDisplayCode: string;
+  };
+  operational: {
+    maxFileSize: number;
+    timezone: string;
+    businessAddress: string;
+    enableNotifications: boolean;
+    autoBackup: boolean;
+  };
+  numbering: any[];
+  security: {
+    sessionTimeout: number;
+    passwordPolicy: string;
+    auditRetention: number;
+  };
+  systemInfo: {
+    version: string;
+    lastSnapshot: string;
+    configVersion: number;
+  };
+}
+
 export interface CapitalBalanceResponse {
   balance: number;
 }
