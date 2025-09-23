@@ -74,6 +74,86 @@ settingsRouter.get("/exchange-rates/current", isAuthenticated, async (req, res) 
   }
 });
 
+// POST /api/settings/exchange-rates/admin-update - Admin-only immediate update (no approval required)
+settingsRouter.post("/exchange-rates/admin-update",
+  isAuthenticated,
+  requireRole(["admin"]),
+  // NO requireApproval middleware - admin bypass for immediate updates
+  async (req: any, res) => {
+    try {
+      const { rate, reason } = req.body;
+      const userId = req.user?.claims?.sub || req.user?.id || 'unknown';
+      
+      // Validate exchange rate
+      if (!rate || isNaN(parseFloat(rate)) || parseFloat(rate) <= 0) {
+        return res.status(400).json({ 
+          message: 'Invalid exchange rate. Must be a positive number.' 
+        });
+      }
+      
+      const exchangeRate = parseFloat(rate);
+      
+      // Direct update using configurationService with admin bypass
+      const result = await configurationService.updateSystemSetting(
+        'USD_ETB_RATE',
+        exchangeRate.toString(),
+        {
+          userId,
+          category: 'financial',
+          description: 'USD to ETB exchange rate',
+          requiresApproval: false, // Force bypass approval
+          changeReason: reason || 'Admin direct update',
+          isAdmin: true // Admin bypass flag
+        }
+      );
+      
+      // Create audit log for admin action (corrected method signature)
+      await auditService.logOperation(
+        {
+          userId,
+          userName: 'Admin',
+          userRole: 'admin',
+          source: 'admin_exchange_rate_update',
+          severity: 'high',
+          businessContext: `Admin direct exchange rate update to ${exchangeRate} (bypassed approval)`
+        },
+        {
+          entityType: 'settings',
+          entityId: 'USD_ETB_RATE',
+          action: 'update',
+          operationType: 'system_setting_change',
+          description: `Admin direct exchange rate update to ${exchangeRate}`,
+          newValues: {
+            value: exchangeRate.toString(),
+            reason: reason || 'Admin direct update',
+            adminBypass: true,
+            approvalBypassed: true
+          },
+          businessContext: `Exchange rate updated from configurationService (admin bypass)`,
+        }
+      );
+      
+      console.log(`✅ Admin direct exchange rate update to ${exchangeRate} by ${userId} (bypassed approval)`);
+      
+      res.json({ 
+        success: true,
+        message: 'Exchange rate updated successfully',
+        rate: exchangeRate,
+        updatedBy: userId,
+        timestamp: new Date(),
+        adminBypass: true
+      });
+      
+    } catch (error) {
+      console.error("Error updating exchange rate (admin bypass):", error);
+      res.status(500).json({ 
+        message: "Failed to update exchange rate",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+);
+
 // POST /api/settings/exchange-rates/update
 settingsRouter.post("/exchange-rates/update",
   isAuthenticated,

@@ -53,6 +53,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Financial Architecture
 - **Multi-Currency Support**: USD/ETB with centralized exchange rate management and historical tracking
+- **Exchange Rate Management**: Admin-only bypass endpoint for immediate updates without approval workflow, regular users go through standard approval
 - **Cost Allocation**: Automatic cost redistribution through warehouse filtering and shipping stages
 - **Revenue Management**: Dual balance tracking (accounting revenue vs withdrawable balance)
 - **Expense Management**: Comprehensive operating expense tracking with supply inventory management
