@@ -3,6 +3,8 @@ import { approvalWorkflowService } from "./approvalWorkflowService";
 import { auditService } from "./auditService";
 import { storage } from "./storage";
 import { z } from "zod";
+import { MoneyUtils, Money } from "@shared/money";
+import { ApprovalError, BusinessRuleError, ValidationError, ErrorHelpers } from "@shared/errors";
 
 // Operation context for approval validation
 interface OperationContext {
@@ -35,21 +37,36 @@ function extractOperationContext(req: any, operationType: string): OperationCont
 
   switch (operationType) {
     case 'capital_entry':
-      amount = parseFloat(body.amount || '0');
+      try {
+        const amountMoney = MoneyUtils.parseMoneyInput(body.amount || '0', body.paymentCurrency || 'USD');
+        amount = amountMoney.toNumber();
+      } catch {
+        amount = 0;
+      }
       currency = body.paymentCurrency || 'USD';
       businessContext = `Capital ${body.type}: ${body.description}`;
       priority = body.type === 'CapitalOut' && amount > 10000 ? 'high' : 'normal';
       break;
 
     case 'purchase':
-      amount = parseFloat(body.total || '0');
+      try {
+        const amountMoney = MoneyUtils.parseMoneyInput(body.total || '0', body.currency || 'USD');
+        amount = amountMoney.toNumber();
+      } catch {
+        amount = 0;
+      }
       currency = body.currency || 'USD';
       businessContext = `Purchase: ${body.weight}kg at ${body.pricePerKg} per kg`;
       priority = amount > 50000 ? 'high' : amount > 20000 ? 'normal' : 'low';
       break;
 
     case 'sale_order':
-      amount = parseFloat(body.totalAmount || '0');
+      try {
+        const amountMoney = MoneyUtils.parseMoneyInput(body.totalAmount || '0', body.currency || 'USD');
+        amount = amountMoney.toNumber();
+      } catch {
+        amount = 0;
+      }
       currency = body.currency || 'USD';
       businessContext = `Sales Order: ${body.currency} ${body.totalAmount}`;
       priority = amount > 100000 ? 'urgent' : amount > 50000 ? 'high' : 'normal';
@@ -71,7 +88,12 @@ function extractOperationContext(req: any, operationType: string): OperationCont
       break;
 
     case 'shipping_operation':
-      amount = parseFloat(body.totalAmount || body.amountPaid || '0');
+      try {
+        const amountMoney = MoneyUtils.parseMoneyInput(body.totalAmount || body.amountPaid || '0', body.currency || 'USD');
+        amount = amountMoney.toNumber();
+      } catch {
+        amount = 0;
+      }
       currency = body.currency || 'USD';
       businessContext = `Shipping operation: ${body.shipmentNumber || 'new shipment'}`;
       priority = 'normal';
@@ -85,7 +107,7 @@ function extractOperationContext(req: any, operationType: string): OperationCont
     currency,
     businessContext,
     priority,
-    skipApproval: body.skipApproval === true || body._skipApproval === true
+    skipApproval: false // SECURITY: Client cannot control approval bypass
   };
 }
 
@@ -101,20 +123,8 @@ export function requireApproval(operationType: string) {
       // Extract operation context
       const operationContext = extractOperationContext(req, operationType);
       
-      // Skip approval if explicitly requested (for internal operations)
-      if (operationContext.skipApproval) {
-        // Still log the operation bypass for audit purposes
-        await auditService.logOperation(auditContext, {
-          entityType: 'approval_bypass',
-          action: 'view',
-          description: `Approval bypassed for ${operationType}`,
-          businessContext: `Operation bypass: ${operationContext.businessContext}`,
-          operationType: operationType,
-          newValues: { bypassReason: 'Internal operation or explicit skip' }
-        });
-        
-        return next();
-      }
+      // SECURITY: Approval bypass removed - all operations must go through proper approval workflow
+      // If internal operations need bypass, they should use the storage layer's secure internal token mechanism
 
       // Check if approval is required for this operation
       const requiresApproval = await approvalWorkflowService.requiresApproval(
