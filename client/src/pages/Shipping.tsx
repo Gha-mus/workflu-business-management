@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { cartonsToKg, kgToCartons, validateKgInput, validateCartonInput, roundKg } from "@shared/measurementUnits";
 import type { 
   Shipment, 
   ShipmentLeg,
@@ -107,6 +108,14 @@ export default function Shipping() {
   const [addArrivalCostOpen, setAddArrivalCostOpen] = useState(false);
   const [startInspectionOpen, setStartInspectionOpen] = useState(false);
   const [calculateLandedCostOpen, setCalculateLandedCostOpen] = useState(false);
+  
+  // Carton helper states for shipping operations
+  const [netWeightInputMethod, setNetWeightInputMethod] = useState<'kg' | 'cartons'>('kg');
+  const [cartonWeightInputMethod, setCartonWeightInputMethod] = useState<'kg' | 'cartons'>('kg');
+  const [grossWeightInputMethod, setGrossWeightInputMethod] = useState<'kg' | 'cartons'>('kg');
+  const [netWeightCartons, setNetWeightCartons] = useState('');
+  const [cartonWeightCartons, setCartonWeightCartons] = useState('');
+  const [grossWeightCartons, setGrossWeightCartons] = useState('');
 
   // Forms
   const legForm = useForm<LegFormData>({
@@ -212,10 +221,7 @@ export default function Shipping() {
 
   // Mutations
   const createLegMutation = useMutation({
-    mutationFn: (data: InsertShipmentLeg) => apiRequest(`/api/shipments/${selectedShipment}/legs`, {
-      method: 'POST',
-      body: JSON.stringify({ ...data, shipmentId: selectedShipment }),
-    }),
+    mutationFn: (data: InsertShipmentLeg) => apiRequest('POST', `/api/shipments/${selectedShipment}/legs`, { ...data, shipmentId: selectedShipment }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/shipments', selectedShipment, 'legs'] });
       setCreateLegOpen(false);
@@ -224,10 +230,7 @@ export default function Shipping() {
   });
 
   const createArrivalCostMutation = useMutation({
-    mutationFn: (data: InsertArrivalCost) => apiRequest(`/api/shipments/${selectedShipment}/arrival-costs`, {
-      method: 'POST',
-      body: JSON.stringify({ ...data, shipmentId: selectedShipment }),
-    }),
+    mutationFn: (data: InsertArrivalCost) => apiRequest('POST', `/api/shipments/${selectedShipment}/arrival-costs`, { ...data, shipmentId: selectedShipment }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/shipments', selectedShipment, 'arrival-costs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/shipments', selectedShipment, 'landed-costs'] });
@@ -237,10 +240,7 @@ export default function Shipping() {
   });
 
   const createInspectionMutation = useMutation({
-    mutationFn: (data: InsertShipmentInspection) => apiRequest(`/api/shipments/${selectedShipment}/inspections`, {
-      method: 'POST',
-      body: JSON.stringify({ ...data, shipmentId: selectedShipment }),
-    }),
+    mutationFn: (data: InsertShipmentInspection) => apiRequest('POST', `/api/shipments/${selectedShipment}/inspections`, { ...data, shipmentId: selectedShipment }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/shipments', selectedShipment, 'inspections'] });
       setStartInspectionOpen(false);
@@ -249,10 +249,7 @@ export default function Shipping() {
   });
 
   const calculateLandedCostMutation = useMutation({
-    mutationFn: () => apiRequest(`/api/shipments/${selectedShipment}/landed-costs/calculate`, {
-      method: 'POST',
-      body: JSON.stringify({ shipmentId: selectedShipment }),
-    }),
+    mutationFn: () => apiRequest('POST', `/api/shipments/${selectedShipment}/landed-costs/calculate`, { shipmentId: selectedShipment }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/shipments', selectedShipment, 'landed-costs'] });
       setCalculateLandedCostOpen(false);
@@ -846,7 +843,30 @@ export default function Shipping() {
             <form
               onSubmit={legForm.handleSubmit((data) => {
                 if (!selectedShipment) return;
-                createLegMutation.mutate(data);
+                
+                // Validate and normalize weight data before submission
+                try {
+                  // Validate kg inputs using measurement utilities
+                  const netWeightKg = validateKgInput(data.netWeightKg);
+                  const cartonWeightKg = validateKgInput(data.cartonWeightKg);
+                  const grossWeightKg = validateKgInput(data.grossWeightKg);
+                  
+                  // Round kg values for precision
+                  const normalizedData = {
+                    ...data,
+                    netWeightKg: roundKg(netWeightKg).toString(),
+                    cartonWeightKg: roundKg(cartonWeightKg).toString(),
+                    grossWeightKg: roundKg(grossWeightKg).toString(),
+                  };
+                  
+                  createLegMutation.mutate(normalizedData);
+                } catch (error) {
+                  toast({
+                    title: "Validation Error",
+                    description: error instanceof Error ? error.message : "Invalid weight values. Please check your inputs.",
+                    variant: "destructive"
+                  });
+                }
               })}
               className="space-y-4"
             >
@@ -956,9 +976,73 @@ export default function Shipping() {
                   name="netWeightKg"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Net Weight (kg)</FormLabel>
+                      <FormLabel className="flex items-center justify-between">
+                        <span>Net Weight</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant={netWeightInputMethod === 'kg' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setNetWeightInputMethod('kg')}
+                            data-testid="toggle-net-weight-kg"
+                            className="h-6 px-2 text-xs"
+                          >
+                            kg
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={netWeightInputMethod === 'cartons' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setNetWeightInputMethod('cartons')}
+                            data-testid="toggle-net-weight-cartons"
+                            className="h-6 px-2 text-xs"
+                          >
+                            C20
+                          </Button>
+                        </div>
+                      </FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-net-weight" />
+                        {netWeightInputMethod === 'kg' ? (
+                          <div className="space-y-1">
+                            <Input 
+                              {...field} 
+                              data-testid="input-net-weight-kg"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (e.target.value) {
+                                  const cartonsEq = kgToCartons(parseFloat(e.target.value), 'C20');
+                                  setNetWeightCartons(cartonsEq.toFixed(1));
+                                }
+                              }}
+                            />
+                            {field.value && (
+                              <div className="text-xs text-muted-foreground">
+                                ≈ {kgToCartons(parseFloat(field.value) || 0, 'C20').toFixed(1)} C20 cartons
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <Input 
+                              value={netWeightCartons}
+                              onChange={(e) => {
+                                setNetWeightCartons(e.target.value);
+                                if (e.target.value) {
+                                  const kgValue = cartonsToKg(parseFloat(e.target.value), 'C20');
+                                  const roundedKg = roundKg(kgValue);
+                                  field.onChange(roundedKg.toString());
+                                }
+                              }}
+                              data-testid="input-net-weight-cartons"
+                              placeholder="Enter C20 cartons"
+                            />
+                            {netWeightCartons && (
+                              <div className="text-xs text-muted-foreground">
+                                = {cartonsToKg(parseFloat(netWeightCartons) || 0, 'C20').toFixed(2)} kg
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -970,9 +1054,73 @@ export default function Shipping() {
                   name="cartonWeightKg"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Carton Weight (kg)</FormLabel>
+                      <FormLabel className="flex items-center justify-between">
+                        <span>Carton Weight</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant={cartonWeightInputMethod === 'kg' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setCartonWeightInputMethod('kg')}
+                            data-testid="toggle-carton-weight-kg"
+                            className="h-6 px-2 text-xs"
+                          >
+                            kg
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={cartonWeightInputMethod === 'cartons' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setCartonWeightInputMethod('cartons')}
+                            data-testid="toggle-carton-weight-cartons"
+                            className="h-6 px-2 text-xs"
+                          >
+                            C20
+                          </Button>
+                        </div>
+                      </FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-carton-weight" />
+                        {cartonWeightInputMethod === 'kg' ? (
+                          <div className="space-y-1">
+                            <Input 
+                              {...field} 
+                              data-testid="input-carton-weight-kg"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (e.target.value) {
+                                  const cartonsEq = kgToCartons(parseFloat(e.target.value), 'C20');
+                                  setCartonWeightCartons(cartonsEq.toFixed(1));
+                                }
+                              }}
+                            />
+                            {field.value && (
+                              <div className="text-xs text-muted-foreground">
+                                ≈ {kgToCartons(parseFloat(field.value) || 0, 'C20').toFixed(1)} C20 cartons
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <Input 
+                              value={cartonWeightCartons}
+                              onChange={(e) => {
+                                setCartonWeightCartons(e.target.value);
+                                if (e.target.value) {
+                                  const kgValue = cartonsToKg(parseFloat(e.target.value), 'C20');
+                                  const roundedKg = roundKg(kgValue);
+                                  field.onChange(roundedKg.toString());
+                                }
+                              }}
+                              data-testid="input-carton-weight-cartons"
+                              placeholder="Enter C20 cartons"
+                            />
+                            {cartonWeightCartons && (
+                              <div className="text-xs text-muted-foreground">
+                                = {cartonsToKg(parseFloat(cartonWeightCartons) || 0, 'C20').toFixed(2)} kg
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -984,9 +1132,73 @@ export default function Shipping() {
                   name="grossWeightKg"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Gross Weight (kg)</FormLabel>
+                      <FormLabel className="flex items-center justify-between">
+                        <span>Gross Weight</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant={grossWeightInputMethod === 'kg' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setGrossWeightInputMethod('kg')}
+                            data-testid="toggle-gross-weight-kg"
+                            className="h-6 px-2 text-xs"
+                          >
+                            kg
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={grossWeightInputMethod === 'cartons' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setGrossWeightInputMethod('cartons')}
+                            data-testid="toggle-gross-weight-cartons"
+                            className="h-6 px-2 text-xs"
+                          >
+                            C20
+                          </Button>
+                        </div>
+                      </FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-gross-weight" />
+                        {grossWeightInputMethod === 'kg' ? (
+                          <div className="space-y-1">
+                            <Input 
+                              {...field} 
+                              data-testid="input-gross-weight-kg"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (e.target.value) {
+                                  const cartonsEq = kgToCartons(parseFloat(e.target.value), 'C20');
+                                  setGrossWeightCartons(cartonsEq.toFixed(1));
+                                }
+                              }}
+                            />
+                            {field.value && (
+                              <div className="text-xs text-muted-foreground">
+                                ≈ {kgToCartons(parseFloat(field.value) || 0, 'C20').toFixed(1)} C20 cartons
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <Input 
+                              value={grossWeightCartons}
+                              onChange={(e) => {
+                                setGrossWeightCartons(e.target.value);
+                                if (e.target.value) {
+                                  const kgValue = cartonsToKg(parseFloat(e.target.value), 'C20');
+                                  const roundedKg = roundKg(kgValue);
+                                  field.onChange(roundedKg.toString());
+                                }
+                              }}
+                              data-testid="input-gross-weight-cartons"
+                              placeholder="Enter C20 cartons"
+                            />
+                            {grossWeightCartons && (
+                              <div className="text-xs text-muted-foreground">
+                                = {cartonsToKg(parseFloat(grossWeightCartons) || 0, 'C20').toFixed(2)} kg
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </FormControl>
                       <FormMessage />
                     </FormItem>
