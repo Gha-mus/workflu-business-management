@@ -88,11 +88,9 @@ class CapitalEnhancementService {
         (request.exchangeRate || await configurationService.getCentralExchangeRate());
 
       // Create the capital entry with multi-order references
-      const entryId = `CAP-${nanoid(8)}`;
       const [capitalEntry] = await db
         .insert(capitalEntries)
         .values({
-          entryId,
           amount: request.amount.toString(),
           type: 'CapitalIn',
           reference: request.orderAllocations[0]?.orderId, // Primary reference for backward compatibility
@@ -101,9 +99,6 @@ class CapitalEnhancementService {
           paymentCurrency: request.currency,
           exchangeRate: exchangeRate.toString(),
           // fundingSource: request.fundingSource, // TODO: Add to schema
-          isValidated: true,
-          validatedBy: userId,
-          validatedAt: new Date(),
           createdBy: userId,
         })
         .returning();

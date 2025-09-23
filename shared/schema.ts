@@ -936,7 +936,7 @@ export const documentAccessLevelEnum = pgEnum('document_access_level', [
 ]);
 
 // Documents table - Main document registry
-export const documents: any = pgTable("documents", {
+export const documents = pgTable("documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   documentNumber: varchar("document_number").notNull().unique(),
   title: varchar("title").notNull(),
@@ -1000,7 +1000,7 @@ export const documents: any = pgTable("documents", {
 });
 
 // Document versions table - Version control system
-export const documentVersions: any = pgTable("document_versions", {
+export const documentVersions = pgTable("document_versions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   documentId: varchar("document_id").notNull().references(() => documents.id),
   version: integer("version").notNull(),
