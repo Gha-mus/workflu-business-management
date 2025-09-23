@@ -1,5 +1,6 @@
 import {
   users,
+  userWarehouseScopes,
   suppliers,
   orders,
   purchases,
@@ -244,6 +245,15 @@ import {
   type InsertReinvestment,
   type RevenueBalanceSummary,
   type InsertRevenueBalanceSummary,
+  // Missing types that were causing compilation errors
+  type FinancialMetric,
+  type InsertFinancialMetric,
+  type ShipmentLeg,
+  type InsertShipmentLeg,
+  type ArrivalCost,
+  type InsertArrivalCost,
+  type SalesReturn,
+  type InsertSalesReturn
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray } from "drizzle-orm";
@@ -567,7 +577,6 @@ class StorageApprovalGuard {
         entityId: `violation_${violation.violation}_${Date.now()}`,
         action: 'create',
         description: `CRITICAL SECURITY VIOLATION: ${violation.violation}`,
-        businessContext: `Security violation in operation ${violation.operationType} by user ${violation.userId}`,
         operationType: violation.operationType as any,
         newValues: {
           violationType: violation.violation,
@@ -578,8 +587,7 @@ class StorageApprovalGuard {
           timestamp: new Date().toISOString()
         },
         financialImpact: violation.amount,
-        currency: violation.currency || 'USD',
-        severity: 'critical'
+        currency: violation.currency || 'USD'
       });
 
     } catch (error) {
@@ -645,7 +653,7 @@ class StorageApprovalGuard {
         operationType: operationType as any,
         oldValues: oldData,
         newValues: newData,
-        changedFields: oldData && newData ? Object.keys(newData).filter(key => newData[key] !== oldData[key]) : null,
+        changedFields: oldData && newData ? Object.keys(newData).filter(key => newData[key] !== oldData[key]) : undefined,
         financialImpact,
         currency: currency || 'USD'
       });
@@ -1892,8 +1900,7 @@ export class DatabaseStorage implements IStorage {
         { role: oldUser.role },
         { role },
         undefined,
-        undefined,
-        `Changed user role from ${oldUser.role} to ${role} for ${oldUser.email}`
+        undefined
       );
     }
     
@@ -1963,8 +1970,7 @@ export class DatabaseStorage implements IStorage {
         oldSetting ? { value: oldSetting.value } : undefined,
         { value: setting.value },
         undefined,
-        undefined,
-        `${oldSetting ? 'Updated' : 'Created'} system setting: ${setting.key} = ${setting.value}${isCriticalSetting ? ' (CRITICAL SETTING)' : ''}`
+        undefined
       );
     }
     
