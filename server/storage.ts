@@ -29,6 +29,19 @@ import {
   processingOperations,
   stockTransfers,
   inventoryAdjustments,
+  // Missing tables causing errors
+  shipmentLegs,
+  salesReturns,
+  arrivalCosts,
+  // Missing filter types for storage.ts
+  type RevenueLedgerFilter,
+  type WithdrawalRecordFilter,
+  type ReinvestmentFilter,
+  // Missing approval and receipt types for storage.ts
+  type CustomerReceipt,
+  type CustomerRefund,
+  type WithdrawalApproval,
+  type ReinvestmentApproval,
   customers,
   salesOrders,
   salesOrderItems,
@@ -256,7 +269,7 @@ import {
   type InsertSalesReturn
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray } from "drizzle-orm";
+import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { auditService } from "./auditService";
 import { approvalWorkflowService } from "./approvalWorkflowService";

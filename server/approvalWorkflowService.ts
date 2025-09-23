@@ -9,7 +9,7 @@ import {
   type InsertApprovalChain,
   type User
 } from "@shared/schema";
-import { eq, and, or, desc, asc, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, or, desc, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { auditService } from "./auditService";
 import crypto from "crypto";
 
@@ -250,7 +250,7 @@ class ApprovalWorkflowService {
         title: this.generateApprovalTitle(config),
         description: config.businessContext || `Approval request for ${config.operationType}`,
         justification: `Approval required by business rules for ${config.operationType}`,
-        attachments: config.attachments || null,
+        attachments: config.attachments || undefined,
         priority: config.priority || 'normal',
         
         status: 'pending',

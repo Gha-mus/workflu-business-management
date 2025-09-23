@@ -9,7 +9,10 @@ import type {
   PurchasesResponse, 
   SuppliersResponse, 
   OrdersResponse, 
-  WarehouseStockResponse 
+  WarehouseStockResponse,
+  FinancialSummaryResponse,
+  InventoryAnalyticsResponse,
+  TradingActivityResponse
 } from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -308,7 +311,7 @@ export default function Reports() {
   });
 
   // Enhanced reporting queries
-  const { data: financialSummary, isLoading: financialLoading } = useQuery({
+  const { data: financialSummary, isLoading: financialLoading } = useQuery<FinancialSummaryResponse>({
     queryKey: ['/api/reports/financial/summary', dateRange.startDate, dateRange.endDate].filter(Boolean),
   });
 
@@ -316,7 +319,7 @@ export default function Reports() {
     queryKey: ['/api/reports/financial/cashflow', 'period=' + selectedPeriod],
   });
 
-  const { data: inventoryAnalytics, isLoading: inventoryLoading } = useQuery({
+  const { data: inventoryAnalytics, isLoading: inventoryLoading } = useQuery<InventoryAnalyticsResponse>({
     queryKey: ['/api/reports/inventory/analytics'],
   });
 
@@ -353,7 +356,7 @@ export default function Reports() {
     queryKey: ['/api/financial/currency-exposure'],
   });
 
-  const { data: tradingActivity, isLoading: tradingLoading } = useQuery({
+  const { data: tradingActivity, isLoading: tradingLoading } = useQuery<TradingActivityResponse>({
     queryKey: ['/api/reports/trading/activity'],
   });
 
@@ -385,7 +388,7 @@ export default function Reports() {
       value: financialSummary?.summary?.totalInventoryValue ? 
         `$${financialSummary.summary.totalInventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}` 
         : "Loading...",
-      change: inventoryAnalytics ? `${(inventoryAnalytics.warehouseSummary.first.totalKg + inventoryAnalytics.warehouseSummary.final.totalKg).toLocaleString()} kg total` : "",
+      change: inventoryAnalytics?.warehouseSummary ? `${(inventoryAnalytics.warehouseSummary.first.totalKg + inventoryAnalytics.warehouseSummary.final.totalKg).toLocaleString()} kg total` : "",
       icon: Warehouse,
       color: "text-blue-600",
       loading: financialLoading || inventoryLoading
@@ -395,7 +398,7 @@ export default function Reports() {
       value: inventoryAnalytics?.filterAnalysis?.averageYield ? 
         `${inventoryAnalytics.filterAnalysis.averageYield.toFixed(1)}%` 
         : "Loading...",
-      change: inventoryAnalytics ? `${inventoryAnalytics.filterAnalysis.totalFiltered} operations` : "",
+      change: inventoryAnalytics?.filterAnalysis ? `${inventoryAnalytics.filterAnalysis.totalFiltered} operations` : "",
       icon: Activity,
       color: "text-purple-600",
       loading: inventoryLoading
@@ -405,7 +408,7 @@ export default function Reports() {
       value: tradingActivity?.orderFulfillment?.fulfillmentRate ? 
         `${tradingActivity.orderFulfillment.fulfillmentRate.toFixed(1)}%` 
         : "Loading...",
-      change: tradingActivity ? `${tradingActivity.orderFulfillment.stats.completed}/${tradingActivity.orderFulfillment.stats.total} completed` : "",
+      change: tradingActivity?.orderFulfillment ? `${tradingActivity.orderFulfillment.stats.completed}/${tradingActivity.orderFulfillment.stats.total} completed` : "",
       icon: Package,
       color: "text-green-600",
       loading: tradingLoading

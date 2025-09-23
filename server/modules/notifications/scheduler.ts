@@ -1,4 +1,4 @@
-import cron from "node-cron";
+import * as cron from "node-cron";
 import { storage } from "../../core/storage";
 import { notificationService } from "../../notificationService";
 import { alertMonitoringService } from "../../alertMonitoringService";

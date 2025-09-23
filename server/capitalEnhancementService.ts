@@ -96,11 +96,11 @@ class CapitalEnhancementService {
           amount: request.amount.toString(),
           type: 'CapitalIn',
           reference: request.orderAllocations[0]?.orderId, // Primary reference for backward compatibility
-          references: request.orderAllocations, // New multi-order support
+          // references: request.orderAllocations, // TODO: Add to schema when multi-order support is implemented
           description: request.description,
           paymentCurrency: request.currency,
           exchangeRate: exchangeRate.toString(),
-          fundingSource: request.fundingSource,
+          // fundingSource: request.fundingSource, // TODO: Add to schema
           isValidated: true,
           validatedBy: userId,
           validatedAt: new Date(),

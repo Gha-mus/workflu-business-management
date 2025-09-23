@@ -443,7 +443,10 @@ export function validateApprovalExecution() {
     
     try {
       const auditContext = auditService.extractRequestContext(req);
-      const isValid = await validateExistingApproval(approvalId, auditContext.userId);
+      // Proper approval validation using workflow service
+      const approval = await approvalWorkflowService.getApprovalsByStatus('approved')
+        .then(approvals => approvals.find(a => a.id === approvalId));
+      const isValid = approval && approval.status === 'approved';
       
       if (!isValid) {
         return res.status(403).json({

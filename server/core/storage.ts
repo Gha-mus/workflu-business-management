@@ -263,9 +263,20 @@ import {
   type InsertArrivalCost,
   type SalesReturn,
   type InsertSalesReturn,
+  // Missing enums causing errors
+  warehouseStockStatusEnum,
+  // Missing filter types causing errors
+  type RevenueLedgerFilter,
+  type WithdrawalRecordFilter,
+  type ReinvestmentFilter,
+  // Missing approval and receipt types
+  type CustomerReceipt,
+  type CustomerRefund,
+  type WithdrawalApproval,
+  type ReinvestmentApproval,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull } from "drizzle-orm";
+import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { auditService } from "../auditService";
 import { supabaseAdmin } from "./auth/providers/supabaseProvider";

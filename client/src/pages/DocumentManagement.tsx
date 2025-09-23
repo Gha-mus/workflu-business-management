@@ -501,7 +501,7 @@ export default function DocumentManagement() {
 
   // Download document handler
   const handleDownloadDocument = (document: Document) => {
-    const link = document.createElement('a');
+    const link = window.document.createElement('a');
     link.href = `/api/documents/${document.id}/download`;
     link.download = document.originalFileName;
     link.click();
