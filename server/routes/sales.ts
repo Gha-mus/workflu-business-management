@@ -36,9 +36,14 @@ salesRouter.post("/orders",
       const userId = (req.user as any).claims?.sub || 'unknown';
       
       // CREDIT LIMIT ENFORCEMENT - Check customer credit before creating order
-      if (validatedData.customerId && validatedData.totalAmountUsd) {
-        const orderAmount = new Decimal(validatedData.totalAmountUsd).toNumber();
-        const creditCheck = await storage.checkCreditLimitAvailability(validatedData.customerId, orderAmount);
+      if (validatedData.customerId && validatedData.items && validatedData.items.length > 0) {
+        const orderAmount = validatedData.items.reduce((sum, item) => {
+          const itemTotal = new Decimal(item.unitPriceUsd || 0).mul(item.quantityKg || 0);
+          return sum.add(itemTotal);
+        }, new Decimal(0));
+        
+        // Use precise Decimal conversion to avoid precision loss
+        const creditCheck = await storage.checkCreditLimitAvailability(validatedData.customerId, orderAmount.toDecimalPlaces(2).toNumber());
         
         if (!creditCheck.isApproved) {
           return res.status(400).json({ 
@@ -53,6 +58,52 @@ salesRouter.post("/orders",
         ...validatedData,
         createdBy: userId
       });
+      
+      // STOCK RESERVATION - Reserve inventory for order items (fail order if any reservation fails)
+      if (validatedData.items && validatedData.items.length > 0) {
+        const reservationFailures = [];
+        const successfulReservations = [];
+        
+        for (const item of validatedData.items) {
+          if (item.warehouseStockId && item.quantityKg) {
+            try {
+              await storage.reserveStockForShipment(
+                item.warehouseStockId, 
+                new Decimal(item.quantityKg).toNumber(), 
+                order.id
+              );
+              successfulReservations.push({
+                warehouseStockId: item.warehouseStockId,
+                quantity: new Decimal(item.quantityKg).toNumber()
+              });
+            } catch (error) {
+              console.error(`Failed to reserve stock for item ${item.warehouseStockId}:`, error);
+              reservationFailures.push({
+                warehouseStockId: item.warehouseStockId,
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
+            }
+          }
+        }
+        
+        if (reservationFailures.length > 0) {
+          // ROLLBACK: Release any successful reservations before cancelling
+          for (const reservation of successfulReservations) {
+            try {
+              await storage.releaseReservedStock(reservation.warehouseStockId, reservation.quantity);
+            } catch (rollbackError) {
+              console.error(`Failed to rollback reservation for ${reservation.warehouseStockId}:`, rollbackError);
+            }
+          }
+          
+          // Cancel the order after rollback
+          await storage.updateSalesOrder(order.id, { status: 'cancelled' });
+          return res.status(400).json({ 
+            message: "Order cancelled due to stock reservation failures", 
+            reservationFailures 
+          });
+        }
+      }
 
       // Create audit log
       await auditService.logOperation(
@@ -96,8 +147,8 @@ salesRouter.get("/analytics", isAuthenticated, async (req, res) => {
   try {
     const orders = await storage.getSalesOrders();
     const totalRevenueUsd = orders?.reduce((sum, order) => {
-      return sum + (new Decimal(order.totalAmountUsd?.toString() || '0').toNumber());
-    }, 0) || 0;
+      return sum.add(new Decimal(order.totalAmountUsd?.toString() || '0'));
+    }, new Decimal(0)).toNumber();
     
     res.json({ totalRevenueUsd });
   } catch (error) {
@@ -225,6 +276,102 @@ salesRouter.put("/customers/:id/credit-limit",
     } catch (error) {
       console.error("Error updating customer credit limit:", error);
       res.status(500).json({ message: "Failed to update credit limit" });
+    }
+  }
+);
+
+// POST /api/sales/orders/:id/fulfill - Complete order fulfillment (reserve→consume stock)
+salesRouter.post("/orders/:id/fulfill",
+  isAuthenticated,
+  requireRole(["admin", "warehouse"]),
+  requireApproval("warehouse_operation"),
+  async (req, res) => {
+    try {
+      const orderId = req.params.id;
+      const userId = (req.user as any).claims?.sub || 'unknown';
+      
+      // Get order and items
+      const order = await storage.getSalesOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ message: "Sales order not found" });
+      }
+      
+      const orderItems = await storage.getSalesOrderItems(orderId);
+      if (!orderItems || orderItems.length === 0) {
+        return res.status(400).json({ message: "No items found for order" });
+      }
+      
+      // ATOMIC FULFILLMENT FLOW - All items must succeed or all fail
+      const fulfillmentResults = [];
+      let allSuccessful = true;
+      
+      // First pass: Attempt fulfillment of all items
+      for (const item of orderItems) {
+        if (item.warehouseStockId && item.quantityKg) {
+          try {
+            const result = await storage.fulfillSalesOrderItem(
+              item.id, 
+              userId
+            );
+            fulfillmentResults.push({ itemId: item.id, status: 'fulfilled', result });
+          } catch (error) {
+            console.error(`Failed to fulfill item ${item.id}:`, error);
+            fulfillmentResults.push({ 
+              itemId: item.id, 
+              status: 'failed', 
+              error: error instanceof Error ? error.message : 'Unknown error' 
+            });
+            allSuccessful = false;
+          }
+        } else {
+          fulfillmentResults.push({ itemId: item.id, status: 'skipped', reason: 'No warehouse stock ID' });
+        }
+      }
+      
+      // Update order status based on fulfillment results
+      let updatedOrder;
+      if (allSuccessful) {
+        updatedOrder = await storage.updateSalesOrder(orderId, {
+          status: 'fulfilled',
+          fulfilledAt: new Date()
+        });
+      } else {
+        updatedOrder = await storage.updateSalesOrder(orderId, {
+          status: 'partially_fulfilled'
+        });
+      }
+      
+      // Create audit log
+      await auditService.logOperation(
+        {
+          userId,
+          userName: (req.user as any).claims?.email || 'Unknown',
+          source: 'sales',
+          severity: 'info',
+        },
+        {
+          entityType: 'sales_orders',
+          entityId: orderId,
+          action: 'fulfill',
+          operationType: 'order_fulfillment',
+          description: `Fulfilled sales order with ${fulfillmentResults.length} items`,
+          newValues: { fulfillmentResults, fulfilledAt: updatedOrder.fulfilledAt }
+        }
+      );
+      
+      const message = allSuccessful 
+        ? "Order fulfilled successfully" 
+        : "Order partially fulfilled - some items failed";
+        
+      res.status(allSuccessful ? 200 : 207).json({ 
+        message, 
+        order: updatedOrder,
+        fulfillmentResults,
+        allSuccessful 
+      });
+    } catch (error) {
+      console.error("Error fulfilling sales order:", error);
+      res.status(500).json({ message: "Failed to fulfill order" });
     }
   }
 );
