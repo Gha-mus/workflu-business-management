@@ -598,8 +598,7 @@ class StorageApprovalGuard {
           timestamp: new Date().toISOString()
         },
         financialImpact: violation.amount,
-        currency: violation.currency || 'USD',
-        severity: 'critical'
+        currency: violation.currency || 'USD'
       });
 
     } catch (error) {
@@ -661,7 +660,6 @@ class StorageApprovalGuard {
         entityId,
         action,
         description: `${action.charAt(0).toUpperCase() + action.slice(1)}d ${entityType}`,
-        businessContext: auditContext.businessContext || `Storage operation: ${operationType}`,
         operationType: operationType as any,
         oldValues: oldData,
         newValues: newData,
@@ -4145,7 +4143,6 @@ export class DatabaseStorage implements IStorage {
       
       // Create capital entry with atomic balance checking
       await this.createCapitalEntryInTransaction(tx, {
-        entryId: `EXP-${result.id}`,
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
@@ -4363,7 +4360,6 @@ export class DatabaseStorage implements IStorage {
       
       // Create capital entry with atomic balance checking
       await this.createCapitalEntryInTransaction(tx, {
-        entryId: `SPU-${result.id}`,
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
@@ -6515,7 +6511,6 @@ export class DatabaseStorage implements IStorage {
     // If paid from capital, create capital entry
     if (costData.fundingSource === 'capital' && costData.amountPaid && parseFloat(costData.amountPaid) > 0) {
       await this.createCapitalEntryWithConcurrencyProtection({
-        entryId: `SHP-${result.id}`,
         amount: amountUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.shipmentId,
