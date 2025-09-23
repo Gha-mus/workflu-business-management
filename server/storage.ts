@@ -2518,7 +2518,7 @@ export class DatabaseStorage implements IStorage {
 
       await tx.insert(warehouseStock).values({
         purchaseId: purchase.id,
-        orderId: purchase.orderId,
+        orderId: purchase.orderId || null, // Handle optional orderId
         supplierId: purchase.supplierId,
         warehouse: 'FIRST',
         status: 'AWAITING_DECISION',

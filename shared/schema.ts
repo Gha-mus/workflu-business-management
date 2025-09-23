@@ -232,7 +232,7 @@ export const purchases = pgTable("purchases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseNumber: varchar("purchase_number").notNull().unique(),
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
-  orderId: varchar("order_id").notNull().references(() => orders.id),
+  orderId: varchar("order_id").references(() => orders.id), // Made optional - not all purchases need an order
   weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
   pricePerKg: decimal("price_per_kg", { precision: 10, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
@@ -271,7 +271,7 @@ export const purchasePayments = pgTable("purchase_payments", {
 export const warehouseStock = pgTable("warehouse_stock", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   purchaseId: varchar("purchase_id").notNull().references(() => purchases.id),
-  orderId: varchar("order_id").notNull().references(() => orders.id),
+  orderId: varchar("order_id").references(() => orders.id), // Made optional to match purchases table
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
   batchId: varchar("batch_id"), // Link to batch for traceability - foreign key added later
   warehouse: varchar("warehouse").notNull(), // FIRST, FINAL
