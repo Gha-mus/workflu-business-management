@@ -9,7 +9,7 @@ import {
   type InsertApprovalChain,
   type User
 } from "@shared/schema";
-import { eq, and, or, desc, asc, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, or, desc, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { auditService } from "../../auditService";
 import crypto from "crypto";
 
