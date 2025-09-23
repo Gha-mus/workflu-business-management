@@ -201,7 +201,7 @@ class ApprovalWorkflowService {
         amount,
         currency,
         requestedBy,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         decision: 'fail_closed_require_approval',
         timestamp: new Date()
       }).catch(logError => {
@@ -287,7 +287,6 @@ class ApprovalWorkflowService {
           entityId: approvalRequest.id,
           action: 'create',
           description: `Created approval request ${approvalRequest.requestNumber} for ${config.operationType}`,
-          businessContext: `Approval workflow: ${config.operationType} requiring ${approvalSteps.length} approval steps`,
           operationType: config.operationType,
           newValues: requestData,
           financialImpact: config.amount,
