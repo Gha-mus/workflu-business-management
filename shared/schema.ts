@@ -902,7 +902,7 @@ export const documentAccessLevelEnum = pgEnum('document_access_level', [
 ]);
 
 // Documents table - Main document registry
-export const documents = pgTable("documents", {
+export const documents: any = pgTable("documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   documentNumber: varchar("document_number").notNull().unique(),
   title: varchar("title").notNull(),
@@ -938,7 +938,7 @@ export const documents = pgTable("documents", {
   // Version control
   currentVersion: integer("current_version").notNull().default(1),
   isLatestVersion: boolean("is_latest_version").notNull().default(true),
-  parentDocumentId: varchar("parent_document_id").references(() => documents.id), // For document hierarchies
+  parentDocumentId: varchar("parent_document_id").references((): any => documents.id), // For document hierarchies
   
   // Search and organization
   tags: text("tags").array(), // Tags for searching and organization
@@ -966,7 +966,7 @@ export const documents = pgTable("documents", {
 });
 
 // Document versions table - Version control system
-export const documentVersions = pgTable("document_versions", {
+export const documentVersions: any = pgTable("document_versions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   documentId: varchar("document_id").notNull().references(() => documents.id),
   version: integer("version").notNull(),
@@ -987,13 +987,13 @@ export const documentVersions = pgTable("document_versions", {
   isApproved: boolean("is_approved").notNull().default(false),
   
   // Version relationships
-  previousVersionId: varchar("previous_version_id").references(() => documentVersions.id),
+  previousVersionId: varchar("previous_version_id").references((): any => documentVersions.id),
   mergedFromVersionIds: text("merged_from_version_ids").array(), // If version was created by merging
   
   // Version lifecycle
   createdBy: varchar("created_by").notNull().references(() => users.id),
   approvedBy: varchar("approved_by").references(() => users.id),
-  supersededBy: varchar("superseded_by").references(() => documentVersions.id),
+  supersededBy: varchar("superseded_by").references((): any => documentVersions.id),
   
   createdAt: timestamp("created_at").defaultNow(),
   approvedAt: timestamp("approved_at"),
@@ -1112,7 +1112,7 @@ export const documentAccessLogs = pgTable("document_access_logs", {
 ]);
 
 // Document workflow states table - Track documents through approval workflows
-export const documentWorkflowStates = pgTable("document_workflow_states", {
+export const documentWorkflowStates: any = pgTable("document_workflow_states", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   documentId: varchar("document_id").notNull().references(() => documents.id),
   versionId: varchar("version_id").references(() => documentVersions.id),
@@ -1135,8 +1135,8 @@ export const documentWorkflowStates = pgTable("document_workflow_states", {
   comments: text("comments"),
   
   // Workflow tracking
-  previousStateId: varchar("previous_state_id").references(() => documentWorkflowStates.id),
-  nextStateId: varchar("next_state_id").references(() => documentWorkflowStates.id),
+  previousStateId: varchar("previous_state_id").references((): any => documentWorkflowStates.id),
+  nextStateId: varchar("next_state_id").references((): any => documentWorkflowStates.id),
   
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -5855,7 +5855,7 @@ export interface EnhancedSettingsResponse {
     enableNotifications: boolean;
     autoBackup: boolean;
   };
-  numbering: SelectNumberingScheme[];
+  numbering: any[];
   security: {
     sessionTimeout: number;
     passwordPolicy: string;
