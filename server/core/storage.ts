@@ -1866,6 +1866,37 @@ export interface IStorage {
   cleanupOldNotifications(retentionDays: number): Promise<{ deleted: number }>;
 }
 
+// ===== PROPER TYPED DRIZZLE UTILITIES =====
+// These utilities use proper Drizzle typing without `any`
+
+// Helper for safely getting count from Drizzle count queries 
+// Note: Postgres returns bigint as string, so we need to coerce to number
+function getCountFromQuery(countResults: { count: unknown }[]): number {
+  const result = countResults[0]?.count;
+  if (result === null || result === undefined) return 0;
+  return Number(result); // Properly coerce Postgres bigint/string to number
+}
+
+// Helper to safely access beforeState properties with runtime type checking
+function safeAccessBeforeState<T extends Record<string, any>>(
+  beforeState: unknown,
+  expectedKeys: (keyof T)[]
+): Partial<T> | null {
+  if (!beforeState || typeof beforeState !== 'object') return null;
+  
+  // Runtime validation that the object has the expected shape
+  const obj = beforeState as Record<string, unknown>;
+  const result: Partial<T> = {};
+  
+  for (const key of expectedKeys) {
+    if (key in obj) {
+      result[key] = obj[key as string] as T[keyof T];
+    }
+  }
+  
+  return result;
+}
+
 export class DatabaseStorage implements IStorage {
   // User operations
   async getUser(id: string): Promise<User | undefined> {
@@ -2691,7 +2722,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'supplier_update',
         operationData: supplier,
-        businessContext: `Update supplier: ${beforeState?.name || id}`
+        businessContext: `Update supplier: ${safeAccessBeforeState(beforeState, ['name'])?.name || id}`
       });
     }
 
@@ -2766,7 +2797,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'order_update',
         operationData: order,
-        businessContext: `Update order: ${beforeState?.orderNumber || id}`
+        businessContext: `Update order: ${safeAccessBeforeState(beforeState, ['orderNumber'])?.orderNumber || id}`
       });
     }
 
@@ -3076,7 +3107,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       // STAGE 1 COMPLIANCE: Validate against amount paid for partial payments, not total
-      let expectedAmount = new Decimal(salesOrder.amountPaid);
+      let expectedAmount = new Decimal(salesOrder.amountPaid || '0');
       
       // Convert from sales order currency to USD if needed
       if (salesOrder.currency === 'ETB') {
@@ -3395,11 +3426,11 @@ export class DatabaseStorage implements IStorage {
 
     // Check if purchase has linked warehouse operations (making it immutable for sensitive fields)
     const linkedWarehouseOperations = await db
-      .select({ count: sql`count(*)::int` })
+      .select({ count: count() })
       .from(warehouseStock)
       .where(eq(warehouseStock.purchaseId, id));
     
-    const hasWarehouseLinkage = linkedWarehouseOperations[0]?.count > 0;
+    const hasWarehouseLinkage = getCountFromQuery(linkedWarehouseOperations) > 0;
 
     // STAGE 2 CRITICAL: Prevent modification of price/weight after warehouse linkage
     if (hasWarehouseLinkage) {
@@ -3458,31 +3489,31 @@ export class DatabaseStorage implements IStorage {
 
     // Check for linked warehouse stock to prevent data inconsistency
     const linkedStock = await db
-      .select({ count: sql`count(*)::int` })
+      .select({ count: count() })
       .from(warehouseStock)
       .where(eq(warehouseStock.purchaseId, id));
     
-    if (linkedStock[0]?.count > 0) {
+    if (getCountFromQuery(linkedStock) > 0) {
       throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked warehouse stock entries. Cancel or process the warehouse operations first.`);
     }
 
     // Check for capital entries linked to this purchase
     const linkedCapitalEntries = await db
-      .select({ count: sql`count(*)::int` })
+      .select({ count: count() })
       .from(capitalEntries)
       .where(eq(capitalEntries.reference, id));
     
-    if (linkedCapitalEntries[0]?.count > 0) {
+    if (getCountFromQuery(linkedCapitalEntries) > 0) {
       throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked capital entries. Reverse the capital entries first.`);
     }
 
     // Check for payments linked to this purchase
     const linkedPayments = await db
-      .select({ count: sql`count(*)::int` })
+      .select({ count: count() })
       .from(purchasePayments)
       .where(eq(purchasePayments.purchaseId, id));
     
-    if (linkedPayments[0]?.count > 0) {
+    if (getCountFromQuery(linkedPayments) > 0) {
       throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked payment records. Remove the payments first.`);
     }
 
@@ -3949,7 +3980,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'supply_update',
         operationData: supply,
-        businessContext: `Update supply: ${beforeState?.name || id}`
+        businessContext: `Update supply: ${safeAccessBeforeState(beforeState, ['name'])?.name || id}`
       });
     }
 
@@ -3958,9 +3989,10 @@ export class DatabaseStorage implements IStorage {
     if (supply.quantityOnHand !== undefined || supply.unitCostUsd !== undefined) {
       const currentSupply = beforeState || await this.getSupply(id);
       if (currentSupply) {
-        const quantity = new Decimal(supply.quantityOnHand ?? currentSupply.quantityOnHand);
-        const unitCost = new Decimal(supply.unitCostUsd ?? currentSupply.unitCostUsd);
-        updateData.totalValueUsd = quantity.mul(unitCost).toFixed(2);
+        const currentSupplyTyped = safeAccessBeforeState(currentSupply, ['quantityOnHand', 'unitCostUsd']);
+        const quantity = new Decimal(supply.quantityOnHand ?? (currentSupplyTyped?.quantityOnHand || '0'));
+        const unitCost = new Decimal(supply.unitCostUsd ?? (currentSupplyTyped?.unitCostUsd || '0'));
+        updateData = { ...updateData, totalValueUsd: quantity.mul(unitCost).toFixed(2) };
       }
     }
 
@@ -4148,7 +4180,6 @@ export class DatabaseStorage implements IStorage {
         reference: result.id,
         description: `Operating expense - ${expense.description} ${expense.currency === 'ETB' ? `(${expense.amountPaid} ETB @ ${expense.exchangeRate})` : ''}`,
         paymentCurrency: expense.currency,
-        exchangeRate: expense.exchangeRate || undefined,
         createdBy: userId,
       });
     }
@@ -4207,7 +4238,7 @@ export class DatabaseStorage implements IStorage {
         'supply_consumption',
         null,
         result,
-        -parseFloat(consumption.totalCostUsd), // Negative impact for consumption (cost)
+        -parseFloat(result.totalCostUsd), // Negative impact for consumption (cost)
         'USD'
       );
     }
@@ -4284,7 +4315,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'supply_purchase',
         operationData: purchase,
-        amount: parseFloat(purchase.totalAmount),
+        amount: parseFloat(purchase.quantity) * parseFloat(purchase.unitPrice),
         currency: purchase.currency,
         businessContext: `Supply purchase from supplier`
       });
@@ -4305,7 +4336,7 @@ export class DatabaseStorage implements IStorage {
         'supply_purchase',
         null,
         result,
-        -parseFloat(purchase.totalAmount), // Negative impact for purchases (outflow)
+        -parseFloat(result.totalAmount), // Negative impact for purchases (outflow)
         purchase.currency
       );
     }
@@ -4317,20 +4348,33 @@ export class DatabaseStorage implements IStorage {
     // Generate next purchase number
     const purchaseNumber = await this.generateNextSupplyPurchaseNumberInTransaction(tx);
     
+    // Calculate total amount first
+    const totalAmount = new Decimal(purchase.quantity).mul(new Decimal(purchase.unitPrice));
+    
+    // Get exchange rate if needed
+    let exchangeRate: string | undefined;
+    if (purchase.currency === 'ETB') {
+      const { configurationService } = await import('../configurationService.js');
+      const rate = await configurationService.getCentralExchangeRate();
+      exchangeRate = rate.toString();
+    }
+    
     // Convert amount to USD for normalization
-    let amountUsd = new Decimal(purchase.totalAmount);
-    if (purchase.currency === 'ETB' && purchase.exchangeRate) {
-      amountUsd = amountUsd.div(new Decimal(purchase.exchangeRate));
+    let amountUsd = totalAmount;
+    if (purchase.currency === 'ETB' && exchangeRate) {
+      amountUsd = totalAmount.div(new Decimal(exchangeRate));
     }
     
     // Calculate remaining amount
     const amountPaid = new Decimal(purchase.amountPaid || '0');
-    const remaining = new Decimal(purchase.totalAmount).sub(amountPaid);
+    const remaining = totalAmount.sub(amountPaid);
 
     // Create the supply purchase
     const [result] = await tx.insert(supplyPurchases).values({
       ...purchase,
       purchaseNumber,
+      totalAmount: totalAmount.toFixed(2),
+      exchangeRate: exchangeRate,
       amountUsd: amountUsd.toFixed(2),
       remaining: remaining.toFixed(2),
     }).returning();
@@ -4354,8 +4398,8 @@ export class DatabaseStorage implements IStorage {
       
       // Convert amount to USD for capital tracking normalization
       let paidInUsd = paidAmount;
-      if (purchase.currency === 'ETB' && purchase.exchangeRate) {
-        paidInUsd = paidAmount.div(new Decimal(purchase.exchangeRate));
+      if (purchase.currency === 'ETB' && exchangeRate) {
+        paidInUsd = paidAmount.div(new Decimal(exchangeRate));
       }
       
       // Create capital entry with atomic balance checking
@@ -4363,9 +4407,8 @@ export class DatabaseStorage implements IStorage {
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
-        description: `Supply purchase ${purchase.currency === 'ETB' ? `(${purchase.amountPaid} ETB @ ${purchase.exchangeRate})` : ''}`,
+        description: `Supply purchase ${purchase.currency === 'ETB' ? `(${purchase.amountPaid} ETB @ ${exchangeRate})` : ''}`,
         paymentCurrency: purchase.currency,
-        exchangeRate: purchase.exchangeRate || undefined,
         createdBy: userId,
       });
     }
@@ -4490,11 +4533,12 @@ export class DatabaseStorage implements IStorage {
     
     // CRITICAL SECURITY: Enforce approval requirement at storage level
     if (approvalContext) {
+      const beforeStateTyped = safeAccessBeforeState(beforeState, ['qtyKgTotal', 'warehouse']);
       await StorageApprovalGuard.enforceApprovalRequirement({
         ...approvalContext,
         operationType: 'warehouse_stock_update',
         operationData: stock,
-        businessContext: `Update warehouse stock: ${beforeState?.qtyKgTotal || 'unknown'}kg in ${beforeState?.warehouse || 'unknown'}`
+        businessContext: `Update warehouse stock: ${beforeStateTyped?.qtyKgTotal || 'unknown'}kg in ${beforeStateTyped?.warehouse || 'unknown'}`
       });
     }
 
@@ -4530,7 +4574,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'warehouse_stock_status_update',
         operationData: { status, userId },
-        businessContext: `Update warehouse stock status from ${beforeState?.status || 'unknown'} to ${status}`
+        businessContext: `Update warehouse stock status from ${safeAccessBeforeState(beforeState, ['status'])?.status || 'unknown'} to ${status}`
       });
     }
 
@@ -4538,7 +4582,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(warehouseStock)
         .set({ 
-          status, 
+          status: status as typeof warehouseStockStatusEnum.enumValues[number], 
           statusChangedAt: new Date()
         })
         .where(eq(warehouseStock.id, id))
@@ -4685,7 +4729,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'warehouse_stock_transfer',
         operationData: { stockId, userId },
-        businessContext: `Move ${beforeState?.qtyKgTotal || 'unknown'}kg stock from FIRST to FINAL warehouse`
+        businessContext: `Move ${safeAccessBeforeState(beforeState, ['qtyKgTotal'])?.qtyKgTotal || 'unknown'}kg stock from FIRST to FINAL warehouse`
       });
     }
     const result = await db.transaction(async (tx) => {

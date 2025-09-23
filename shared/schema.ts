@@ -81,7 +81,10 @@ export const fundingSourceEnum = pgEnum('funding_source', ['capital', 'external'
 export const purchaseStatusEnum = pgEnum('purchase_status', ['pending', 'partial', 'paid', 'cancelled', 'on_hold']);
 
 // Warehouse stock status enum
-export const warehouseStockStatusEnum = pgEnum('warehouse_stock_status', ['AWAITING_DECISION', 'FILTERING', 'FILTERED', 'PACKED', 'RESERVED', 'CONSUMED']);
+export const warehouseStockStatusEnum = pgEnum('warehouse_stock_status', [
+  'AWAITING_DECISION', 'FILTERING', 'FILTERED', 'PACKED', 'RESERVED', 'CONSUMED',
+  'READY_TO_SHIP', 'NON_CLEAN', 'READY_FOR_SALE', 'AWAITING_FILTER'
+]);
 
 // Shipment method and status enums
 export const shipmentMethodEnum = pgEnum('shipment_method', ['air', 'sea', 'land', 'rail', 'multimodal']);

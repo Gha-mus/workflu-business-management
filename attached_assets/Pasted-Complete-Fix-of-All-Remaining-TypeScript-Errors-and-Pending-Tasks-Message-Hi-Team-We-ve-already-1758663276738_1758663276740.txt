@@ -1,0 +1,78 @@
+Complete Fix of All Remaining TypeScript Errors and Pending Tasks
+
+Message:
+
+Hi Team,
+
+We’ve already made solid progress reducing the TypeScript compilation errors, but there are still ~2,000+ errors remaining across the codebase (mainly in server/storage.ts, server/core/storage.ts, and some client-side files).
+
+I need you to systematically finish fixing ALL remaining errors until the project compiles cleanly with:
+
+npx tsc --noEmit --skipLibCheck
+
+
+showing 0 errors.
+
+Here are the exact priorities and tasks you must complete:
+
+1. Server-Side Errors
+
+server/core/storage.ts (187 errors):
+
+Resolve property access errors (Property 'X' does not exist on type '{}').
+
+Fix "Object is of type 'unknown'" issues by adding proper type guards or refining schema types.
+
+Correct type assignment mismatches (string | null vs string | undefined).
+
+server/storage.ts (226 errors):
+
+Ensure all schema property mismatches (like entryId, businessContext, severity) are resolved.
+
+Verify all imports are complete and consistent with shared/schema.ts.
+
+Audit function signatures and update calls to match expected parameters.
+
+2. Client-Side Errors
+
+Resolve empty API response types ({}) in Reports.tsx and DocumentManagement.tsx.
+
+Replace all any or {} usages with proper typed interfaces from shared/schema.ts.
+
+Ensure consistent typing for API hooks and response handling.
+
+3. Shared Schema & Types
+
+Verify all missing type definitions (e.g., FinancialMetric, ShipmentLeg, SalesReturn, userWarehouseScopes) are fully defined and imported everywhere they’re used.
+
+Consolidate type usage so client and server both use the same shared types instead of duplicating.
+
+4. Audit & Logging
+
+Fix all AuditContext vs ChangeRecord mismatches (e.g., businessContext, severity).
+
+Verify auditOperation calls use the correct argument count (9, not 10).
+
+Ensure all critical business operations (capital entries, warehouse movements, sales, purchases, etc.) are logged consistently.
+
+5. Final Checks
+
+Run npx tsc --noEmit --skipLibCheck after each batch of fixes to confirm progress.
+
+Continue until there are 0 TypeScript errors remaining across the entire project.
+
+Do not leave partial fixes — the codebase must fully compile cleanly.
+
+✅ Acceptance Criteria:
+
+Zero TypeScript errors across backend and frontend.
+
+Consistent schemas and types with no mismatches.
+
+Audit system fully correct (AuditContext vs ChangeRecord separation).
+
+End-to-end tests run without compilation errors.
+
+All requested tasks in previous iterations are fully completed.
+
+⚠️ Important: Please make sure not to stop midway. The project will only be accepted once the TypeScript error count is zero and all tasks are marked complete.
