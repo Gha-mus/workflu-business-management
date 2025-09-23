@@ -33,15 +33,6 @@ purchasesRouter.post("/",
       const { exchangeRate: clientRate, ...sanitizedData } = req.body;
       const validatedData = insertPurchaseSchema.parse(sanitizedData);
       
-      // Stage 1 Compliance: Get central exchange rate for all currencies
-      const centralExchangeRate = await configurationService.getCentralExchangeRate();
-      
-      // Generate purchase document number
-      const purchaseNumber = await configurationService.generateEntityNumber('purchase', {
-        prefix: 'PUR',
-        suffix: new Date().getFullYear().toString().slice(-2)
-      });
-      
       // Use createPurchaseWithSideEffects to automatically create warehouse stock entry
       // Note: purchaseNumber and exchangeRate are handled internally by the storage layer
       const purchase = await storage.createPurchaseWithSideEffectsRetryable(
@@ -88,9 +79,6 @@ purchasesRouter.patch("/:id",
       // Stage 1 Compliance: Strip client exchangeRate and use central rate
       const { exchangeRate: clientRate, ...sanitizedData } = req.body;
       const validatedData = insertPurchaseSchema.parse(sanitizedData);
-      
-      // Stage 1 Compliance: Get central exchange rate for all currencies
-      const centralExchangeRate = await configurationService.getCentralExchangeRate();
       
       // Get existing purchase for audit logging
       const existingPurchase = await storage.getPurchase(purchaseId);
