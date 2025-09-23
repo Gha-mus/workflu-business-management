@@ -104,9 +104,9 @@ class RevenueEnhancementService {
         })
         .from(revenueTransactions);
 
-      const totalSales = parseFloat(accountingData[0]?.totalSales || '0');
-      const totalRefunds = parseFloat(accountingData[0]?.totalRefunds || '0');
-      const netAccountingRevenue = totalSales - totalRefunds;
+      const totalSales = new Decimal(accountingData[0]?.totalSales || '0');
+      const totalRefunds = new Decimal(accountingData[0]?.totalRefunds || '0');
+      const netAccountingRevenue = totalSales.sub(totalRefunds);
 
       // Calculate withdrawable balance (cash collections - withdrawals - transfers - fees)
       const cashFlowData = await db
@@ -118,16 +118,16 @@ class RevenueEnhancementService {
         })
         .from(revenueTransactions);
 
-      const totalCollections = parseFloat(cashFlowData[0]?.totalCollections || '0');
-      const totalWithdrawals = parseFloat(cashFlowData[0]?.totalWithdrawals || '0');
-      const totalReinvestments = parseFloat(cashFlowData[0]?.totalReinvestments || '0');
-      const totalTransferFees = parseFloat(cashFlowData[0]?.totalTransferFees || '0');
-      const netWithdrawableBalance = totalCollections - totalWithdrawals - totalReinvestments - totalTransferFees;
+      const totalCollections = new Decimal(cashFlowData[0]?.totalCollections || '0');
+      const totalWithdrawals = new Decimal(cashFlowData[0]?.totalWithdrawals || '0');
+      const totalReinvestments = new Decimal(cashFlowData[0]?.totalReinvestments || '0');
+      const totalTransferFees = new Decimal(cashFlowData[0]?.totalTransferFees || '0');
+      const netWithdrawableBalance = totalCollections.sub(totalWithdrawals).sub(totalReinvestments).sub(totalTransferFees);
 
       // Calculate variance and outstanding receivables
       const outstandingReceivables = await this.calculateOutstandingReceivables();
-      const accountingVsWithdrawable = netAccountingRevenue - netWithdrawableBalance;
-      const uncollectedSales = netAccountingRevenue - totalCollections;
+      const accountingVsWithdrawable = netAccountingRevenue.sub(netWithdrawableBalance);
+      const uncollectedSales = netAccountingRevenue.sub(totalCollections);
 
       // Calculate current month cash flow
       const currentMonth = new Date();
@@ -142,31 +142,31 @@ class RevenueEnhancementService {
         })
         .from(revenueTransactions);
 
-      const currentMonthCollections = parseFloat(monthlyData[0]?.currentMonthCollections || '0');
-      const currentMonthWithdrawals = parseFloat(monthlyData[0]?.currentMonthWithdrawals || '0');
+      const currentMonthCollections = new Decimal(monthlyData[0]?.currentMonthCollections || '0');
+      const currentMonthWithdrawals = new Decimal(monthlyData[0]?.currentMonthWithdrawals || '0');
       const projectedCollections = outstandingReceivables * 0.8; // Assume 80% collection rate
 
       return {
         accountingRevenue: {
-          totalSales,
-          totalRefunds,
-          netAccountingRevenue,
+          totalSales: totalSales.toNumber(),
+          totalRefunds: totalRefunds.toNumber(),
+          netAccountingRevenue: netAccountingRevenue.toNumber(),
         },
         withdrawableBalance: {
-          totalCollections,
-          totalWithdrawals,
-          totalReinvestments,
-          totalTransferFees,
-          netWithdrawableBalance,
+          totalCollections: totalCollections.toNumber(),
+          totalWithdrawals: totalWithdrawals.toNumber(),
+          totalReinvestments: totalReinvestments.toNumber(),
+          totalTransferFees: totalTransferFees.toNumber(),
+          netWithdrawableBalance: netWithdrawableBalance.toNumber(),
         },
         variance: {
-          accountingVsWithdrawable,
+          accountingVsWithdrawable: accountingVsWithdrawable.toNumber(),
           outstandingReceivables,
-          uncollectedSales,
+          uncollectedSales: uncollectedSales.toNumber(),
         },
         cashFlow: {
-          currentMonthCollections,
-          currentMonthWithdrawals,
+          currentMonthCollections: currentMonthCollections.toNumber(),
+          currentMonthWithdrawals: currentMonthWithdrawals.toNumber(),
           projectedCollections,
         },
       };
@@ -459,7 +459,7 @@ class RevenueEnhancementService {
           gte(sql`CAST(${salesOrders.balanceDue} AS DECIMAL)`, 0.01)
         ));
 
-      return parseFloat(receivablesData[0]?.totalOutstanding || '0');
+      return new Decimal(receivablesData[0]?.totalOutstanding || '0').toNumber();
     } catch (error) {
       console.error("Error calculating outstanding receivables:", error);
       return 0;

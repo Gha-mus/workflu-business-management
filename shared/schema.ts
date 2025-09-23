@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import Decimal from "decimal.js";
 
 // Session storage table (mandatory for Replit Auth)
 export const sessions = pgTable(
@@ -239,7 +240,13 @@ export const capitalEntries = pgTable("capital_entries", {
   exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Performance indexes for capital entry aggregations
+  index("idx_capital_entries_type").on(table.type),
+  index("idx_capital_entries_date").on(table.date),
+  index("idx_capital_entries_type_date").on(table.type, table.date),
+  index("idx_capital_entries_created_by").on(table.createdBy),
+]);
 
 // Purchases table
 export const purchases = pgTable("purchases", {
@@ -263,7 +270,14 @@ export const purchases = pgTable("purchases", {
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Performance indexes for purchase operations
+  index("idx_purchases_supplier").on(table.supplierId),
+  index("idx_purchases_status").on(table.status),
+  index("idx_purchases_date").on(table.date),
+  index("idx_purchases_created_by").on(table.createdBy),
+  index("idx_purchases_funding").on(table.fundingSource),
+]);
 
 // Purchase payments table for multiple payments per purchase
 export const purchasePayments = pgTable("purchase_payments", {
@@ -309,7 +323,15 @@ export const warehouseStock = pgTable("warehouse_stock", {
   packedAt: timestamp("packed_at"),
   gradedAt: timestamp("graded_at"), // When quality grade was assigned
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Performance indexes for warehouse operations
+  index("idx_warehouse_stock_status").on(table.status),
+  index("idx_warehouse_stock_supplier").on(table.supplierId),
+  index("idx_warehouse_stock_warehouse").on(table.warehouse),
+  index("idx_warehouse_stock_quality").on(table.qualityGrade),
+  index("idx_warehouse_stock_activity").on(table.lastActivityAt),
+  index("idx_warehouse_stock_created").on(table.createdAt),
+]);
 
 // Filter records table
 export const filterRecords = pgTable("filter_records", {
@@ -1951,7 +1973,15 @@ export const revenueTransactions = pgTable("revenue_transactions", {
   
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  // Performance indexes for revenue transaction aggregations  
+  index("idx_revenue_transactions_type").on(table.type),
+  index("idx_revenue_transactions_created_at").on(table.createdAt),
+  index("idx_revenue_transactions_type_created").on(table.type, table.createdAt),
+  index("idx_revenue_transactions_customer").on(table.customerId),
+  index("idx_revenue_transactions_transaction_type").on(table.type),
+  index("idx_revenue_transactions_recognition_date").on(table.recognitionDate),
+]);
 
 // Sales performance metrics table
 export const salesPerformanceMetrics = pgTable("sales_performance_metrics", {
@@ -2106,6 +2136,9 @@ export const revenueLedger = pgTable("revenue_ledger", {
   index("idx_revenue_ledger_period").on(table.accountingPeriod),
   index("idx_revenue_ledger_withdrawal").on(table.withdrawalId),
   index("idx_revenue_ledger_reinvestment").on(table.reinvestmentId),
+  // Performance indexes for aggregation queries
+  index("idx_revenue_ledger_type_date").on(table.type, table.date),
+  index("idx_revenue_ledger_created_at").on(table.createdAt),
 ]);
 
 // Withdrawal records table - partner withdrawals from revenue balance
@@ -3876,7 +3909,14 @@ export const periodClosingRequestSchema = z.object({
   periodId: z.string().min(1),
   adjustments: z.array(z.object({
     adjustmentType: z.enum(['balance', 'inventory', 'reconciliation']),
-    amount: z.string().refine((val) => !isNaN(parseFloat(val)), 'Invalid amount'),
+    amount: z.string().refine((val) => {
+      try {
+        const decimal = new Decimal(val);
+        return !decimal.isNaN();
+      } catch {
+        return false;
+      }
+    }, 'Invalid amount'),
     currency: z.string().default('USD'),
     description: z.string().min(1),
     reason: z.string().min(1),

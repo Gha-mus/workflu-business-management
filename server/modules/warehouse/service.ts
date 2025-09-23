@@ -95,7 +95,7 @@ class WarehouseEnhancementService {
         .innerJoin(suppliers, eq(warehouseStock.supplierId, suppliers.id))
         .where(and(
           eq(warehouseStock.warehouse, 'FIRST'),
-          eq(warehouseStock.status, 'AWAITING_FILTER')
+          eq(warehouseStock.status, 'FILTERING')
         ));
 
       const alerts: FilteringAlert[] = [];
