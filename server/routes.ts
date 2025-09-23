@@ -2461,7 +2461,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/warehouse/stock/:id', requireRole(['admin', 'warehouse']), requireWarehouseScopeForResource(async (id) => await storage.getWarehouseStockItem(id)), approvalMiddleware.warehouseOperation, warehousePeriodGuard, async (req, res) => {
+  app.patch('/api/warehouse/stock/:id', requireRole(['admin', 'warehouse']), requireWarehouseScopeForResource(async (id) => await storage.getWarehouseStock(id)), approvalMiddleware.warehouseOperation, warehousePeriodGuard, async (req, res) => {
     try {
       const stockData = req.body;
       const stock = await storage.updateWarehouseStock(req.params.id, stockData);

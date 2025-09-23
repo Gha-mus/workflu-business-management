@@ -4300,23 +4300,34 @@ export interface ChatAssistantResponse {
 export const aiPurchaseRecommendationRequestSchema = z.object({
   marketConditions: z.record(z.any()).optional(),
   timeframe: z.enum(['immediate', 'short_term', 'long_term']).optional(),
+  historicalPurchases: z.array(z.any()).optional(),
+  currentMarketConditions: z.record(z.any()).optional(),
+  availableCapital: z.number().optional(),
 });
 
 export const aiSupplierRecommendationRequestSchema = z.object({
   quantity: z.number().positive(),
   quality: z.string(),
   budget: z.number().positive(),
+  suppliers: z.array(z.any()).optional(),
+  supplierPerformance: z.record(z.any()).optional(),
+  currentNeeds: z.record(z.any()).optional(),
 });
 
 export const aiCapitalOptimizationRequestSchema = z.object({
   timeHorizon: z.enum(['weekly', 'monthly', 'quarterly']).optional(),
   includeForecasting: z.boolean().optional().default(true),
+  capitalEntries: z.array(z.any()).optional(),
+  financialSummary: z.record(z.any()).optional(),
+  upcomingPayments: z.array(z.any()).optional(),
 });
 
 export const aiChatRequestSchema = z.object({
   message: z.string().min(1),
   conversationId: z.string().optional(),
   context: z.record(z.any()).optional(),
+  businessContext: z.string().optional(),
+  conversationHistory: z.array(z.any()).optional(),
 });
 
 export const aiContextualHelpRequestSchema = z.object({
