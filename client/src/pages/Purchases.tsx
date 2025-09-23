@@ -168,6 +168,11 @@ export default function Purchases() {
     enabled: !!selectedPurchase?.id,
   });
 
+  // Query for pending purchase approval requests
+  const { data: pendingApprovals } = useQuery<any[]>({
+    queryKey: ['/api/approvals/pending'],
+  });
+
   // Mutations
   const createPurchaseMutation = useMutation({
     mutationFn: async (data: PurchaseFormData) => {
@@ -294,11 +299,41 @@ export default function Purchases() {
     return `${currency} ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const filteredPurchases = purchases?.filter(purchase => {
+  // Combine approved purchases and pending approval requests
+  const combinedPurchases = [
+    ...(purchases || []).map(p => ({ ...p, isPending: false })),
+    ...(pendingApprovals || [])
+      .filter(approval => approval.operationType === 'purchase')
+      .map(approval => {
+        const operationData = approval.operationData || {};
+        return {
+          id: approval.id,
+          supplierId: operationData.supplierId || 'unknown',
+          orderId: operationData.orderId || null,
+          weight: operationData.weight || '0',
+          pricePerKg: operationData.pricePerKg || '0',
+          total: operationData.total || '0',
+          amountPaid: '0',
+          remaining: operationData.total || '0',
+          currency: operationData.currency || 'USD',
+          paymentMethod: operationData.paymentMethod || 'cash',
+          fundingSource: operationData.fundingSource || 'capital',
+          date: approval.submittedAt || new Date().toISOString(),
+          country: operationData.country || '',
+          quality: operationData.quality || '',
+          notes: operationData.notes || '',
+          status: 'pending_approval',
+          approvalRequestNumber: approval.requestNumber,
+          isPending: true
+        };
+      })
+  ];
+
+  const filteredPurchases = combinedPurchases?.filter(purchase => {
     if (filters.dateFrom && new Date(purchase.date) < new Date(filters.dateFrom)) return false;
     if (filters.dateTo && new Date(purchase.date) > new Date(filters.dateTo)) return false;
     if (filters.supplier && filters.supplier !== "all-suppliers" && purchase.supplierId !== filters.supplier) return false;
-    if (filters.status && filters.status !== "all-statuses" && getPaymentStatus(purchase) !== filters.status) return false;
+    if (filters.status && filters.status !== "all-statuses" && !purchase.isPending && getPaymentStatus(purchase) !== filters.status) return false;
     return true;
   });
 
@@ -493,21 +528,35 @@ export default function Purchases() {
                         </TableRow>
                       ) : (
                         filteredPurchases?.map((purchase) => {
-                          const status = getPaymentStatus(purchase);
+                          const status = purchase.isPending ? 'pending' : getPaymentStatus(purchase);
                           return (
-                            <TableRow key={purchase.id} data-testid={`purchase-row-${purchase.id}`}>
+                            <TableRow key={purchase.id} data-testid={`purchase-row-${purchase.id}`} className={purchase.isPending ? "bg-yellow-50 dark:bg-yellow-900/10" : ""}>
                               <TableCell>
-                                {new Date(purchase.date).toLocaleDateString()}
+                                <div className="space-y-1">
+                                  <div>{new Date(purchase.date).toLocaleDateString()}</div>
+                                  {purchase.isPending && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Pending Approval
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell>
-                                <Button 
-                                  variant="link" 
-                                  className="p-0 h-auto"
-                                  onClick={() => handleViewDetails(purchase)}
-                                  data-testid={`supplier-link-${purchase.id}`}
-                                >
-                                  {getSupplierName(purchase.supplierId)}
-                                </Button>
+                                <div className="space-y-1">
+                                  <Button 
+                                    variant="link" 
+                                    className="p-0 h-auto"
+                                    onClick={() => handleViewDetails(purchase)}
+                                    data-testid={`supplier-link-${purchase.id}`}
+                                  >
+                                    {getSupplierName(purchase.supplierId)}
+                                  </Button>
+                                  {purchase.isPending && purchase.approvalRequestNumber && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Request: {purchase.approvalRequestNumber}
+                                    </div>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <div className="space-y-1">
