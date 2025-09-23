@@ -72,12 +72,26 @@ export const permissionScopeEnum = pgEnum('permission_scope', [
 // Auth provider enum for user authentication method
 export const authProviderEnum = pgEnum('auth_provider', ['replit', 'supabase']);
 
+// Payment and funding enums for financial operations
+export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'advance', 'credit', 'bank_transfer', 'check']);
+export const fundingSourceEnum = pgEnum('funding_source', ['capital', 'external', 'credit_line', 'retained_earnings']);
+
+// Purchase status enum
+export const purchaseStatusEnum = pgEnum('purchase_status', ['pending', 'partial', 'paid', 'cancelled', 'on_hold']);
+
+// Warehouse stock status enum
+export const warehouseStockStatusEnum = pgEnum('warehouse_stock_status', ['AWAITING_DECISION', 'FILTERING', 'FILTERED', 'PACKED', 'RESERVED', 'CONSUMED']);
+
+// Shipment method and status enums
+export const shipmentMethodEnum = pgEnum('shipment_method', ['air', 'sea', 'land', 'rail', 'multimodal']);
+export const shipmentStatusEnum = pgEnum('shipment_status', ['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']);
+
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
+  email: varchar("email").notNull().unique(),
+  firstName: varchar("first_name").notNull(),
+  lastName: varchar("last_name").notNull(),
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").notNull().default('worker'), // Legacy single role (kept for compatibility)
   roles: jsonb("roles").$type<string[]>().default(sql`'[]'`), // Stage 8: Multiple role combination support
@@ -236,14 +250,15 @@ export const purchases = pgTable("purchases", {
   weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
   pricePerKg: decimal("price_per_kg", { precision: 10, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
-  paymentMethod: varchar("payment_method").notNull(), // cash, advance, credit
+  paymentMethod: paymentMethodEnum("payment_method").notNull(),
   amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
   remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
   currency: varchar("currency").notNull().default('USD'),
   exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
   country: varchar("country"),
   quality: varchar("quality"),
-  fundingSource: varchar("funding_source").notNull(), // capital, external
+  fundingSource: fundingSourceEnum("funding_source").notNull(),
+  status: purchaseStatusEnum("status").notNull().default('pending'),
   date: timestamp("date").notNull().defaultNow(),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -275,7 +290,7 @@ export const warehouseStock = pgTable("warehouse_stock", {
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
   batchId: varchar("batch_id"), // Link to batch for traceability - foreign key added later
   warehouse: varchar("warehouse").notNull(), // FIRST, FINAL
-  status: varchar("status").notNull().default('AWAITING_DECISION'),
+  status: warehouseStockStatusEnum("status").notNull().default('AWAITING_DECISION'),
   qualityGrade: qualityGradeEnum("quality_grade").default('ungraded'),
   qualityScore: decimal("quality_score", { precision: 5, scale: 2 }),
   lastInspectionId: varchar("last_inspection_id"), // Foreign key added later
@@ -309,12 +324,6 @@ export const filterRecords = pgTable("filter_records", {
 });
 
 // Shipping and Logistics Tables
-
-// Shipment status enum
-export const shipmentStatusEnum = pgEnum('shipment_status', ['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']);
-
-// Shipment method enum
-export const shipmentMethodEnum = pgEnum('shipment_method', ['sea_freight', 'air_freight', 'land_transport', 'courier']);
 
 // Carriers table
 export const carriers = pgTable("carriers", {
