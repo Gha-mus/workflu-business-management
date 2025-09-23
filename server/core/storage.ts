@@ -836,6 +836,7 @@ export interface IStorage {
   createPurchaseWithSideEffectsRetryable(purchaseData: InsertPurchase, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
   createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
   updatePurchase(id: string, purchase: Partial<InsertPurchase>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
+  deletePurchase(id: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<void>;
   
   // Warehouse operations
   getWarehouseStock(): Promise<WarehouseStock[]>;
@@ -3194,17 +3195,20 @@ export class DatabaseStorage implements IStorage {
         purchaseNumber,
       }).returning();
 
+      // STAGE 2 SECURITY: Get central exchange rate once and reuse (never trust client)
+      const config = ConfigurationService.getInstance();
+      let exchangeRateValue: number | undefined;
+      if (purchaseData.currency === 'ETB') {
+        exchangeRateValue = await config.getCentralExchangeRate();
+      }
+
       // If funded from capital and amount paid > 0, create capital entry
       if (purchaseData.fundingSource === 'capital' && parseFloat(purchaseData.amountPaid || '0') > 0) {
         const amountPaid = new Decimal(purchaseData.amountPaid || '0');
         
-        // STAGE 2 SECURITY: Convert amount to USD using central exchange rate (never trust client)
+        // Convert amount to USD using central exchange rate
         let amountInUsd = amountPaid;
-        const config = ConfigurationService.getInstance();
-        let exchangeRateValue: number | undefined;
-        if (purchaseData.currency === 'ETB') {
-          // Get central exchange rate from configuration
-          exchangeRateValue = await config.getCentralExchangeRate();
+        if (purchaseData.currency === 'ETB' && exchangeRateValue) {
           const centralRate = new Decimal(exchangeRateValue);
           amountInUsd = amountPaid.div(centralRate);
         }
@@ -3426,6 +3430,64 @@ export class DatabaseStorage implements IStorage {
     }
 
     return result;
+  }
+
+  async deletePurchase(id: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<void> {
+    // CRITICAL SECURITY: Enforce approval requirement for purchase deletion UNCONDITIONALLY
+    if (!approvalContext) {
+      throw new Error('Purchase deletion requires approval context for security compliance. This operation cannot proceed without proper authorization workflow.');
+    }
+    
+    await StorageApprovalGuard.enforceApprovalRequirement({
+      ...approvalContext,
+      operationType: 'purchase_delete',
+      operationData: { purchaseId: id },
+      businessContext: `Purchase deletion: ${id}`
+    });
+
+    // Get existing purchase for audit logging and validation
+    const [existingPurchase] = await db.select().from(purchases).where(eq(purchases.id, id));
+    if (!existingPurchase) {
+      throw new Error(`Purchase not found: ${id}`);
+    }
+
+    // Check for linked warehouse stock to prevent data inconsistency
+    const linkedStock = await db
+      .select({ count: sql`count(*)::int` })
+      .from(warehouseStock)
+      .where(eq(warehouseStock.purchaseId, id));
+    
+    if (linkedStock[0]?.count > 0) {
+      throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked warehouse stock entries. Cancel or process the warehouse operations first.`);
+    }
+
+    // Check for capital entries linked to this purchase
+    const linkedCapitalEntries = await db
+      .select({ count: sql`count(*)::int` })
+      .from(capitalEntries)
+      .where(eq(capitalEntries.reference, id));
+    
+    if (linkedCapitalEntries[0]?.count > 0) {
+      throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked capital entries. Reverse the capital entries first.`);
+    }
+
+    // Perform the deletion
+    await db.delete(purchases).where(eq(purchases.id, id));
+
+    // CRITICAL SECURITY: Audit logging for purchase deletion
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchases',
+        id,
+        'delete',
+        'purchase_cancellation',
+        existingPurchase,
+        null,
+        parseFloat(existingPurchase.total), // Positive impact for deletion (recovery of outflow)
+        existingPurchase.currency || 'USD'
+      );
+    }
   }
 
   // STAGE 2 COMPLIANCE: Purchase advances settlement workflow
