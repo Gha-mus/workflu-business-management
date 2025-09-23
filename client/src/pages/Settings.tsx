@@ -314,19 +314,33 @@ export default function Settings() {
     queryKey: ['/api/settings'],
   });
 
+  // Find the exchange rate from settings array
+  const exchangeRateSetting = Array.isArray(settings) 
+    ? settings.find((s: any) => s.key === 'USD_ETB_RATE')
+    : null;
+  const currentExchangeRate = exchangeRateSetting?.value 
+    ? parseFloat(exchangeRateSetting.value) 
+    : null;
+
   // Update exchange rate when settings data changes
   useEffect(() => {
-    if (settings?.financial?.exchangeRate) {
-      setExchangeRate(settings.financial.exchangeRate.toString());
+    if (currentExchangeRate) {
+      setExchangeRate(currentExchangeRate.toString());
     }
-  }, [settings?.financial?.exchangeRate]);
+  }, [currentExchangeRate]);
+
+  // Find the preventNegativeBalance from settings array
+  const preventNegativeBalanceSetting = Array.isArray(settings) 
+    ? settings.find((s: any) => s.key === 'PREVENT_NEGATIVE_BALANCE')
+    : null;
+  const currentPreventNegativeBalance = preventNegativeBalanceSetting?.value === 'true';
 
   // Update preventNegativeBalance when settings data changes
   useEffect(() => {
-    if (settings?.financial !== undefined) {
-      setPreventNegativeBalance(settings.financial.preventNegativeBalance);
+    if (preventNegativeBalanceSetting?.value !== undefined) {
+      setPreventNegativeBalance(currentPreventNegativeBalance);
     }
-  }, [settings?.financial?.preventNegativeBalance]);
+  }, [currentPreventNegativeBalance]);
 
   const { data: suppliers } = useQuery<SuppliersResponse>({
     queryKey: ['/api/suppliers'],
@@ -334,18 +348,29 @@ export default function Settings() {
 
   const updateExchangeRateMutation = useMutation({
     mutationFn: async (rate: string) => {
-      return await apiRequest('POST', '/api/settings', {
-        key: 'USD_ETB_RATE',
-        value: rate,
-        description: 'USD to ETB exchange rate',
-        category: 'financial'
+      // Use admin bypass endpoint only for admin users
+      const endpoint = user?.role === 'admin' 
+        ? '/api/settings/exchange-rates/admin-update'
+        : '/api/settings/exchange-rates/update';
+      
+      return await apiRequest('POST', endpoint, {
+        rate: parseFloat(rate),
+        reason: user?.role === 'admin' ? 'Admin direct update' : 'Exchange rate update'
       });
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Exchange rate updated successfully",
-      });
+      // Different messages for admin vs regular users
+      if (user?.role === 'admin') {
+        toast({
+          title: "Success",
+          description: "Exchange rate updated immediately",
+        });
+      } else {
+        toast({
+          title: "Update Request Submitted",
+          description: "Exchange rate update has been submitted for approval",
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
     },
     onError: (error) => {
@@ -392,11 +417,17 @@ export default function Settings() {
 
   const updateNegativeBalanceMutation = useMutation({
     mutationFn: async (prevent: boolean) => {
-      return await apiRequest('POST', '/api/settings', {
+      // Check if admin for immediate update vs approval flow
+      const endpoint = user?.role === 'admin'
+        ? '/api/settings'
+        : '/api/settings';
+      
+      return await apiRequest('POST', endpoint, {
         key: 'PREVENT_NEGATIVE_BALANCE',
         value: prevent.toString(),
         description: 'Prevent capital balance from going negative',
-        category: 'financial'
+        category: 'financial',
+        isAdmin: user?.role === 'admin'
       });
     },
     onSuccess: () => {
@@ -643,8 +674,8 @@ export default function Settings() {
                           {updateExchangeRateMutation.isPending ? "Updating..." : "Update"}
                         </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Current rate: {settings?.financial?.exchangeRate?.toFixed(4) || 'Not set'}
+                      <p className="text-xs text-muted-foreground mt-1" aria-ref="e369">
+                        Current rate: {currentExchangeRate ? currentExchangeRate.toFixed(4) : 'Not set'}
                       </p>
                     </div>
 

@@ -207,27 +207,32 @@ export class ConfigurationService {
       // Clear cache
       this.clearSettingCache(key);
 
-      // Audit log
+      // Audit log (fixed to use correct two-argument signature)
       await auditService.logOperation(
         {
           userId: options.userId,
           userName: 'ConfigurationService',
-          userRole: 'system',
+          userRole: 'admin', // Changed from 'system' to valid enum value
           source: 'configuration_service',
           severity: 'normal',
           businessContext: `Setting ${key} updated from "${oldValue}" to "${value}"`
         },
-        'settings',
-        key,
-        settingId ? 'update' : 'create',
-        JSON.stringify({
-          settingKey: key,
-          category: options.category,
-          requiresApproval,
-          changeReason: options.changeReason,
-          oldValue: oldValue || undefined,
-          newValue: value
-        })
+        {
+          entityType: 'settings',
+          entityId: key,
+          action: settingId ? 'update' : 'create',
+          operationType: 'system_setting_change',
+          description: `Setting ${key} ${settingId ? 'updated' : 'created'} in category ${options.category || 'general'}`,
+          oldValues: oldValue ? { value: oldValue } : null,
+          newValues: { 
+            value: value,
+            category: options.category || 'general',
+            requiresApproval,
+            changeReason: options.changeReason
+          },
+          changedFields: ['value'],
+          businessContext: `Configuration change: ${key}`,
+        }
       );
 
       return { success: true, requiresApproval };
