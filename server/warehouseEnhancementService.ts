@@ -95,7 +95,7 @@ class WarehouseEnhancementService {
         .innerJoin(suppliers, eq(warehouseStock.supplierId, suppliers.id))
         .where(and(
           eq(warehouseStock.warehouse, 'FIRST'),
-          eq(warehouseStock.status, 'AWAITING_FILTER')
+          eq(warehouseStock.status, 'FILTERING')
         ));
 
       const alerts: FilteringAlert[] = [];
@@ -128,7 +128,7 @@ class WarehouseEnhancementService {
             stockId: stock.stockId,
             orderId: stock.orderId,
             supplierName: stock.supplierName,
-            quantityKg: parseFloat(stock.quantityKg),
+            quantityKg: new Decimal(stock.quantityKg).toNumber(),
             daysWaiting,
             priority,
             recommendedAction,
@@ -215,17 +215,17 @@ class WarehouseEnhancementService {
         const supplierName = records[0].supplierName;
         
         // Calculate metrics
-        const totalProcessedKg = records.reduce((sum, r) => sum + parseFloat(r.inputKg), 0);
-        const cleanOutputKg = records.reduce((sum, r) => sum + parseFloat(r.outputCleanKg), 0);
-        const nonCleanOutputKg = records.reduce((sum, r) => sum + parseFloat(r.outputNonCleanKg), 0);
-        const averageYieldPercent = records.reduce((sum, r) => sum + parseFloat(r.filterYield), 0) / records.length;
+        const totalProcessedKg = records.reduce((sum, r) => sum.add(new Decimal(r.inputKg)), new Decimal(0)).toNumber();
+        const cleanOutputKg = records.reduce((sum, r) => sum.add(new Decimal(r.outputCleanKg)), new Decimal(0)).toNumber();
+        const nonCleanOutputKg = records.reduce((sum, r) => sum.add(new Decimal(r.outputNonCleanKg)), new Decimal(0)).toNumber();
+        const averageYieldPercent = records.reduce((sum, r) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(records.length).toNumber();
         const filterYieldPercent = totalProcessedKg > 0 ? (cleanOutputKg / totalProcessedKg) * 100 : 0;
         
         // Determine quality trend (simplified - would use historical comparison)
         let qualityTrend: 'improving' | 'stable' | 'declining' = 'stable';
         if (records.length >= 3) {
-          const recent = records.slice(-3).reduce((sum, r) => sum + parseFloat(r.filterYield), 0) / 3;
-          const earlier = records.slice(0, -3).reduce((sum, r) => sum + parseFloat(r.filterYield), 0) / Math.max(records.length - 3, 1);
+          const recent = records.slice(-3).reduce((sum, r) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(3).toNumber();
+          const earlier = records.slice(0, -3).reduce((sum, r) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(Math.max(records.length - 3, 1)).toNumber();
           
           if (recent > earlier + 2) qualityTrend = 'improving';
           else if (recent < earlier - 2) qualityTrend = 'declining';
@@ -293,37 +293,37 @@ class WarehouseEnhancementService {
       }
 
       // Calculate cost redistribution
-      const originalCostPerKg = parseFloat(purchase.pricePerKg);
-      const totalInput = parseFloat(filterRecord.inputKg);
-      const cleanOutput = parseFloat(filterRecord.outputCleanKg);
-      const nonCleanOutput = parseFloat(filterRecord.outputNonCleanKg);
-      const filterYield = parseFloat(filterRecord.filterYield);
+      const originalCostPerKg = new Decimal(purchase.pricePerKg);
+      const totalInput = new Decimal(filterRecord.inputKg);
+      const cleanOutput = new Decimal(filterRecord.outputCleanKg);
+      const nonCleanOutput = new Decimal(filterRecord.outputNonCleanKg);
+      const filterYield = new Decimal(filterRecord.filterYield);
 
       // Cost redistribution logic: all cost goes to clean output, non-clean gets zero cost
-      const redistributedCleanCostPerKg = totalInput > 0 && cleanOutput > 0 
-        ? (originalCostPerKg * totalInput) / cleanOutput 
+      const redistributedCleanCostPerKg = totalInput.gt(0) && cleanOutput.gt(0) 
+        ? originalCostPerKg.mul(totalInput).div(cleanOutput).toNumber()
         : 0;
 
-      const costSavingsFromNonClean = originalCostPerKg * nonCleanOutput;
+      const costSavingsFromNonClean = originalCostPerKg.mul(nonCleanOutput).toNumber();
       
       // Validation checks
       const errors: string[] = [];
       
       // Check if unit cost was properly updated
-      const currentUnitCost = parseFloat(warehouseStockRecord.unitCostCleanUsd || '0');
+      const currentUnitCost = new Decimal(warehouseStockRecord.unitCostCleanUsd || '0');
       const expectedUnitCost = redistributedCleanCostPerKg;
       
-      if (Math.abs(currentUnitCost - expectedUnitCost) > 0.01) {
+      if (currentUnitCost.minus(expectedUnitCost).abs().gt(0.01)) {
         errors.push(`Unit cost mismatch: Expected ${expectedUnitCost.toFixed(4)}, got ${currentUnitCost.toFixed(4)}`);
       }
 
       // Check quantities
-      const expectedCleanKg = parseFloat(warehouseStockRecord.qtyKgClean);
+      const expectedCleanKg = new Decimal(warehouseStockRecord.qtyKgClean);
       if (Math.abs(expectedCleanKg - cleanOutput) > 0.01) {
         errors.push(`Clean quantity mismatch: Expected ${cleanOutput}, got ${expectedCleanKg}`);
       }
 
-      const expectedNonCleanKg = parseFloat(warehouseStockRecord.qtyKgNonClean);
+      const expectedNonCleanKg = new Decimal(warehouseStockRecord.qtyKgNonClean);
       if (Math.abs(expectedNonCleanKg - nonCleanOutput) > 0.01) {
         errors.push(`Non-clean quantity mismatch: Expected ${nonCleanOutput}, got ${expectedNonCleanKg}`);
       }

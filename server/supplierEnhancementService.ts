@@ -205,7 +205,7 @@ class SupplierEnhancementService {
           alerts.push({
             supplierId: supplier.id,
             supplierName: supplier.name,
-            advanceAmount: parseFloat(supplier.advanceBalance || '0'),
+            advanceAmount: new Decimal(supplier.advanceBalance || '0').toNumber(),
             advanceDate: supplier.lastAdvanceDate,
             daysPastDue,
             alertSeverity,
@@ -267,7 +267,7 @@ class SupplierEnhancementService {
       }
 
       // Validate return amount doesn't exceed original
-      const originalTotal = parseFloat(originalPurchase.total);
+      const originalTotal = new Decimal(originalPurchase.total).toNumber();
       if (returnRequest.returnAmountUsd > originalTotal) {
         throw new Error(`Return amount $${returnRequest.returnAmountUsd} exceeds original purchase $${originalTotal}`);
       }
@@ -526,12 +526,12 @@ class SupplierEnhancementService {
           supplier,
           metrics: {
             totalPurchases: metrics.totalPurchases || 0,
-            totalVolumeKg: parseFloat(metrics.totalVolumeKg || '0'),
-            totalValueUsd: parseFloat(metrics.totalValueUsd || '0'),
-            averageQualityScore: parseFloat(supplier.qualityScore || '0'),
+            totalVolumeKg: new Decimal(metrics.totalVolumeKg || '0').toNumber(),
+            totalValueUsd: new Decimal(metrics.totalValueUsd || '0').toNumber(),
+            averageQualityScore: new Decimal(supplier.qualityScore || '0').toNumber(),
             onTimeDeliveryRate: 0.85, // Would calculate from actual data
             returnRate: 0.02, // Would calculate from actual return data
-            advanceUtilization: parseFloat(supplier.advanceBalance || '0'),
+            advanceUtilization: new Decimal(supplier.advanceBalance || '0').toNumber(),
             lastPurchaseDate: null, // Would calculate from actual data
           },
         });

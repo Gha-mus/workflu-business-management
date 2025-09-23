@@ -361,9 +361,9 @@ export class ConfigurationService {
         autoBackup,
         numberingSchemesList
       ] = await Promise.all([
-        this.getSystemSetting('USD_ETB_RATE', 'financial').then(r => parseFloat(r || '60')),
+        this.getSystemSetting('USD_ETB_RATE', 'financial').then(r => new Decimal(r || '60').toNumber()),
         this.getSystemSetting('PREVENT_NEGATIVE_BALANCE', 'financial').then(r => r === 'true'),
-        this.getSystemSetting('APPROVAL_THRESHOLD', 'financial').then(r => parseFloat(r || '5000')),
+        this.getSystemSetting('APPROVAL_THRESHOLD', 'financial').then(r => new Decimal(r || '5000').toNumber()),
         this.getSystemSetting('MAX_FILE_SIZE', 'operational').then(r => parseInt(r || '10485760')),
         this.getSystemSetting('TIMEZONE', 'operational').then(r => r || 'UTC'),
         this.getSystemSetting('BUSINESS_ADDRESS', 'operational').then(r => r || ''),
@@ -420,7 +420,7 @@ export class ConfigurationService {
 
   async getApprovalThreshold(): Promise<number> {
     const setting = await this.getSystemSetting('APPROVAL_THRESHOLD', 'financial');
-    return parseFloat(setting || '5000');
+    return new Decimal(setting || '5000').toNumber();
   }
 
   /**

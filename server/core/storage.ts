@@ -4590,11 +4590,11 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(warehouseStock.purchaseId, purchaseId),
           eq(warehouseStock.warehouse, 'FIRST'),
-          eq(warehouseStock.status, 'AWAITING_FILTER')
+          eq(warehouseStock.status, 'FILTERING')
         ));
 
       if (!stockEntry) {
-        throw new Error('Stock entry not found or not in AWAITING_FILTER status');
+        throw new Error('Stock entry not found or not in FILTERING status');
       }
 
       const inputKg = stockEntry.qtyKgTotal;

@@ -104,7 +104,9 @@ class ShippingEnhancementService {
       const exchangeRate = costData.currency === 'USD' ? 1.0 : 
         (costData.exchangeRate || await configurationService.getCentralExchangeRate());
 
-      const amountUsd = costData.currency === 'USD' ? costData.amount : costData.amount / exchangeRate;
+      const amountUsd = costData.currency === 'USD' 
+        ? new Decimal(costData.amount).toNumber()
+        : new Decimal(costData.amount).div(new Decimal(exchangeRate)).toNumber();
 
       // Insert arrival cost
       const [arrivalCost] = await db
@@ -112,7 +114,7 @@ class ShippingEnhancementService {
         .values({
           shipmentId: costData.shipmentId,
           costType: costData.costType,
-          amount: amountUsd.toString(),
+          amount: new Decimal(costData.amount).div(new Decimal(exchangeRate)).toFixed(2),
           currency: costData.currency,
           exchangeRate: exchangeRate.toString(),
           description: costData.description,
@@ -302,8 +304,8 @@ class ShippingEnhancementService {
         }
 
         // Validate amount
-        const entryAmount = parseFloat(capitalEntry.amount);
-        if (Math.abs(entryAmount - commissionAmount) > 0.01) {
+        const entryAmount = new Decimal(capitalEntry.amount).toNumber();
+        if (new Decimal(entryAmount).minus(commissionAmount).abs().gt(0.01)) {
           validationErrors.push(`Amount mismatch: Commission ${commissionAmount} != Capital entry ${entryAmount}`);
         }
 
@@ -394,10 +396,10 @@ class ShippingEnhancementService {
       const alerts: WeightMismatchAlert[] = [];
 
       for (const inspection of inspections) {
-        const expectedWeight = parseFloat(shipment.totalWeight);
-        const actualWeight = parseFloat(inspection.grossWeightKg || '0');
-        const discrepancyKg = Math.abs(expectedWeight - actualWeight);
-        const discrepancyPercent = expectedWeight > 0 ? (discrepancyKg / expectedWeight) * 100 : 0;
+        const expectedWeight = new Decimal(shipment.totalWeight);
+        const actualWeight = new Decimal(inspection.grossWeightKg || '0');
+        const discrepancyKg = expectedWeight.minus(actualWeight).abs().toNumber();
+        const discrepancyPercent = expectedWeight.gt(0) ? (discrepancyKg / expectedWeight.toNumber()) * 100 : 0;
 
         let severity: 'minor' | 'significant' | 'critical';
         let recommendedAction: string;
@@ -491,15 +493,15 @@ class ShippingEnhancementService {
 
   private async processDiscountSettlement(inspection: any, discountPercent: number, userId: string): Promise<any> {
     // Apply discount and transfer goods
-    const discountAmount = (parseFloat(inspection.originalValue || '0') * discountPercent) / 100;
+    const discountAmount = new Decimal(inspection.originalValue || '0').mul(discountPercent).div(100);
     await inspectionWorkflowService.triggerFinalWarehouseTransfer(inspection.id, userId);
     
     return {
       action: 'discount_applied',
       discountPercent,
-      discountAmount,
+      discountAmount: discountAmount.toNumber(),
       transferredToFinalWarehouse: true,
-      adjustedValue: parseFloat(inspection.originalValue || '0') - discountAmount,
+      adjustedValue: new Decimal(inspection.originalValue || '0').sub(discountAmount).toNumber(),
     };
   }
 }
