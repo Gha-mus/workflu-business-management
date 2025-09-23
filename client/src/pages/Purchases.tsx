@@ -72,8 +72,8 @@ export default function Purchases() {
   const [filters, setFilters] = useState({
     dateFrom: "",
     dateTo: "",
-    supplier: "",
-    status: "", // paid, partial, unpaid
+    supplier: "all-suppliers",
+    status: "all-statuses", // paid, partial, unpaid
   });
   const [showFilters, setShowFilters] = useState(false);
 
@@ -276,8 +276,8 @@ export default function Purchases() {
   const filteredPurchases = purchases?.filter(purchase => {
     if (filters.dateFrom && new Date(purchase.date) < new Date(filters.dateFrom)) return false;
     if (filters.dateTo && new Date(purchase.date) > new Date(filters.dateTo)) return false;
-    if (filters.supplier && purchase.supplierId !== filters.supplier) return false;
-    if (filters.status && getPaymentStatus(purchase) !== filters.status) return false;
+    if (filters.supplier && filters.supplier !== "all-suppliers" && purchase.supplierId !== filters.supplier) return false;
+    if (filters.status && filters.status !== "all-statuses" && getPaymentStatus(purchase) !== filters.status) return false;
     return true;
   });
 
@@ -391,7 +391,7 @@ export default function Purchases() {
                     <SelectValue placeholder="All suppliers" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All suppliers</SelectItem>
+                    <SelectItem value="all-suppliers">All suppliers</SelectItem>
                     {suppliers?.map(supplier => (
                       <SelectItem key={supplier.id} value={supplier.id}>
                         {supplier.name}
@@ -407,7 +407,7 @@ export default function Purchases() {
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All statuses</SelectItem>
+                    <SelectItem value="all-statuses">All statuses</SelectItem>
                     <SelectItem value="paid">Paid</SelectItem>
                     <SelectItem value="partial">Partial</SelectItem>
                     <SelectItem value="unpaid">Unpaid</SelectItem>
@@ -419,7 +419,7 @@ export default function Purchases() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setFilters({ dateFrom: "", dateTo: "", supplier: "", status: "" })}
+                onClick={() => setFilters({ dateFrom: "", dateTo: "", supplier: "all-suppliers", status: "all-statuses" })}
                 data-testid="button-clear-filters"
               >
                 <X className="w-4 h-4 mr-2" />
@@ -613,7 +613,7 @@ export default function Purchases() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">No order</SelectItem>
+                          <SelectItem value="no-order">No order</SelectItem>
                           {orders?.map(order => (
                             <SelectItem key={order.id} value={order.id}>
                               {order.orderNumber}
@@ -1146,7 +1146,7 @@ export default function Purchases() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">No order</SelectItem>
+                          <SelectItem value="no-order">No order</SelectItem>
                           {orders?.map(order => (
                             <SelectItem key={order.id} value={order.id}>
                               {order.orderNumber}

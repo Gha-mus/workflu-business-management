@@ -292,9 +292,9 @@ const DocumentMetricCard = ({ title, value, change, icon: Icon, color = 'blue' }
 export default function DocumentManagement() {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [selectedAccessLevel, setSelectedAccessLevel] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all-categories');
+  const [selectedStatus, setSelectedStatus] = useState('all-status');
+  const [selectedAccessLevel, setSelectedAccessLevel] = useState('all-access-levels');
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -514,9 +514,9 @@ export default function DocumentManagement() {
       doc.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       doc.documentNumber.toLowerCase().includes(searchQuery.toLowerCase());
     
-    const matchesCategory = !selectedCategory || doc.category === selectedCategory;
-    const matchesStatus = !selectedStatus || doc.status === selectedStatus;
-    const matchesAccessLevel = !selectedAccessLevel || doc.accessLevel === selectedAccessLevel;
+    const matchesCategory = selectedCategory === 'all-categories' || doc.category === selectedCategory;
+    const matchesStatus = selectedStatus === 'all-status' || doc.status === selectedStatus;
+    const matchesAccessLevel = selectedAccessLevel === 'all-access-levels' || doc.accessLevel === selectedAccessLevel;
     
     return matchesSearch && matchesCategory && matchesStatus && matchesAccessLevel;
   });
@@ -746,7 +746,7 @@ export default function DocumentManagement() {
                     <SelectValue placeholder="Filter by category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Categories</SelectItem>
+                    <SelectItem value="all-categories">All Categories</SelectItem>
                     <SelectItem value="contract">Contract</SelectItem>
                     <SelectItem value="invoice">Invoice</SelectItem>
                     <SelectItem value="certificate">Certificate</SelectItem>
@@ -775,7 +775,7 @@ export default function DocumentManagement() {
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all-status">All Status</SelectItem>
                     <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="under_review">Under Review</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
@@ -790,7 +790,7 @@ export default function DocumentManagement() {
                     <SelectValue placeholder="Filter by access" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Access Levels</SelectItem>
+                    <SelectItem value="all-access-levels">All Access Levels</SelectItem>
                     <SelectItem value="public">Public</SelectItem>
                     <SelectItem value="internal">Internal</SelectItem>
                     <SelectItem value="confidential">Confidential</SelectItem>

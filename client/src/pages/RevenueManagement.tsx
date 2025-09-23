@@ -255,8 +255,8 @@ const RevenueMetricCard = ({ title, value, currency, change, icon: Icon, trend }
 
 export default function RevenueManagement() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [customerFilter, setCustomerFilter] = useState({ category: '', isActive: 'true' });
-  const [orderFilter, setOrderFilter] = useState({ status: '', customerId: '' });
+  const [customerFilter, setCustomerFilter] = useState({ category: 'all-categories', isActive: 'all-customers' });
+  const [orderFilter, setOrderFilter] = useState({ status: 'all-status', customerId: 'all-customers' });
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const { toast } = useToast();
@@ -750,7 +750,7 @@ export default function RevenueManagement() {
                     <SelectValue placeholder="Filter by category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Categories</SelectItem>
+                    <SelectItem value="all-categories">All Categories</SelectItem>
                     <SelectItem value="retail">Retail</SelectItem>
                     <SelectItem value="wholesale">Wholesale</SelectItem>
                     <SelectItem value="export">Export</SelectItem>
@@ -763,7 +763,7 @@ export default function RevenueManagement() {
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Customers</SelectItem>
+                    <SelectItem value="all-customers">All Customers</SelectItem>
                     <SelectItem value="true">Active Only</SelectItem>
                     <SelectItem value="false">Inactive Only</SelectItem>
                   </SelectContent>
@@ -877,7 +877,7 @@ export default function RevenueManagement() {
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all-status">All Status</SelectItem>
                     <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="confirmed">Confirmed</SelectItem>
                     <SelectItem value="fulfilled">Fulfilled</SelectItem>
@@ -891,7 +891,7 @@ export default function RevenueManagement() {
                     <SelectValue placeholder="Filter by customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Customers</SelectItem>
+                    <SelectItem value="all-customers">All Customers</SelectItem>
                     {customers.slice(0, 20).map((customer) => (
                       <SelectItem key={customer.id} value={customer.id}>
                         {customer.name}
@@ -1041,7 +1041,7 @@ export default function RevenueManagement() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">No specific order</SelectItem>
+                              <SelectItem value="no-specific-order">No specific order</SelectItem>
                               {salesOrders.slice(0, 20).map((order) => (
                                 <SelectItem key={order.id} value={order.id}>
                                   {order.salesOrderNumber} - ${parseFloat(order.totalAmountUsd).toFixed(2)}
@@ -1215,7 +1215,7 @@ export default function RevenueManagement() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">No specific order</SelectItem>
+                              <SelectItem value="no-specific-order">No specific order</SelectItem>
                               {salesOrders.slice(0, 20).map((order) => (
                                 <SelectItem key={order.id} value={order.id}>
                                   {order.salesOrderNumber} - ${parseFloat(order.totalAmountUsd).toFixed(2)}

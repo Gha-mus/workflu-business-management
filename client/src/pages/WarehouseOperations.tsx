@@ -206,7 +206,7 @@ const WarehouseCard = ({ warehouse, stockData }: { warehouse: 'FIRST' | 'FINAL',
 
 export default function WarehouseOperations() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [stockFilter, setStockFilter] = useState({ status: '', warehouse: '', qualityGrade: '' });
+  const [stockFilter, setStockFilter] = useState({ status: 'all-status', warehouse: 'all-warehouses', qualityGrade: '' });
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -360,8 +360,8 @@ export default function WarehouseOperations() {
   });
 
   const filteredStock = warehouseStock.filter((stock: StockItem) => {
-    if (stockFilter.status && stock.status !== stockFilter.status) return false;
-    if (stockFilter.warehouse && stock.warehouse !== stockFilter.warehouse) return false;
+    if (stockFilter.status && stockFilter.status !== 'all-status' && stock.status !== stockFilter.status) return false;
+    if (stockFilter.warehouse && stockFilter.warehouse !== 'all-warehouses' && stock.warehouse !== stockFilter.warehouse) return false;
     if (stockFilter.qualityGrade && stock.qualityGrade !== stockFilter.qualityGrade) return false;
     return true;
   });
@@ -505,7 +505,7 @@ export default function WarehouseOperations() {
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all-status">All Status</SelectItem>
                     <SelectItem value="AWAITING_DECISION">Awaiting Decision</SelectItem>
                     <SelectItem value="AWAITING_FILTER">Awaiting Filter</SelectItem>
                     <SelectItem value="NON_CLEAN">Non-Clean</SelectItem>
@@ -518,7 +518,7 @@ export default function WarehouseOperations() {
                     <SelectValue placeholder="Filter by warehouse" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Warehouses</SelectItem>
+                    <SelectItem value="all-warehouses">All Warehouses</SelectItem>
                     <SelectItem value="FIRST">First Warehouse</SelectItem>
                     <SelectItem value="FINAL">Final Warehouse</SelectItem>
                   </SelectContent>
