@@ -1,6 +1,28 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { log } from "../vite";
+import { AppError, ValidationError, ErrorTypeGuards } from "@shared/errors";
+
+/**
+ * Maps HTTP status codes to consistent error codes for non-AppError instances
+ */
+function getErrorCodeFromStatus(status: number): string {
+  const statusMap: Record<number, string> = {
+    400: 'BAD_REQUEST',
+    401: 'UNAUTHORIZED',
+    403: 'FORBIDDEN', 
+    404: 'NOT_FOUND',
+    405: 'METHOD_NOT_ALLOWED',
+    408: 'REQUEST_TIMEOUT',
+    409: 'CONFLICT',
+    413: 'PAYLOAD_TOO_LARGE',
+    422: 'UNPROCESSABLE_ENTITY',
+    429: 'RATE_LIMIT_EXCEEDED',
+    500: 'INTERNAL_SERVER_ERROR',
+    503: 'SERVICE_UNAVAILABLE'
+  };
+  return statusMap[status] || 'UNKNOWN_ERROR';
+}
 
 // PostgreSQL error code mapping to HTTP status codes
 const POSTGRES_ERROR_CODES: Record<string, { status: number; message: string }> = {
@@ -68,17 +90,22 @@ export function mapErrorToResponse(error: ErrorWithCode): {
   message: string;
   details?: any;
 } {
-  // Zod validation errors
-  if (error instanceof ZodError) {
-    const issues = error.issues.map(issue => ({
-      path: issue.path.join('.'),
-      message: issue.message
-    }));
-    
+  // Handle new typed AppError instances first
+  if (ErrorTypeGuards.isAppError(error)) {
     return {
-      status: 400,
-      message: 'Validation error',
-      details: { validation_errors: issues }
+      status: error.statusCode,
+      message: error.message,
+      details: error.details
+    };
+  }
+
+  // Zod validation errors - convert to typed ValidationError
+  if (error instanceof ZodError) {
+    const validationError = ValidationError.fromZodError(error);
+    return {
+      status: validationError.statusCode,
+      message: validationError.message,
+      details: validationError.details
     };
   }
 
@@ -247,21 +274,57 @@ export function errorHandler(
     log(`⚠️ ${logMessage}`);
   }
 
-  // Send the error response
-  res.status(errorResponse.status).json({
+  // Send standardized error response
+  const baseResponse: any = {
     error: true,
     message: errorResponse.message,
-    ...(errorResponse.details && process.env.NODE_ENV === 'development' ? { details: errorResponse.details } : {}),
-    ...(process.env.NODE_ENV === 'development' && errorResponse.status >= 500 ? { stack: error.stack } : {})
-  });
+    code: ErrorTypeGuards.isAppError(error) ? error.errorCode : getErrorCodeFromStatus(errorResponse.status),
+    statusCode: errorResponse.status,
+    timestamp: new Date().toISOString()
+  };
+
+  // Add details conditionally
+  if (errorResponse.details) {
+    baseResponse.details = errorResponse.details;
+  }
+
+  // Add stack trace in development for server errors
+  if (process.env.NODE_ENV === 'development' && errorResponse.status >= 500) {
+    baseResponse.stack = error.stack;
+  }
+
+  res.status(errorResponse.status).json(baseResponse);
 }
 
 /**
  * Async error wrapper to catch errors in async route handlers
  */
-export function asyncHandler(fn: Function) {
-  return (req: Request, res: Response, next: NextFunction) => {
+export function asyncHandler<T extends Request, U extends Response>(
+  fn: (req: T, res: U, next: NextFunction) => Promise<any>
+) {
+  return (req: T, res: U, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
+/**
+ * Validation middleware factory for Zod schemas
+ * Validates and sanitizes request data, assigns back to req[source]
+ */
+export function validateSchema<T>(
+  schema: { parse: (data: any) => T },
+  source: 'body' | 'query' | 'params' = 'body'
+) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = req[source];
+      const validated = schema.parse(data);
+      // Assign sanitized/coerced data back to request
+      (req as any)[source] = validated;
+      next();
+    } catch (error) {
+      next(error);
+    }
   };
 }
 
