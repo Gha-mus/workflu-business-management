@@ -75,6 +75,114 @@ purchasesRouter.post("/",
   }
 );
 
+// PATCH /api/purchases/:id
+purchasesRouter.patch("/:id", 
+  isAuthenticated,
+  requireRole(["admin", "purchasing", "finance"]),
+  purchasePeriodGuard,
+  requireApproval("purchase"),
+  async (req, res) => {
+    try {
+      const purchaseId = req.params.id;
+      
+      // Stage 1 Compliance: Strip client exchangeRate and use central rate
+      const { exchangeRate: clientRate, ...sanitizedData } = req.body;
+      const validatedData = insertPurchaseSchema.parse(sanitizedData);
+      
+      // Stage 1 Compliance: Get central exchange rate for all currencies
+      const centralExchangeRate = await configurationService.getCentralExchangeRate();
+      
+      // Get existing purchase for audit logging
+      const existingPurchase = await storage.getPurchase(purchaseId);
+      if (!existingPurchase) {
+        return res.status(404).json({ message: "Purchase not found" });
+      }
+      
+      const updatedPurchase = await storage.updatePurchase(purchaseId, {
+        ...validatedData,
+        exchangeRate: centralExchangeRate.toString(),
+        updatedBy: (req.user as any)?.claims?.sub || 'unknown'
+      });
+
+      // Create audit log
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'purchase_management',
+          severity: 'info',
+        },
+        {
+          entityType: 'purchases',
+          entityId: purchaseId,
+          action: 'update',
+          operationType: 'purchase_update',
+          description: `Updated purchase ${existingPurchase.purchaseNumber}`,
+          oldValues: existingPurchase,
+          newValues: updatedPurchase
+        }
+      );
+
+      res.json(updatedPurchase);
+    } catch (error) {
+      console.error("Error updating purchase:", error);
+      res.status(500).json({ message: "Failed to update purchase" });
+    }
+  }
+);
+
+// DELETE /api/purchases/:id
+purchasesRouter.delete("/:id", 
+  isAuthenticated,
+  requireRole(["admin", "purchasing", "finance"]),
+  purchasePeriodGuard,
+  requireApproval("purchase"),
+  async (req, res) => {
+    try {
+      const purchaseId = req.params.id;
+      
+      // Get existing purchase for audit logging
+      const existingPurchase = await storage.getPurchase(purchaseId);
+      if (!existingPurchase) {
+        return res.status(404).json({ message: "Purchase not found" });
+      }
+      
+      // Check if purchase has payments
+      const hasPayments = await storage.getPurchasePayments(purchaseId);
+      if (hasPayments && hasPayments.length > 0) {
+        return res.status(400).json({ 
+          message: "Cannot delete purchase with existing payments. Please remove payments first." 
+        });
+      }
+      
+      await storage.deletePurchase(purchaseId);
+
+      // Create audit log
+      await auditService.logOperation(
+        {
+          userId: (req.user as any)?.claims?.sub || 'unknown',
+          userName: (req.user as any)?.claims?.email || 'Unknown',
+          source: 'purchase_management',
+          severity: 'warning',
+        },
+        {
+          entityType: 'purchases',
+          entityId: purchaseId,
+          action: 'delete',
+          operationType: 'purchase_cancellation',
+          description: `Cancelled purchase ${existingPurchase.purchaseNumber}`,
+          oldValues: existingPurchase
+        }
+      );
+
+      res.json({ message: "Purchase cancelled successfully" });
+    } catch (error) {
+      console.error("Error cancelling purchase:", error);
+      res.status(500).json({ message: "Failed to cancel purchase" });
+    }
+  }
+);
+
 // GET /api/purchases/suppliers
 purchasesRouter.get("/suppliers", isAuthenticated, async (req, res) => {
   try {
