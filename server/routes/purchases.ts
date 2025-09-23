@@ -98,17 +98,22 @@ purchasesRouter.patch("/:id",
         return res.status(404).json({ message: "Purchase not found" });
       }
       
-      // Note: exchangeRate is handled internally by the storage layer for security
-      const updatedPurchase = await storage.updatePurchase(purchaseId, validatedData);
+      // Prepare contexts for storage layer
+      const auditContext = {
+        userId: (req.user as any)?.claims?.sub || 'unknown',
+        userName: (req.user as any)?.claims?.email || 'Unknown',
+        source: 'purchase_management',
+        severity: 'info' as const,
+      };
 
-      // Create audit log
+      const approvalContext = (req as any).approvalContext;
+
+      // Note: exchangeRate is handled internally by the storage layer for security
+      const updatedPurchase = await storage.updatePurchase(purchaseId, validatedData, auditContext, approvalContext);
+
+      // Additional audit log (storage already creates one, this is supplementary)
       await auditService.logOperation(
-        {
-          userId: (req.user as any)?.claims?.sub || 'unknown',
-          userName: (req.user as any)?.claims?.email || 'Unknown',
-          source: 'purchase_management',
-          severity: 'info',
-        },
+        auditContext,
         {
           entityType: 'purchases',
           entityId: purchaseId,
@@ -152,16 +157,21 @@ purchasesRouter.delete("/:id",
       //   });
       // }
       
-      await storage.deletePurchase(purchaseId);
+      // Prepare contexts for storage layer
+      const auditContext = {
+        userId: (req.user as any)?.claims?.sub || 'unknown',
+        userName: (req.user as any)?.claims?.email || 'Unknown',
+        source: 'purchase_management',
+        severity: 'warning' as const,
+      };
 
-      // Create audit log
+      const approvalContext = (req as any).approvalContext;
+
+      await storage.deletePurchase(purchaseId, auditContext, approvalContext);
+
+      // Additional audit log (storage already creates one, this is supplementary)
       await auditService.logOperation(
-        {
-          userId: (req.user as any)?.claims?.sub || 'unknown',
-          userName: (req.user as any)?.claims?.email || 'Unknown',
-          source: 'purchase_management',
-          severity: 'warning',
-        },
+        auditContext,
         {
           entityType: 'purchases',
           entityId: purchaseId,
@@ -510,7 +520,7 @@ purchasesRouter.post("/advances/consume",
         {
           entityType: 'supplier_advances',
           entityId: consumptionId,
-          action: 'consume',
+          action: 'update',
           operationType: 'advance_consume',
           description: `Consumed supplier advance ${consumptionId}: $${validatedData.amountUsd}`,
           newValues: validatedData,
