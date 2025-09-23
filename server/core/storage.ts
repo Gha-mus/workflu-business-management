@@ -9942,8 +9942,7 @@ export class DatabaseStorage implements IStorage {
           null,
           settings,
           undefined,
-          undefined,
-          `Created notification settings for user ${settings.userId}`
+          undefined
         );
       }
 
@@ -9977,8 +9976,7 @@ export class DatabaseStorage implements IStorage {
           oldSettings,
           settings,
           undefined,
-          undefined,
-          `Updated notification settings for user ${userId}`
+          undefined
         );
       }
 
@@ -10138,8 +10136,7 @@ export class DatabaseStorage implements IStorage {
           null,
           template,
           undefined,
-          undefined,
-          `Created notification template: ${template.name}`
+          undefined
         );
       }
 
@@ -10177,8 +10174,7 @@ export class DatabaseStorage implements IStorage {
           oldTemplate,
           template,
           undefined,
-          undefined,
-          `Updated notification template: ${oldTemplate.name}`
+          undefined
         );
       }
 
@@ -10214,8 +10210,7 @@ export class DatabaseStorage implements IStorage {
           template,
           null,
           undefined,
-          undefined,
-          `Deleted notification template: ${template.name}`
+          undefined
         );
       }
     } catch (error) {
@@ -10644,8 +10639,7 @@ export class DatabaseStorage implements IStorage {
           null,
           config,
           undefined,
-          undefined,
-          `Created alert configuration: ${config.name}`
+          undefined
         );
       }
 

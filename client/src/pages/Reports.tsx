@@ -592,7 +592,7 @@ export default function Reports() {
                           <div>
                             <p className="text-sm text-muted-foreground">{kpi.title}</p>
                             <p className="text-2xl font-bold text-foreground" data-testid={`kpi-${index}`}>
-                              {kpi.loading ? (
+                              {financialSummary?.loading ? (
                                 <div className="animate-pulse bg-muted h-8 w-24 rounded" />
                               ) : (
                                 kpi.value
@@ -977,7 +977,7 @@ export default function Reports() {
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">Value</p>
-                                <p className="text-lg font-bold">${inventoryAnalytics.warehouseSummary.first.totalValue.toLocaleString()}</p>
+                                <p className="text-lg font-bold">${inventoryAnalytics.warehouseSummary.first.valueUsd.toLocaleString()}</p>
                               </div>
                             </div>
                           </div>
@@ -994,7 +994,7 @@ export default function Reports() {
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">Value</p>
-                                <p className="text-lg font-bold">${inventoryAnalytics.warehouseSummary.final.totalValue.toLocaleString()}</p>
+                                <p className="text-lg font-bold">${inventoryAnalytics.warehouseSummary.final.valueUsd.toLocaleString()}</p>
                               </div>
                             </div>
                           </div>
@@ -1060,10 +1060,10 @@ export default function Reports() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {inventoryAnalytics?.aging ? Object.entries(inventoryAnalytics.aging).map(([range, count]) => (
-                            <div key={range} className="flex justify-between items-center">
-                              <span className="text-sm text-muted-foreground">{range} days</span>
-                              <span className="font-medium">{count} items</span>
+                          {inventoryAnalytics?.statusBreakdown ? inventoryAnalytics.statusBreakdown.map((item, index) => (
+                            <div key={index} className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">{item.status.replace(/_/g, ' ')}</span>
+                              <span className="font-medium">{item.count} items</span>
                             </div>
                           )) : <p className="text-sm text-muted-foreground">No aging data available</p>}
                         </div>
@@ -1106,14 +1106,14 @@ export default function Reports() {
                         <h3 className="text-lg font-semibold">Currency Distribution</h3>
                       </CardHeader>
                       <CardContent>
-                        {tradingActivity?.currencyDistribution ? Object.entries(tradingActivity.currencyDistribution).map(([currency, data]: [string, any]) => (
-                          <div key={currency} className="mb-4">
+                        {tradingActivity?.timeAnalysis ? Object.entries(tradingActivity.timeAnalysis).slice(0, 3).map(([period, data]: [string, any]) => (
+                          <div key={period} className="mb-4">
                             <div className="flex justify-between items-center">
-                              <span className="font-medium">{currency}</span>
-                              <span className="text-sm">{data.count} orders</span>
+                              <span className="font-medium">{period}</span>
+                              <span className="text-sm">{typeof data === 'object' ? Object.keys(data).length : data} items</span>
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {data.weight.toLocaleString()} kg • ${data.amount.toLocaleString()}
+                              Time period analysis data
                             </div>
                           </div>
                         )) : <p className="text-sm text-muted-foreground">No currency data available</p>}
