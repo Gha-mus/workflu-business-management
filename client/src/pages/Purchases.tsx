@@ -193,9 +193,12 @@ export default function Purchases() {
       setShowCartonEquivalents(false);
     },
     onError: (error: any) => {
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || error?.toString() || "Failed to create purchase";
       toast({
         title: "Error",
-        description: error?.message || "Failed to create purchase",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -218,9 +221,12 @@ export default function Purchases() {
       paymentForm.reset();
     },
     onError: (error: any) => {
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || error?.toString() || "Failed to record payment";
       toast({
         title: "Error",
-        description: error?.message || "Failed to record payment",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -246,9 +252,12 @@ export default function Purchases() {
       purchaseForm.reset();
     },
     onError: (error: any) => {
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || error?.toString() || "Failed to update purchase";
       toast({
         title: "Error",
-        description: error?.message || "Failed to update purchase",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -263,9 +272,12 @@ export default function Purchases() {
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
     },
     onError: (error: any) => {
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || error?.toString() || "Failed to cancel purchase";
       toast({
         title: "Error",
-        description: error?.message || "Failed to cancel purchase",
+        description: errorMessage,
         variant: "destructive",
       });
     },
