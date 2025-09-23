@@ -42,12 +42,13 @@ purchasesRouter.post("/",
         suffix: new Date().getFullYear().toString().slice(-2)
       });
       
-      const purchase = await storage.createPurchase({
+      // Use createPurchaseWithSideEffects to automatically create warehouse stock entry
+      const purchase = await storage.createPurchaseWithSideEffectsRetryable({
         ...validatedData,
         purchaseNumber,
         exchangeRate: centralExchangeRate.toString(),
         createdBy: (req.user as any)?.claims?.sub || 'unknown'
-      });
+      }, (req.user as any)?.claims?.sub || 'unknown');
 
       // Create audit log
       await auditService.logOperation(
