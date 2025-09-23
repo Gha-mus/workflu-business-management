@@ -3,9 +3,11 @@ import { storage } from "../core/storage";
 import { isAuthenticated, requireRole, validateSalesReturn } from "../core/auth";
 import { auditService } from "../auditService";
 import { salesEnhancementService } from "../salesEnhancementService";
+import Decimal from "decimal.js";
 import { 
   insertSalesOrderSchema,
   insertCustomerSchema,
+  insertCustomerCreditLimitSchema,
 } from "@shared/schema";
 import { requireApproval } from "../approvalMiddleware";
 import { genericPeriodGuard } from "../core/middleware/periodGuard";
@@ -31,9 +33,25 @@ salesRouter.post("/orders",
   async (req, res) => {
     try {
       const validatedData = insertSalesOrderSchema.parse(req.body);
+      const userId = (req.user as any).claims?.sub || 'unknown';
+      
+      // CREDIT LIMIT ENFORCEMENT - Check customer credit before creating order
+      if (validatedData.customerId && validatedData.totalAmountUsd) {
+        const orderAmount = new Decimal(validatedData.totalAmountUsd).toNumber();
+        const creditCheck = await storage.checkCreditLimitAvailability(validatedData.customerId, orderAmount);
+        
+        if (!creditCheck.isApproved) {
+          return res.status(400).json({ 
+            message: "Credit limit exceeded", 
+            details: creditCheck.reason,
+            availableCredit: creditCheck.availableCredit 
+          });
+        }
+      }
+      
       const order = await storage.createSalesOrder({
         ...validatedData,
-        createdBy: (req.user as any).claims?.sub || 'unknown'
+        createdBy: userId
       });
 
       // Create audit log
@@ -78,7 +96,7 @@ salesRouter.get("/analytics", isAuthenticated, async (req, res) => {
   try {
     const orders = await storage.getSalesOrders();
     const totalRevenueUsd = orders?.reduce((sum, order) => {
-      return sum + (parseFloat(order.totalAmountUsd?.toString() || '0'));
+      return sum + (new Decimal(order.totalAmountUsd?.toString() || '0').toNumber());
     }, 0) || 0;
     
     res.json({ totalRevenueUsd });
@@ -161,13 +179,63 @@ salesRouter.post("/return",
   }
 );
 
+// GET /api/sales/customers/:id/credit-limit
+salesRouter.get("/customers/:id/credit-limit", isAuthenticated, async (req, res) => {
+  try {
+    const creditLimit = await storage.getCurrentCustomerCreditLimit(req.params.id);
+    if (!creditLimit) {
+      return res.status(404).json({ message: "Credit limit not found for customer" });
+    }
+    res.json(creditLimit);
+  } catch (error) {
+    console.error("Error fetching customer credit limit:", error);
+    res.status(500).json({ message: "Failed to fetch credit limit" });
+  }
+});
+
+// PUT /api/sales/customers/:id/credit-limit
+salesRouter.put("/customers/:id/credit-limit",
+  isAuthenticated,
+  requireRole(["admin", "finance"]),
+  requireApproval("financial_adjustment"),
+  async (req, res) => {
+    try {
+      const validatedData = insertCustomerCreditLimitSchema.parse(req.body);
+      const updatedLimit = await storage.updateCustomerCreditLimit(req.params.id, validatedData);
+
+      // Create audit log
+      await auditService.logOperation(
+        {
+          userId: (req.user as any).claims?.sub || 'unknown',
+          userName: (req.user as any).claims?.email || 'Unknown',
+          source: 'sales',
+          severity: 'info',
+        },
+        {
+          entityType: 'customer_credit_limits',
+          entityId: updatedLimit.id,
+          action: 'update',
+          operationType: 'credit_limit_change',
+          description: `Updated credit limit for customer`,
+          newValues: updatedLimit
+        }
+      );
+
+      res.json(updatedLimit);
+    } catch (error) {
+      console.error("Error updating customer credit limit:", error);
+      res.status(500).json({ message: "Failed to update credit limit" });
+    }
+  }
+);
+
 // POST /api/sales/multi-order-invoice - Stage 6 enhancement  
 salesRouter.post("/multi-order-invoice",
   isAuthenticated,
   requireRole(["admin", "sales"]),
   requireApproval("sale_order"),
   genericPeriodGuard,
-  async (req: any, res) => {
+  async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub || 'unknown';
       const invoiceId = await salesEnhancementService.createMultiOrderInvoice(req.body, userId);

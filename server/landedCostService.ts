@@ -165,9 +165,9 @@ class LandedCostService {
         return {
           legNumber: leg.legNumber,
           carrierId: leg.carrierId,
-          legBaseCost: parseFloat(leg.legBaseCost),
-          transferCommission: parseFloat(leg.transferCommissionUsd || '0'),
-          legTotalCost: parseFloat(leg.legTotalCost)
+          legBaseCost: new Decimal(leg.legBaseCost).toNumber(),
+          transferCommission: new Decimal(leg.transferCommissionUsd || '0').toNumber(),
+          legTotalCost: new Decimal(leg.legTotalCost).toNumber()
         };
       });
       
@@ -184,7 +184,7 @@ class LandedCostService {
         
         return {
           costType: cost.costType,
-          amount: parseFloat(cost.amountUsd),
+          amount: new Decimal(cost.amountUsd).toNumber(),
           description: cost.description
         };
       });
