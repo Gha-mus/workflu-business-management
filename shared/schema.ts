@@ -250,6 +250,23 @@ export const purchases = pgTable("purchases", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Purchase payments table for multiple payments per purchase
+export const purchasePayments = pgTable("purchase_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseId: varchar("purchase_id").notNull().references(() => purchases.id),
+  paymentNumber: varchar("payment_number").notNull().unique(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentMethod: varchar("payment_method").notNull(), // cash, credit, advance, other
+  fundingSource: varchar("funding_source").notNull(), // capital, external
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  reference: varchar("reference"), // Reference number or note
+  description: text("description"),
+  paymentDate: timestamp("payment_date").notNull().defaultNow(),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Warehouse stock table (enhanced with quality and batch tracking)
 export const warehouseStock = pgTable("warehouse_stock", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -2720,6 +2737,14 @@ export const insertPurchaseSchema = createInsertSchema(purchases).omit({
   updatedAt: true,
 });
 
+// Purchase payment schema for multiple payments per purchase
+export const insertPurchasePaymentSchema = createInsertSchema(purchasePayments).omit({
+  id: true,
+  paymentNumber: true,
+  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
+  createdAt: true,
+});
+
 export const insertCapitalEntrySchema = createInsertSchema(capitalEntries).omit({
   id: true,
   entryId: true, // Stage 1 Compliance: Server-generated CAP- prefixed IDs only
@@ -3156,6 +3181,9 @@ export type InsertOrder = z.infer<typeof insertOrderSchema>;
 
 export type Purchase = typeof purchases.$inferSelect;
 export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
+
+export type PurchasePayment = typeof purchasePayments.$inferSelect;
+export type InsertPurchasePayment = z.infer<typeof insertPurchasePaymentSchema>;
 
 export type CapitalEntry = typeof capitalEntries.$inferSelect;
 export type InsertCapitalEntry = z.infer<typeof insertCapitalEntrySchema>;
