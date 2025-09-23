@@ -8,6 +8,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import type { Purchase, Supplier, Order, PurchasePayment, InsertPurchase, InsertPurchasePayment } from "@shared/schema";
+import { 
+  cartonsToKg, 
+  kgToCartons, 
+  calculateCartonEquivalents, 
+  validateKgInput, 
+  validateCartonInput, 
+  roundKg,
+  CARTON_WEIGHTS 
+} from "@shared/measurementUnits";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,13 +30,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, DollarSign, Edit, Eye, Trash2, Filter, X } from "lucide-react";
 import { BackButton } from '@/components/ui/back-button';
 
-// Purchase form schema for new purchases
+// Purchase form schema for new purchases with carton validation
 const purchaseFormSchema = z.object({
   supplierId: z.string().min(1, "Supplier is required"),
   orderId: z.string().optional(),
   weight: z.string()
     .min(1, "Weight is required")
-    .refine((val) => parseFloat(val) > 0, "Weight must be greater than 0"),
+    .refine((val) => {
+      const kg = parseFloat(val);
+      return !isNaN(kg) && kg > 0 && validateKgInput(kg);
+    }, "Weight must be a positive number greater than 0 with up to 3 decimal places"),
   pricePerKg: z.string()
     .min(1, "Price per kg is required")
     .refine((val) => parseFloat(val) > 0, "Price per kg must be greater than 0"),
@@ -76,6 +88,11 @@ export default function Purchases() {
     status: "all-statuses", // paid, partial, unpaid
   });
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Carton input helper states
+  const [inputMethod, setInputMethod] = useState<'kg' | 'cartons'>('kg');
+  const [cartonCount, setCartonCount] = useState('');
+  const [showCartonEquivalents, setShowCartonEquivalents] = useState(false);
 
   // Forms
   const purchaseForm = useForm<PurchaseFormData>({
@@ -169,6 +186,10 @@ export default function Purchases() {
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       setShowNewPurchaseModal(false);
       purchaseForm.reset();
+      // Reset carton input states
+      setInputMethod('kg');
+      setCartonCount('');
+      setShowCartonEquivalents(false);
     },
     onError: (error: any) => {
       toast({
@@ -282,6 +303,7 @@ export default function Purchases() {
   });
 
   const handleNewPurchase = (data: PurchaseFormData) => {
+    // Weight is now auto-synced from carton input, so validation should pass
     createPurchaseMutation.mutate(data);
   };
 
@@ -488,7 +510,15 @@ export default function Purchases() {
                                 </Button>
                               </TableCell>
                               <TableCell>
-                                {parseFloat(purchase.weight).toLocaleString()}
+                                <div className="space-y-1">
+                                  <div className="font-medium">
+                                    {parseFloat(purchase.weight).toLocaleString()} kg
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {kgToCartons(parseFloat(purchase.weight), 'C20').toFixed(1)} C20 = {' '}
+                                    {kgToCartons(parseFloat(purchase.weight), 'C8').toFixed(1)} C8
+                                  </div>
+                                </div>
                               </TableCell>
                               <TableCell>
                                 {formatCurrency(purchase.pricePerKg, purchase.currency)}
@@ -567,7 +597,16 @@ export default function Purchases() {
       </main>
 
       {/* New Purchase Modal */}
-      <Dialog open={showNewPurchaseModal} onOpenChange={setShowNewPurchaseModal}>
+      <Dialog open={showNewPurchaseModal} onOpenChange={(open) => {
+        setShowNewPurchaseModal(open);
+        if (!open) {
+          // Reset carton helper states when modal is closed
+          setInputMethod('kg');
+          setCartonCount('');
+          setShowCartonEquivalents(false);
+          purchaseForm.reset();
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="new-purchase-modal">
           <DialogHeader>
             <DialogTitle>New Purchase</DialogTitle>
@@ -627,20 +666,122 @@ export default function Purchases() {
                 />
               </div>
 
+              {/* Input Method Selection */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  <Button
+                    type="button"
+                    variant={inputMethod === 'kg' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setInputMethod('kg');
+                      setCartonCount('');
+                    }}
+                    data-testid="button-input-kg"
+                  >
+                    Input by kg
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={inputMethod === 'cartons' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setInputMethod('cartons');
+                      purchaseForm.setValue('weight', '');
+                    }}
+                    data-testid="button-input-cartons"
+                  >
+                    Input by C20 Cartons
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCartonEquivalents(!showCartonEquivalents)}
+                    data-testid="button-toggle-equivalents"
+                  >
+                    {showCartonEquivalents ? 'Hide' : 'Show'} Conversions
+                  </Button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
-                <FormField
-                  control={purchaseForm.control}
-                  name="weight"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Weight (kg) *</FormLabel>
-                      <FormControl>
-                        <Input {...field} type="number" step="0.01" data-testid="input-weight" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {inputMethod === 'kg' ? (
+                  <FormField
+                    control={purchaseForm.control}
+                    name="weight"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Weight (kg) *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            {...field} 
+                            type="number" 
+                            step="0.001" 
+                            data-testid="input-weight"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              if (e.target.value) {
+                                const kg = parseFloat(e.target.value);
+                                if (!isNaN(kg)) {
+                                  setCartonCount(kgToCartons(kg, 'C20').toFixed(2));
+                                }
+                              } else {
+                                setCartonCount('');
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        {showCartonEquivalents && field.value && (
+                          <p className="text-xs text-muted-foreground">
+                            = {kgToCartons(parseFloat(field.value), 'C20').toFixed(2)} C20 cartons
+                          </p>
+                        )}
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">C20 Cartons *</label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={cartonCount}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setCartonCount(value);
+                        
+                        if (value) {
+                          const cartons = parseFloat(value);
+                          if (!isNaN(cartons) && validateCartonInput(cartons)) {
+                            const kg = cartonsToKg(cartons, 'C20');
+                            // Auto-sync to weight field with validation to satisfy form schema
+                            purchaseForm.setValue('weight', roundKg(kg).toString(), { shouldValidate: true });
+                          } else {
+                            purchaseForm.setValue('weight', '', { shouldValidate: true });
+                          }
+                        } else {
+                          purchaseForm.setValue('weight', '', { shouldValidate: true });
+                        }
+                      }}
+                      data-testid="input-carton-count"
+                      className={cartonCount && !validateCartonInput(parseFloat(cartonCount)) ? 
+                        "border-red-500 focus:border-red-500" : ""}
+                    />
+                    {cartonCount && !validateCartonInput(parseFloat(cartonCount)) && (
+                      <p className="text-xs text-red-600">
+                        Please enter a valid positive integer number of cartons
+                      </p>
+                    )}
+                    {showCartonEquivalents && cartonCount && validateCartonInput(parseFloat(cartonCount)) && (
+                      <p className="text-xs text-muted-foreground">
+                        = {cartonsToKg(parseFloat(cartonCount), 'C20')} kg
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <FormField
                   control={purchaseForm.control}
