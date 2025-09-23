@@ -1,4 +1,5 @@
 import { Router } from "express";
+import Decimal from "decimal.js";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth";
 import { auditService } from "../auditService";
@@ -178,99 +179,140 @@ purchasesRouter.delete("/:id",
   }
 );
 
-// TODO: Re-enable when storage.getPurchasePayments is implemented
 // GET /api/purchases/:id/payments
-// purchasesRouter.get("/:id/payments", 
-//   isAuthenticated,
-//   async (req, res) => {
-//     try {
-//       const purchaseId = req.params.id;
-//       const payments = await storage.getPurchasePayments(purchaseId);
-//       res.json(payments);
-//     } catch (error) {
-//       console.error("Error fetching purchase payments:", error);
-//       res.status(500).json({ message: "Failed to fetch purchase payments" });
-//     }
-//   }
-// );
+purchasesRouter.get("/:id/payments", 
+  isAuthenticated,
+  async (req, res) => {
+    try {
+      const purchaseId = req.params.id;
+      const payments = await storage.getPurchasePayments(purchaseId);
+      res.json(payments);
+    } catch (error) {
+      console.error("Error fetching purchase payments:", error);
+      res.status(500).json({ message: "Failed to fetch purchase payments" });
+    }
+  }
+);
 
-// TODO: Re-enable when storage.createPurchasePayment and getPurchasePayments are implemented
 // POST /api/purchases/:id/payments
-// purchasesRouter.post("/:id/payments", 
-//   isAuthenticated,
-//   requireRole(["admin", "purchasing", "finance"]),
-//   purchasePeriodGuard,
-//   async (req, res) => {
-//     try {
-//       const purchaseId = req.params.id;
-//       
-//       // Get the purchase to validate payment
-//       const purchase = await storage.getPurchase(purchaseId);
-//       if (!purchase) {
-//         return res.status(404).json({ message: "Purchase not found" });
-//       }
-//       
-//       // Validate payment data
-//       const validatedData = insertPurchasePaymentSchema.parse({
-//         ...req.body,
-//         purchaseId
-//       });
-//       
-//       // Calculate remaining balance to check for overpayment
-//       const existingPayments = await storage.getPurchasePayments(purchaseId);
-//       const totalPaid = existingPayments.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
-//       const purchaseTotal = parseFloat(purchase.total);
-//       const remaining = purchaseTotal - totalPaid;
-//       
-//       // Server-side overpayment validation
-//       const paymentAmount = parseFloat(validatedData.amount);
-//       if (paymentAmount > remaining) {
-//         return res.status(400).json({ 
-//           message: `Payment amount ($${paymentAmount}) exceeds remaining balance ($${remaining.toFixed(2)})` 
-//         });
-//       }
-//       
-//       // Create the payment
-//       const payment = await storage.createPurchasePayment({
-//         ...validatedData,
-//         createdBy: (req.user as any)?.claims?.sub || 'unknown'
-//       });
-//       
-//       // Update purchase remaining amount
-//       const newRemaining = remaining - paymentAmount;
-//       const newAmountPaid = totalPaid + paymentAmount;
-//       await storage.updatePurchase(purchaseId, {
-//         amountPaid: newAmountPaid.toString(),
-//         remaining: newRemaining.toString()
-//       });
+purchasesRouter.post("/:id/payments", 
+  isAuthenticated,
+  requireRole(["admin", "purchasing", "finance"]),
+  purchasePeriodGuard,
+  requireApproval('purchase'),
+  async (req, res) => {
+    try {
+      const purchaseId = req.params.id;
+      
+      // Get the purchase to validate payment
+      const purchase = await storage.getPurchase(purchaseId);
+      if (!purchase) {
+        return res.status(404).json({ message: "Purchase not found" });
+      }
+      
+      // Stage 1 Compliance: Strip client exchangeRate and use central rate
+      const { exchangeRate: clientRate, ...sanitizedData } = req.body;
+      
+      // Validate payment data
+      const validatedData = insertPurchasePaymentSchema.parse({
+        ...sanitizedData,
+        purchaseId
+      });
+      
+      // Calculate remaining balance using currency normalization for precision
+      const existingPayments = await storage.getPurchasePayments(purchaseId);
+      const purchaseCurrency = purchase.currency || 'USD';
+      
+      // Normalize all amounts to purchase currency using stored exchange rates
+      const config = configurationService;
+      const currentUsdEtbRate = await config.getCentralExchangeRate();
+      
+      // Convert purchase total to base currency (USD) for normalization
+      const purchaseTotalUsd = purchaseCurrency === 'ETB' 
+        ? new Decimal(purchase.total).div(purchase.exchangeRate || currentUsdEtbRate)
+        : new Decimal(purchase.total);
+      
+      // Convert all existing payments to USD
+      let totalPaidUsd = new Decimal(0);
+      for (const payment of existingPayments) {
+        const paymentUsd = payment.currency === 'ETB'
+          ? new Decimal(payment.amount).div(payment.exchangeRate || currentUsdEtbRate)
+          : new Decimal(payment.amount);
+        totalPaidUsd = totalPaidUsd.add(paymentUsd);
+      }
+      
+      // Convert new payment to USD for validation
+      const paymentAmountUsd = validatedData.currency === 'ETB'
+        ? new Decimal(validatedData.amount).div(currentUsdEtbRate)
+        : new Decimal(validatedData.amount);
+      
+      // Calculate remaining in USD
+      const remainingUsd = purchaseTotalUsd.sub(totalPaidUsd);
+      
+      // Server-side overpayment validation in normalized currency
+      if (paymentAmountUsd.greaterThan(remainingUsd)) {
+        return res.status(400).json({ 
+          message: `Payment amount (${validatedData.amount} ${validatedData.currency}) exceeds remaining balance (${remainingUsd.toFixed(2)} USD equivalent)` 
+        });
+      }
+      
+      // Prepare contexts for storage layer
+      const auditContext = {
+        userId: (req.user as any)?.claims?.sub || 'unknown',
+        userName: (req.user as any)?.claims?.email || 'Unknown',
+        source: 'purchase_payment',
+        severity: 'info' as const,
+      };
 
-//       // Create audit log
-//       await auditService.logOperation(
-//         {
-//           userId: (req.user as any)?.claims?.sub || 'unknown',
-//           userName: (req.user as any)?.claims?.email || 'Unknown',
-//           source: 'purchase_payment',
-//           severity: 'info',
-//         },
-//         {
-//           entityType: 'purchase_payments',
-//           entityId: payment.id,
-//           action: 'create',
-//           operationType: 'payment_record',
-//           description: `Recorded payment for purchase ${purchase.purchaseNumber}: $${paymentAmount}`,
-//           newValues: payment,
-//           financialImpact: paymentAmount,
-//           currency: validatedData.currency
-//         }
-//       );
+      const approvalContext = (req as any).approvalContext;
+      
+      // Create the payment
+      const payment = await storage.createPurchasePayment({
+        ...validatedData,
+        createdBy: (req.user as any)?.claims?.sub || 'unknown'
+      }, auditContext, approvalContext);
+      
+      // Update purchase remaining amount using normalized currency (USD)
+      const newRemainingUsd = remainingUsd.sub(paymentAmountUsd);
+      const newAmountPaidUsd = totalPaidUsd.add(paymentAmountUsd);
+      
+      // Convert back to purchase currency for storage
+      const newRemainingPurchaseCurrency = purchaseCurrency === 'ETB'
+        ? newRemainingUsd.mul(purchase.exchangeRate || currentUsdEtbRate)
+        : newRemainingUsd;
+      const newAmountPaidPurchaseCurrency = purchaseCurrency === 'ETB'
+        ? newAmountPaidUsd.mul(purchase.exchangeRate || currentUsdEtbRate)
+        : newAmountPaidUsd;
+      
+      await storage.updatePurchase(purchaseId, {
+        amountPaid: newAmountPaidPurchaseCurrency.toFixed(2),
+        remaining: newRemainingPurchaseCurrency.toFixed(2),
+        status: newRemainingUsd.lessThanOrEqualTo(0.01) ? 'paid' : 'partial' // 1 cent tolerance for floating point
+      });
 
-//       res.status(201).json(payment);
-//     } catch (error) {
-//       console.error("Error recording payment:", error);
-//       res.status(500).json({ message: "Failed to record payment" });
-//     }
-//   }
-// );
+      // Additional audit log (storage already creates one, this is supplementary)
+      await auditService.logOperation(
+        auditContext,
+        {
+          entityType: 'purchase_payments',
+          entityId: payment.id,
+          action: 'create',
+          operationType: 'payment_recording',
+          description: `Recorded payment of ${validatedData.amount} ${validatedData.currency} for purchase ${purchase.purchaseNumber}`,
+          newValues: payment
+        }
+      );
+
+      res.status(201).json(payment);
+    } catch (error) {
+      console.error("Error recording payment:", error);
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || "Failed to record payment";
+      res.status(500).json({ message: errorMessage });
+    }
+  }
+);
 
 // GET /api/purchases/suppliers
 purchasesRouter.get("/suppliers", isAuthenticated, async (req, res) => {

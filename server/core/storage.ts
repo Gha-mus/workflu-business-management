@@ -4,6 +4,7 @@ import {
   suppliers,
   orders,
   purchases,
+  purchasePayments,
   capitalEntries,
   warehouseStock,
   filterRecords,
@@ -85,6 +86,8 @@ import {
   type InsertOrder,
   type Purchase,
   type InsertPurchase,
+  type PurchasePayment,
+  type InsertPurchasePayment,
   type CapitalEntry,
   type InsertCapitalEntry,
   type WarehouseStock,
@@ -837,6 +840,10 @@ export interface IStorage {
   createPurchaseWithSideEffects(purchaseData: InsertPurchase, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
   updatePurchase(id: string, purchase: Partial<InsertPurchase>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Purchase>;
   deletePurchase(id: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<void>;
+  
+  // Purchase payment operations
+  getPurchasePayments(purchaseId: string): Promise<PurchasePayment[]>;
+  createPurchasePayment(payment: InsertPurchasePayment, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<PurchasePayment>;
   
   // Warehouse operations
   getWarehouseStock(): Promise<WarehouseStock[]>;
@@ -3151,7 +3158,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'purchase',
         operationData: purchase,
-        amount: parseFloat(purchase.total),
+        amount: new Decimal(purchase.total).toNumber(),
         currency: purchase.currency || 'USD',
         businessContext: `Purchase: ${purchase.weight}kg at ${purchase.pricePerKg} per kg`
       });
@@ -3175,7 +3182,7 @@ export class DatabaseStorage implements IStorage {
         'purchase',
         null,
         result,
-        -parseFloat(purchase.total), // Negative impact for purchases (outflow)
+        -new Decimal(purchase.total).toNumber(), // Negative impact for purchases (outflow)
         purchase.currency || 'USD'
       );
     }
@@ -3471,6 +3478,16 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked capital entries. Reverse the capital entries first.`);
     }
 
+    // Check for payments linked to this purchase
+    const linkedPayments = await db
+      .select({ count: sql`count(*)::int` })
+      .from(purchasePayments)
+      .where(eq(purchasePayments.purchaseId, id));
+    
+    if (linkedPayments[0]?.count > 0) {
+      throw new Error(`Cannot delete purchase ${existingPurchase.purchaseNumber} - it has linked payment records. Remove the payments first.`);
+    }
+
     // Perform the deletion
     await db.delete(purchases).where(eq(purchases.id, id));
 
@@ -3488,6 +3505,87 @@ export class DatabaseStorage implements IStorage {
         existingPurchase.currency || 'USD'
       );
     }
+  }
+
+  // Purchase payment operations
+  async getPurchasePayments(purchaseId: string): Promise<PurchasePayment[]> {
+    return await db
+      .select()
+      .from(purchasePayments)
+      .where(eq(purchasePayments.purchaseId, purchaseId))
+      .orderBy(desc(purchasePayments.paymentDate));
+  }
+
+  async createPurchasePayment(payment: InsertPurchasePayment, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<PurchasePayment> {
+    // CRITICAL SECURITY: Enforce approval requirement for payments above thresholds using Decimal
+    const paymentAmountDecimal = new Decimal(payment.amount);
+    
+    if (approvalContext) {
+      await StorageApprovalGuard.enforceApprovalRequirement({
+        ...approvalContext,
+        operationType: 'purchase',
+        operationData: payment,
+        amount: paymentAmountDecimal.toNumber(),
+        currency: payment.currency || 'USD',
+        businessContext: `Purchase payment: ${payment.amount} ${payment.currency || 'USD'}`
+      });
+    }
+
+    // Generate next payment number
+    const paymentNumber = await this.generateNextPaymentNumber();
+    
+    // Stage 1 Compliance: Handle exchange rate centrally
+    const config = ConfigurationService.getInstance();
+    let exchangeRate: number | undefined;
+    if (payment.currency === 'ETB') {
+      exchangeRate = await config.getCentralExchangeRate();
+    }
+
+    const [result] = await db.insert(purchasePayments).values({
+      ...payment,
+      paymentNumber,
+      exchangeRate: exchangeRate?.toString(),
+    }).returning();
+
+    // CRITICAL SECURITY: Audit logging for payment operations using Decimal
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'purchase_payments',
+        result.id,
+        'create',
+        'purchase',
+        null,
+        result,
+        -paymentAmountDecimal.toNumber(), // Negative impact for payments (outflow)
+        payment.currency || 'USD'
+      );
+    }
+    
+    return result;
+  }
+
+  // Generate next payment number with proper formatting
+  private async generateNextPaymentNumber(): Promise<string> {
+    const lastPayment = await db
+      .select({ paymentNumber: purchasePayments.paymentNumber })
+      .from(purchasePayments)
+      .orderBy(desc(purchasePayments.paymentNumber))
+      .limit(1);
+
+    if (!lastPayment.length) {
+      return 'PAY-000001';
+    }
+
+    // Extract number from PAY-XXXXXX format (6 digits for proper lexicographic sorting)
+    const numberMatch = lastPayment[0].paymentNumber.match(/PAY-(\d+)/);
+    
+    if (!numberMatch) {
+      return 'PAY-000001';
+    }
+
+    const nextNumber = parseInt(numberMatch[1]) + 1;
+    return `PAY-${nextNumber.toString().padStart(6, '0')}`;
   }
 
   // STAGE 2 COMPLIANCE: Purchase advances settlement workflow
