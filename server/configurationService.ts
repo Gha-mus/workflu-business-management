@@ -49,12 +49,15 @@ export class ConfigurationService {
       rate = await this.getSystemSetting('USD_ETB_RATE');
     }
     
-    console.log('🔍 ConfigurationService.getCentralExchangeRate:', { found: !!rate, valid: !!(rate && !isNaN(parseFloat(rate))) });
-    
-    if (!rate || isNaN(parseFloat(rate))) {
+    if (!rate) {
       throw new Error(`Central exchange rate not configured. Please set USD_ETB_RATE in settings. Found rate: ${rate}`);
     }
-    return parseFloat(rate);
+    
+    // Use MoneyUtils for safe parsing instead of parseFloat
+    const { MoneyUtils } = await import('../shared/money.js');
+    const rateDecimal = MoneyUtils.parseExchangeRate(rate);
+    console.log('🔍 ConfigurationService.getCentralExchangeRate:', { found: !!rate, valid: true, rate: rateDecimal.toNumber() });
+    return rateDecimal.toNumber();
   }
 
   /**

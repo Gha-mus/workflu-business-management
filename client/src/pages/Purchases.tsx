@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import type { Purchase, Supplier, Order, PurchasePayment, InsertPurchase, InsertPurchasePayment } from "@shared/schema";
+import { Money, MoneyUtils } from "@shared/money";
 import { 
   cartonsToKg, 
   kgToCartons, 
@@ -37,12 +38,15 @@ const purchaseFormSchema = z.object({
   weight: z.string()
     .min(1, "Weight is required")
     .refine((val) => {
-      const kg = parseFloat(val);
-      return !isNaN(kg) && kg > 0 && validateKgInput(kg);
+      const weight = MoneyUtils.parseMoneyInput(val);
+      return weight.greaterThan(Money.zero()) && validateKgInput(weight.toNumber());
     }, "Weight must be a positive number greater than 0 with up to 3 decimal places"),
   pricePerKg: z.string()
     .min(1, "Price per kg is required")
-    .refine((val) => parseFloat(val) > 0, "Price per kg must be greater than 0"),
+    .refine((val) => {
+      const price = MoneyUtils.parseMoneyInput(val);
+      return price.greaterThan(Money.zero());
+    }, "Price per kg must be greater than 0"),
   currency: z.enum(["USD", "ETB"]),
   paymentMethod: z.enum(["cash", "credit", "advance", "other"]),
   fundingSource: z.enum(["capital", "external"]),
@@ -56,8 +60,8 @@ const paymentFormSchema = z.object({
   amount: z.string()
     .min(1, "Amount is required")
     .refine((val) => {
-      const parsed = parseFloat(val);
-      return !isNaN(parsed) && parsed > 0;
+      const amount = MoneyUtils.parseMoneyInput(val);
+      return amount.greaterThan(Money.zero());
     }, "Amount must be a valid positive number"),
   paymentMethod: z.enum(["cash", "credit", "advance", "other"]),
   fundingSource: z.enum(["capital", "external"]),
@@ -149,9 +153,9 @@ export default function Purchases() {
   useEffect(() => {
     if (selectedPurchase && showPaymentModal) {
       if (watchedAmount) {
-        const paymentAmount = safeParseFloat(watchedAmount);
-        const remaining = safeParseFloat(selectedPurchase.remaining);
-        setIsPaymentValid(paymentAmount <= remaining && paymentAmount > 0);
+        const paymentAmount = MoneyUtils.parseMoneyInput(watchedAmount, selectedPurchase.currency);
+        const remaining = MoneyUtils.parseMoneyInput(selectedPurchase.remaining, selectedPurchase.currency);
+        setIsPaymentValid(paymentAmount.lessThanOrEqual(remaining) && paymentAmount.greaterThan(Money.zero(selectedPurchase.currency)));
       } else {
         setIsPaymentValid(true);
       }
@@ -183,14 +187,18 @@ export default function Purchases() {
   // Mutations
   const createPurchaseMutation = useMutation({
     mutationFn: async (data: PurchaseFormData) => {
+      const weight = MoneyUtils.parseMoneyInput(data.weight);
+      const pricePerKg = MoneyUtils.parseMoneyInput(data.pricePerKg);
+      const total = weight.multiply(pricePerKg.amount);
+      
       const purchaseData = {
         ...data,
         orderId: data.orderId || null, // Make orderId explicitly null if not selected
         weight: data.weight,
         pricePerKg: data.pricePerKg,
-        total: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg)).toString(),
+        total: total.toString(),
         amountPaid: "0",
-        remaining: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg)).toString(),
+        remaining: total.toString(),
       };
       return apiRequest('POST', `/api/purchases`, purchaseData);
     },
@@ -247,12 +255,18 @@ export default function Purchases() {
   const editPurchaseMutation = useMutation({
     mutationFn: async (data: PurchaseFormData) => {
       if (!selectedPurchase) throw new Error("No purchase selected");
+      const weight = MoneyUtils.parseMoneyInput(data.weight);
+      const pricePerKg = MoneyUtils.parseMoneyInput(data.pricePerKg);
+      const total = weight.multiply(pricePerKg.amount);
+      const amountPaid = MoneyUtils.parseMoneyInput(selectedPurchase.amountPaid, selectedPurchase.currency);
+      const remaining = total.subtract(amountPaid);
+      
       const updatedData = {
         ...data,
         weight: data.weight,
         pricePerKg: data.pricePerKg,
-        total: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg)).toString(),
-        remaining: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg) - safeParseFloat(selectedPurchase.amountPaid)).toString(),
+        total: total.toString(),
+        remaining: remaining.toString(),
       };
       return apiRequest('PATCH', `/api/purchases/${selectedPurchase.id}`, updatedData);
     },
@@ -296,12 +310,7 @@ export default function Purchases() {
   });
 
   // Helper functions
-  const safeParseFloat = (value: string | number): number => {
-    if (typeof value === 'number') return isNaN(value) ? 0 : value;
-    if (typeof value !== 'string') return 0;
-    const parsed = parseFloat(value);
-    return isNaN(parsed) ? 0 : parsed;
-  };
+  // Removed unsafe safeParseFloat - using Money utilities instead
 
   const getSupplierName = (supplierId: string) => {
     const supplier = suppliers?.find(s => s.id === supplierId);
@@ -314,16 +323,15 @@ export default function Purchases() {
   };
 
   const getPaymentStatus = (purchase: Purchase) => {
-    const paid = safeParseFloat(purchase.amountPaid);
-    const total = safeParseFloat(purchase.total);
-    if (paid >= total) return 'paid';
-    if (paid > 0) return 'partial';
+    const paid = MoneyUtils.parseMoneyInput(purchase.amountPaid, purchase.currency);
+    const total = MoneyUtils.parseMoneyInput(purchase.total, purchase.currency);
+    if (paid.greaterThanOrEqual(total)) return 'paid';
+    if (paid.greaterThan(Money.zero(purchase.currency))) return 'partial';
     return 'unpaid';
   };
 
   const formatCurrency = (amount: string | number, currency: string = 'USD') => {
-    const num = safeParseFloat(amount);
-    return `${currency} ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return MoneyUtils.formatCurrency(amount, currency);
   };
 
   // Direct purchases - no approval needed for new purchases
@@ -545,11 +553,11 @@ export default function Purchases() {
                               <TableCell>
                                 <div className="space-y-1">
                                   <div className="font-medium">
-                                    {parseFloat(purchase.weight).toLocaleString()} kg
+                                    {MoneyUtils.parseMoneyInput(purchase.weight).toNumber().toLocaleString()} kg
                                   </div>
                                   <div className="text-xs text-muted-foreground">
-                                    {kgToCartons(parseFloat(purchase.weight), 'C20').toFixed(1)} C20 = {' '}
-                                    {kgToCartons(parseFloat(purchase.weight), 'C8').toFixed(1)} C8
+                                    {kgToCartons(MoneyUtils.parseMoneyInput(purchase.weight).toNumber(), 'C20').toFixed(1)} C20 = {' '}
+                                    {kgToCartons(MoneyUtils.parseMoneyInput(purchase.weight).toNumber(), 'C8').toFixed(1)} C8
                                   </div>
                                 </div>
                               </TableCell>
@@ -596,7 +604,7 @@ export default function Purchases() {
                                   >
                                     <Eye className="w-4 h-4" />
                                   </Button>
-                                  {parseFloat(purchase.remaining) > 0 && (
+                                  {MoneyUtils.parseMoneyInput(purchase.remaining, purchase.currency).greaterThan(Money.zero(purchase.currency)) && (
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -755,9 +763,9 @@ export default function Purchases() {
                             onChange={(e) => {
                               field.onChange(e);
                               if (e.target.value) {
-                                const kg = parseFloat(e.target.value);
-                                if (!isNaN(kg)) {
-                                  setCartonCount(kgToCartons(kg, 'C20').toFixed(2));
+                                const weight = MoneyUtils.parseMoneyInput(e.target.value);
+                                if (weight.greaterThan(Money.zero())) {
+                                  setCartonCount(kgToCartons(weight.toNumber(), 'C20').toFixed(2));
                                 }
                               } else {
                                 setCartonCount('');
@@ -787,8 +795,8 @@ export default function Purchases() {
                         setCartonCount(value);
                         
                         if (value) {
-                          const cartons = parseFloat(value);
-                          if (!isNaN(cartons) && validateCartonInput(cartons)) {
+                          const cartons = MoneyUtils.parseMoneyInput(value).toNumber();
+                          if (cartons > 0 && validateCartonInput(cartons)) {
                             const kg = cartonsToKg(cartons, 'C20');
                             // Auto-sync to weight field with validation to satisfy form schema
                             purchaseForm.setValue('weight', roundKg(kg).toString(), { shouldValidate: true });
@@ -860,12 +868,24 @@ export default function Purchases() {
                   </p>
                   {purchaseForm.watch('currency') === 'ETB' && purchaseForm.watch('weight') && purchaseForm.watch('pricePerKg') && (
                     <p className="text-sm text-blue-600">
-                      <strong>USD Equivalent:</strong> {formatCurrency((parseFloat(purchaseForm.watch('weight') || '0') * parseFloat(purchaseForm.watch('pricePerKg') || '0') / exchangeRate.rate).toString(), 'USD')}
+                      <strong>USD Equivalent:</strong> {(() => {
+                        const weight = MoneyUtils.parseMoneyInput(purchaseForm.watch('weight') || '0');
+                        const price = MoneyUtils.parseMoneyInput(purchaseForm.watch('pricePerKg') || '0');
+                        const total = weight.multiply(price.amount);
+                        const usdAmount = total.divide(exchangeRate.rate);
+                        return MoneyUtils.formatCurrency(usdAmount.toNumber(), 'USD');
+                      })()}
                     </p>
                   )}
                   {purchaseForm.watch('currency') === 'USD' && purchaseForm.watch('weight') && purchaseForm.watch('pricePerKg') && (
                     <p className="text-sm text-blue-600">
-                      <strong>ETB Equivalent:</strong> {formatCurrency((parseFloat(purchaseForm.watch('weight') || '0') * parseFloat(purchaseForm.watch('pricePerKg') || '0') * exchangeRate.rate).toString(), 'ETB')}
+                      <strong>ETB Equivalent:</strong> {(() => {
+                        const weight = MoneyUtils.parseMoneyInput(purchaseForm.watch('weight') || '0');
+                        const price = MoneyUtils.parseMoneyInput(purchaseForm.watch('pricePerKg') || '0');
+                        const total = weight.multiply(price.amount);
+                        const etbAmount = total.multiply(exchangeRate.rate);
+                        return MoneyUtils.formatCurrency(etbAmount.toNumber(), 'ETB');
+                      })()}
                     </p>
                   )}
                 </div>
@@ -995,19 +1015,14 @@ export default function Purchases() {
           {selectedPurchase && (
             <Form {...paymentForm}>
               <form onSubmit={paymentForm.handleSubmit((data) => {
-                // Validate overpayment using safe parsing
-                const amount = safeParseFloat(data.amount);
-                const remaining = safeParseFloat(selectedPurchase.remaining);
-                if (amount > remaining) {
+                // Validate overpayment using safe Money utilities
+                const paymentAmount = MoneyUtils.parseMoneyInput(data.amount, selectedPurchase.currency);
+                const remainingBalance = MoneyUtils.parseMoneyInput(selectedPurchase.remaining, selectedPurchase.currency);
+                
+                const validation = MoneyUtils.validatePaymentAmount(paymentAmount, remainingBalance);
+                if (!validation.isValid) {
                   paymentForm.setError("amount", {
-                    message: `Payment amount cannot exceed remaining balance of ${formatCurrency(selectedPurchase.remaining, selectedPurchase.currency)}`
-                  });
-                  return;
-                }
-                // Additional validation: ensure positive amount
-                if (amount <= 0) {
-                  paymentForm.setError("amount", {
-                    message: "Payment amount must be greater than 0"
+                    message: validation.error!
                   });
                   return;
                 }
@@ -1400,12 +1415,24 @@ export default function Purchases() {
                   </p>
                   {purchaseForm.watch('currency') === 'ETB' && purchaseForm.watch('weight') && purchaseForm.watch('pricePerKg') && (
                     <p className="text-sm text-blue-600">
-                      <strong>USD Equivalent:</strong> {formatCurrency((parseFloat(purchaseForm.watch('weight') || '0') * parseFloat(purchaseForm.watch('pricePerKg') || '0') / exchangeRate.rate).toString(), 'USD')}
+                      <strong>USD Equivalent:</strong> {(() => {
+                        const weight = MoneyUtils.parseMoneyInput(purchaseForm.watch('weight') || '0');
+                        const price = MoneyUtils.parseMoneyInput(purchaseForm.watch('pricePerKg') || '0');
+                        const total = weight.multiply(price.amount);
+                        const usdAmount = total.divide(exchangeRate.rate);
+                        return MoneyUtils.formatCurrency(usdAmount.toNumber(), 'USD');
+                      })()}
                     </p>
                   )}
                   {purchaseForm.watch('currency') === 'USD' && purchaseForm.watch('weight') && purchaseForm.watch('pricePerKg') && (
                     <p className="text-sm text-blue-600">
-                      <strong>ETB Equivalent:</strong> {formatCurrency((parseFloat(purchaseForm.watch('weight') || '0') * parseFloat(purchaseForm.watch('pricePerKg') || '0') * exchangeRate.rate).toString(), 'ETB')}
+                      <strong>ETB Equivalent:</strong> {(() => {
+                        const weight = MoneyUtils.parseMoneyInput(purchaseForm.watch('weight') || '0');
+                        const price = MoneyUtils.parseMoneyInput(purchaseForm.watch('pricePerKg') || '0');
+                        const total = weight.multiply(price.amount);
+                        const etbAmount = total.multiply(exchangeRate.rate);
+                        return MoneyUtils.formatCurrency(etbAmount.toNumber(), 'ETB');
+                      })()}
                     </p>
                   )}
                 </div>
