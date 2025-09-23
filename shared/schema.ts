@@ -498,6 +498,44 @@ export const shipmentInspections = pgTable("shipment_inspections", {
   index("idx_shipment_inspections_status").on(table.status),
 ]);
 
+// Landed cost calculations table - Stores calculated landed costs per shipment
+export const landedCostCalculations = pgTable("landed_cost_calculations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
+  calculationDate: timestamp("calculation_date").notNull().defaultNow(),
+  
+  // Base costs
+  totalLegCosts: decimal("total_leg_costs", { precision: 12, scale: 2 }).notNull().default('0'),
+  totalArrivalCosts: decimal("total_arrival_costs", { precision: 12, scale: 2 }).notNull().default('0'),
+  totalLandedCost: decimal("total_landed_cost", { precision: 12, scale: 2 }).notNull().default('0'),
+  
+  // Weight allocation basis
+  totalNetWeightKg: decimal("total_net_weight_kg", { precision: 10, scale: 2 }).notNull(),
+  costPerKg: decimal("cost_per_kg", { precision: 10, scale: 4 }).notNull(),
+  
+  // Currency and exchange
+  baseCurrency: varchar("base_currency").notNull().default('USD'),
+  exchangeRateUsed: decimal("exchange_rate_used", { precision: 10, scale: 4 }),
+  
+  // Calculation metadata
+  includedLegIds: jsonb("included_leg_ids").$type<string[]>().notNull(),
+  includedArrivalCostIds: jsonb("included_arrival_cost_ids").$type<string[]>().notNull(),
+  calculationMethod: varchar("calculation_method").notNull().default('weight_basis'), // weight_basis, value_basis
+  
+  // Status and approval
+  status: varchar("status").notNull().default('draft'), // draft, approved, finalized
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  
+  calculatedBy: varchar("calculated_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_landed_cost_calculations_shipment_id").on(table.shipmentId),
+  index("idx_landed_cost_calculations_status").on(table.status),
+  index("idx_landed_cost_calculations_date").on(table.calculationDate),
+]);
+
 // Advanced Warehouse Operations Tables
 
 // Quality standards table
@@ -2848,6 +2886,13 @@ export const insertShipmentInspectionSchema = createInsertSchema(shipmentInspect
   completedAt: true,
 });
 
+export const insertLandedCostCalculationSchema = createInsertSchema(landedCostCalculations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  approvedAt: true,
+});
+
 // Advanced warehouse insert schemas
 export const insertQualityStandardSchema = createInsertSchema(qualityStandards).omit({
   id: true,
@@ -3146,6 +3191,9 @@ export type InsertArrivalCost = z.infer<typeof insertArrivalCostSchema>;
 
 export type ShipmentInspection = typeof shipmentInspections.$inferSelect;
 export type InsertShipmentInspection = z.infer<typeof insertShipmentInspectionSchema>;
+
+export type LandedCostCalculation = typeof landedCostCalculations.$inferSelect;
+export type InsertLandedCostCalculation = z.infer<typeof insertLandedCostCalculationSchema>;
 
 export type DeliveryTracking = typeof deliveryTracking.$inferSelect;
 export type InsertDeliveryTracking = z.infer<typeof insertDeliveryTrackingSchema>;
