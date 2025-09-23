@@ -173,6 +173,7 @@ export default function Purchases() {
     mutationFn: async (data: PurchaseFormData) => {
       const purchaseData = {
         ...data,
+        orderId: data.orderId || null, // Make orderId explicitly null if not selected
         weight: data.weight,
         pricePerKg: data.pricePerKg,
         total: (parseFloat(data.weight) * parseFloat(data.pricePerKg)).toString(),
