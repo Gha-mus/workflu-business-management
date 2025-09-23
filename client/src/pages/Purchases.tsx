@@ -600,11 +600,11 @@ export default function Purchases() {
       <Dialog open={showNewPurchaseModal} onOpenChange={(open) => {
         setShowNewPurchaseModal(open);
         if (!open) {
-          // Reset carton helper states when modal is closed
+          // Reset form and carton helper states on modal close
+          purchaseForm.reset();
           setInputMethod('kg');
           setCartonCount('');
           setShowCartonEquivalents(false);
-          purchaseForm.reset();
         }
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="new-purchase-modal">

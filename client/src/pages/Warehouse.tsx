@@ -41,6 +41,7 @@ import {
   TrendingUp,
   X
 } from "lucide-react";
+import { cartonsToKg, kgToCartons, validateCartonInput, validateKgInput, roundKg } from "@shared/measurementUnits";
 
 export default function Warehouse() {
   const { toast } = useToast();
@@ -51,6 +52,12 @@ export default function Warehouse() {
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [filterData, setFilterData] = useState({ cleanKg: '', nonCleanKg: '' });
   const [filterYield, setFilterYield] = useState<string>('0');
+  
+  // Carton helper state for filtering operations
+  const [cleanInputMethod, setCleanInputMethod] = useState<'kg' | 'cartons'>('kg');
+  const [nonCleanInputMethod, setNonCleanInputMethod] = useState<'kg' | 'cartons'>('kg');
+  const [cleanCartonCount, setCleanCartonCount] = useState('');
+  const [nonCleanCartonCount, setNonCleanCartonCount] = useState('');
   
   // UI Filtering/Search state
   const [uiFilters, setUiFilters] = useState<{
@@ -729,13 +736,34 @@ export default function Warehouse() {
                                   </Badge>
                                 </td>
                                 <td className="px-4 py-4 text-sm">
-                                  {parseFloat(stock.qtyKgTotal).toLocaleString()}
+                                  <div className="space-y-1">
+                                    <div className="font-medium">
+                                      {parseFloat(stock.qtyKgTotal).toLocaleString()} kg
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {kgToCartons(parseFloat(stock.qtyKgTotal), 'C20').toFixed(1)} C20 • {kgToCartons(parseFloat(stock.qtyKgTotal), 'C8').toFixed(1)} C8
+                                    </div>
+                                  </div>
                                 </td>
                                 <td className="px-4 py-4 text-sm">
-                                  {parseFloat(stock.qtyKgClean).toLocaleString()}
+                                  <div className="space-y-1">
+                                    <div className="font-medium">
+                                      {parseFloat(stock.qtyKgClean).toLocaleString()} kg
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {kgToCartons(parseFloat(stock.qtyKgClean), 'C20').toFixed(1)} C20 • {kgToCartons(parseFloat(stock.qtyKgClean), 'C8').toFixed(1)} C8
+                                    </div>
+                                  </div>
                                 </td>
                                 <td className="px-4 py-4 text-sm">
-                                  {parseFloat(stock.qtyKgNonClean).toLocaleString()}
+                                  <div className="space-y-1">
+                                    <div className="font-medium">
+                                      {parseFloat(stock.qtyKgNonClean).toLocaleString()} kg
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {kgToCartons(parseFloat(stock.qtyKgNonClean), 'C20').toFixed(1)} C20 • {kgToCartons(parseFloat(stock.qtyKgNonClean), 'C8').toFixed(1)} C8
+                                    </div>
+                                  </div>
                                 </td>
                                 <td className="px-4 py-4 text-sm">
                                   ${parseFloat(stock.unitCostCleanUsd || '0').toFixed(2)}
@@ -801,35 +829,186 @@ export default function Warehouse() {
 
                                           {/* Filter Inputs */}
                                           <div>
-                                            <Label htmlFor="cleanKg">Clean Weight (Export Quality)</Label>
-                                            <Input
-                                              id="cleanKg"
-                                              type="number"
-                                              step="0.1"
-                                              value={filterData.cleanKg}
-                                              onChange={(e) => {
-                                                const value = e.target.value;
-                                                setFilterData(prev => ({ ...prev, cleanKg: value }));
-                                                // Calculate yield percentage
-                                                if (value && selectedStock?.qtyKgTotal) {
-                                                  const yield_ = (parseFloat(value) / parseFloat(selectedStock.qtyKgTotal) * 100).toFixed(2);
-                                                  setFilterYield(yield_);
-                                                }
-                                              }}
-                                              placeholder="Enter clean weight in kg"
-                                            />
+                                            <div className="flex items-center justify-between mb-2">
+                                              <Label htmlFor="cleanKg">Clean Weight (Export Quality)</Label>
+                                              <div className="flex items-center space-x-2">
+                                                <span className="text-xs text-muted-foreground">Input Method:</span>
+                                                <Button
+                                                  type="button"
+                                                  variant={cleanInputMethod === 'kg' ? 'default' : 'outline'}
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setCleanInputMethod('kg');
+                                                    setCleanCartonCount('');
+                                                  }}
+                                                  className="h-7 px-2 text-xs"
+                                                  data-testid="clean-kg-method"
+                                                >
+                                                  kg
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  variant={cleanInputMethod === 'cartons' ? 'default' : 'outline'}
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setCleanInputMethod('cartons');
+                                                    setFilterData(prev => ({ ...prev, cleanKg: '' }));
+                                                  }}
+                                                  className="h-7 px-2 text-xs"
+                                                  data-testid="clean-cartons-method"
+                                                >
+                                                  C20 Cartons
+                                                </Button>
+                                              </div>
+                                            </div>
+                                            {cleanInputMethod === 'kg' ? (
+                                              <Input
+                                                id="cleanKg"
+                                                type="number"
+                                                step="0.1"
+                                                value={filterData.cleanKg}
+                                                onChange={(e) => {
+                                                  const value = e.target.value;
+                                                  setFilterData(prev => ({ ...prev, cleanKg: value }));
+                                                  // Calculate yield percentage
+                                                  if (value && selectedStock?.qtyKgTotal) {
+                                                    const yield_ = (parseFloat(value) / parseFloat(selectedStock.qtyKgTotal) * 100).toFixed(2);
+                                                    setFilterYield(yield_);
+                                                  }
+                                                }}
+                                                placeholder="Enter clean weight in kg"
+                                                data-testid="input-clean-kg"
+                                              />
+                                            ) : (
+                                              <div className="space-y-2">
+                                                <Input
+                                                  type="number"
+                                                  step="1"
+                                                  min="1"
+                                                  value={cleanCartonCount}
+                                                  onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    setCleanCartonCount(value);
+                                                    
+                                                    if (value) {
+                                                      const cartons = parseFloat(value);
+                                                      if (!isNaN(cartons) && validateCartonInput(cartons)) {
+                                                        const kg = roundKg(cartonsToKg(cartons, 'C20'));
+                                                        setFilterData(prev => ({ ...prev, cleanKg: kg.toString() }));
+                                                        // Calculate yield percentage
+                                                        if (selectedStock?.qtyKgTotal) {
+                                                          const yield_ = (kg / parseFloat(selectedStock.qtyKgTotal) * 100).toFixed(2);
+                                                          setFilterYield(yield_);
+                                                        }
+                                                      } else {
+                                                        setFilterData(prev => ({ ...prev, cleanKg: '' }));
+                                                      }
+                                                    } else {
+                                                      setFilterData(prev => ({ ...prev, cleanKg: '' }));
+                                                    }
+                                                  }}
+                                                  placeholder="Enter C20 cartons"
+                                                  data-testid="input-clean-cartons"
+                                                  className={cleanCartonCount && !validateCartonInput(parseFloat(cleanCartonCount)) ? 
+                                                    "border-red-500 focus:border-red-500" : ""}
+                                                />
+                                                {cleanCartonCount && !validateCartonInput(parseFloat(cleanCartonCount)) && (
+                                                  <p className="text-xs text-red-600">
+                                                    Please enter a valid positive integer number of cartons
+                                                  </p>
+                                                )}
+                                                {cleanCartonCount && validateCartonInput(parseFloat(cleanCartonCount)) && (
+                                                  <p className="text-xs text-muted-foreground">
+                                                    = {cartonsToKg(parseFloat(cleanCartonCount), 'C20')} kg
+                                                  </p>
+                                                )}
+                                              </div>
+                                            )}
                                             <p className="text-xs text-muted-foreground mt-1">Retains all purchase cost allocations</p>
                                           </div>
                                           <div>
-                                            <Label htmlFor="nonCleanKg">Non-Clean Weight (Local Sale)</Label>
-                                            <Input
-                                              id="nonCleanKg"
-                                              type="number"
-                                              step="0.1"
-                                              value={filterData.nonCleanKg}
-                                              onChange={(e) => setFilterData(prev => ({ ...prev, nonCleanKg: e.target.value }))}
-                                              placeholder="Enter non-clean weight in kg"
-                                            />
+                                            <div className="flex items-center justify-between mb-2">
+                                              <Label htmlFor="nonCleanKg">Non-Clean Weight (Local Sale)</Label>
+                                              <div className="flex items-center space-x-2">
+                                                <span className="text-xs text-muted-foreground">Input Method:</span>
+                                                <Button
+                                                  type="button"
+                                                  variant={nonCleanInputMethod === 'kg' ? 'default' : 'outline'}
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setNonCleanInputMethod('kg');
+                                                    setNonCleanCartonCount('');
+                                                  }}
+                                                  className="h-7 px-2 text-xs"
+                                                  data-testid="non-clean-kg-method"
+                                                >
+                                                  kg
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  variant={nonCleanInputMethod === 'cartons' ? 'default' : 'outline'}
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setNonCleanInputMethod('cartons');
+                                                    setFilterData(prev => ({ ...prev, nonCleanKg: '' }));
+                                                  }}
+                                                  className="h-7 px-2 text-xs"
+                                                  data-testid="non-clean-cartons-method"
+                                                >
+                                                  C20 Cartons
+                                                </Button>
+                                              </div>
+                                            </div>
+                                            {nonCleanInputMethod === 'kg' ? (
+                                              <Input
+                                                id="nonCleanKg"
+                                                type="number"
+                                                step="0.1"
+                                                value={filterData.nonCleanKg}
+                                                onChange={(e) => setFilterData(prev => ({ ...prev, nonCleanKg: e.target.value }))}
+                                                placeholder="Enter non-clean weight in kg"
+                                                data-testid="input-non-clean-kg"
+                                              />
+                                            ) : (
+                                              <div className="space-y-2">
+                                                <Input
+                                                  type="number"
+                                                  step="1"
+                                                  min="1"
+                                                  value={nonCleanCartonCount}
+                                                  onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    setNonCleanCartonCount(value);
+                                                    
+                                                    if (value) {
+                                                      const cartons = parseFloat(value);
+                                                      if (!isNaN(cartons) && validateCartonInput(cartons)) {
+                                                        const kg = roundKg(cartonsToKg(cartons, 'C20'));
+                                                        setFilterData(prev => ({ ...prev, nonCleanKg: kg.toString() }));
+                                                      } else {
+                                                        setFilterData(prev => ({ ...prev, nonCleanKg: '' }));
+                                                      }
+                                                    } else {
+                                                      setFilterData(prev => ({ ...prev, nonCleanKg: '' }));
+                                                    }
+                                                  }}
+                                                  placeholder="Enter C20 cartons"
+                                                  data-testid="input-non-clean-cartons"
+                                                  className={nonCleanCartonCount && !validateCartonInput(parseFloat(nonCleanCartonCount)) ? 
+                                                    "border-red-500 focus:border-red-500" : ""}
+                                                />
+                                                {nonCleanCartonCount && !validateCartonInput(parseFloat(nonCleanCartonCount)) && (
+                                                  <p className="text-xs text-red-600">
+                                                    Please enter a valid positive integer number of cartons
+                                                  </p>
+                                                )}
+                                                {nonCleanCartonCount && validateCartonInput(parseFloat(nonCleanCartonCount)) && (
+                                                  <p className="text-xs text-muted-foreground">
+                                                    = {cartonsToKg(parseFloat(nonCleanCartonCount), 'C20')} kg
+                                                  </p>
+                                                )}
+                                              </div>
+                                            )}
                                             <p className="text-xs text-muted-foreground mt-1">Valued at zero (waste/local sale)</p>
                                           </div>
 
@@ -2095,7 +2274,14 @@ export default function Warehouse() {
                                 </Badge>
                               </td>
                               <td className="px-4 py-4 text-sm">
-                                {parseFloat(stock.qtyKgClean).toLocaleString()}
+                                <div className="space-y-1">
+                                  <div className="font-medium">
+                                    {parseFloat(stock.qtyKgClean).toLocaleString()} kg
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {kgToCartons(parseFloat(stock.qtyKgClean), 'C20').toFixed(1)} C20 • {kgToCartons(parseFloat(stock.qtyKgClean), 'C8').toFixed(1)} C8
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-4 py-4 text-sm">
                                 ${parseFloat(stock.unitCostCleanUsd || '0').toFixed(2)}
