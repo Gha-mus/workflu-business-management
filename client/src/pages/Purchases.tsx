@@ -137,8 +137,8 @@ export default function Purchases() {
   useEffect(() => {
     if (selectedPurchase && showPaymentModal) {
       if (watchedAmount) {
-        const paymentAmount = parseFloat(watchedAmount);
-        const remaining = parseFloat(selectedPurchase.remaining);
+        const paymentAmount = safeParseFloat(watchedAmount);
+        const remaining = safeParseFloat(selectedPurchase.remaining);
         setIsPaymentValid(paymentAmount <= remaining && paymentAmount > 0);
       } else {
         setIsPaymentValid(true);
@@ -176,9 +176,9 @@ export default function Purchases() {
         orderId: data.orderId || null, // Make orderId explicitly null if not selected
         weight: data.weight,
         pricePerKg: data.pricePerKg,
-        total: (parseFloat(data.weight) * parseFloat(data.pricePerKg)).toString(),
+        total: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg)).toString(),
         amountPaid: "0",
-        remaining: (parseFloat(data.weight) * parseFloat(data.pricePerKg)).toString(),
+        remaining: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg)).toString(),
       };
       return apiRequest('POST', `/api/purchases`, purchaseData);
     },
@@ -239,8 +239,8 @@ export default function Purchases() {
         ...data,
         weight: data.weight,
         pricePerKg: data.pricePerKg,
-        total: (parseFloat(data.weight) * parseFloat(data.pricePerKg)).toString(),
-        remaining: (parseFloat(data.weight) * parseFloat(data.pricePerKg) - parseFloat(selectedPurchase.amountPaid)).toString(),
+        total: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg)).toString(),
+        remaining: (safeParseFloat(data.weight) * safeParseFloat(data.pricePerKg) - safeParseFloat(selectedPurchase.amountPaid)).toString(),
       };
       return apiRequest('PATCH', `/api/purchases/${selectedPurchase.id}`, updatedData);
     },
@@ -284,6 +284,13 @@ export default function Purchases() {
   });
 
   // Helper functions
+  const safeParseFloat = (value: string | number): number => {
+    if (typeof value === 'number') return isNaN(value) ? 0 : value;
+    if (typeof value !== 'string') return 0;
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const getSupplierName = (supplierId: string) => {
     const supplier = suppliers?.find(s => s.id === supplierId);
     return supplier?.name || 'Unknown Supplier';
@@ -295,15 +302,15 @@ export default function Purchases() {
   };
 
   const getPaymentStatus = (purchase: Purchase) => {
-    const paid = parseFloat(purchase.amountPaid);
-    const total = parseFloat(purchase.total);
+    const paid = safeParseFloat(purchase.amountPaid);
+    const total = safeParseFloat(purchase.total);
     if (paid >= total) return 'paid';
     if (paid > 0) return 'partial';
     return 'unpaid';
   };
 
   const formatCurrency = (amount: string | number, currency: string = 'USD') => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    const num = safeParseFloat(amount);
     return `${currency} ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
