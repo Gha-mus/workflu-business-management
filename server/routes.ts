@@ -150,6 +150,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const user = await storage.getUser(userId);
       
@@ -200,6 +203,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get approval statistics for dashboard
   app.get('/api/approvals/statistics', isAuthenticated, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       // Get pending approvals for user
@@ -233,6 +239,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get pending approval requests for current user (as approver)
   app.get('/api/approvals/pending', isAuthenticated, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { operationType, priority, limit = '50', offset = '0' } = req.query;
       
@@ -253,6 +262,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get approval requests submitted by current user
   app.get('/api/approvals/my-requests', isAuthenticated, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { status, operationType, limit = '50', offset = '0' } = req.query;
       
@@ -326,6 +338,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/decision', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const decisionSchema = z.object({
@@ -371,6 +386,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create approval request manually (for exceptional cases)
   app.post('/api/approvals/requests', isAuthenticated, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const requestSchema = z.object({
@@ -440,6 +458,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check if operation requires approval
   app.post('/api/approvals/check-requirement', isAuthenticated, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const checkSchema = z.object({
@@ -637,6 +658,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/approve', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { comments } = req.body;
       
@@ -666,6 +690,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/reject', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { comments } = req.body;
       
@@ -695,6 +722,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/escalate', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { escalateTo, comments } = req.body;
       
@@ -728,6 +758,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/delegate', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { delegateTo, comments } = req.body;
       
@@ -761,6 +794,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/cancel', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { comments } = req.body;
       
@@ -810,6 +846,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/bulk-actions', requireRole(['admin', 'finance']), async (req, res) => {
     try {
       const { approvalIds, action, comments, targetUserId } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       if (!approvalIds || !Array.isArray(approvalIds) || approvalIds.length === 0) {
@@ -876,6 +915,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/approvals/:id/comments', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { comment } = req.body;
       
@@ -1719,6 +1761,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // STAGE 2 SECURITY: Funding source is derived from purchase record - no client input allowed
       // STAGE 2 SECURITY: Central FX rate enforcement handled in storage layer
 
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
 
       const result = await storage.settlePurchasePayment(id, settlementData, {
@@ -1769,6 +1814,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // STAGE 2 SECURITY: Enforce central FX rate for settlement currency conversion
       // This will be handled in storage layer with proper validation
 
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
 
       const result = await storage.settlePurchaseAdvance(id, settlementData, {
@@ -1800,6 +1848,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validatedReturnData = returnSchema.parse(req.body);
       const returnData = { ...validatedReturnData, purchaseId: id };
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
 
       const result = await storage.processSupplierReturn(returnData, {
@@ -2702,6 +2753,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/periods/:id/close', requireRole(['admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { exchangeRates } = req.body;
       const closedPeriod = await storage.closeFinancialPeriod(id, userId, exchangeRates);
@@ -2739,6 +2793,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/metrics/calculate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const metrics = await storage.calculateAndStoreFinancialMetrics(periodId, userId);
       res.json(metrics);
@@ -2763,6 +2820,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/profit-loss/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId, statementType } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const statement = await storage.generateProfitLossStatement(periodId, statementType, userId);
       res.json(statement);
@@ -2798,6 +2858,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/cashflow/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId, analysisType, forecastDays } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const analysis = await storage.generateCashFlowAnalysis(periodId, analysisType, userId, forecastDays);
       res.json(analysis);
@@ -2843,6 +2906,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/financial/margins/generate', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { periodId, analysisType, filters } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const analyses = await storage.generateMarginAnalysis(periodId, analysisType, filters, userId);
       res.json(analyses);
@@ -3131,6 +3197,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/purchase-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
     try {
       const requestData = aiPurchaseRecommendationRequestSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       // Create cache key
@@ -3175,6 +3244,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/supplier-recommendations', requireRole(['admin', 'purchasing']), async (req: any, res) => {
     try {
       const requestData = aiSupplierRecommendationRequestSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = `supplier_recommendations_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
@@ -3213,6 +3285,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/capital-optimization', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const requestData = aiCapitalOptimizationRequestSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = `capital_optimization_${crypto.createHash('md5').update(JSON.stringify(requestData)).digest('hex')}`;
@@ -3261,6 +3336,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/ai/inventory-recommendations', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = 'inventory_recommendations_current';
@@ -3300,6 +3378,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Routes - Financial Insights
   app.get('/api/ai/financial-trends', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = 'financial_trends_analysis';
@@ -3350,6 +3431,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Routes - Trading Decision Support
   app.get('/api/ai/market-timing', requireRole(['admin', 'purchasing', 'sales']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = 'market_timing_analysis';
@@ -3414,6 +3498,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Routes - Intelligent Reporting
   app.get('/api/ai/executive-summary', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = 'executive_summary_current';
@@ -3463,6 +3550,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/ai/anomaly-detection', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const cacheKey = 'anomaly_detection_current';
@@ -3523,6 +3613,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/chat', isAuthenticated, async (req: any, res) => {
     try {
       const requestData = aiChatRequestSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const user = await storage.getUser(userId);
       
@@ -3584,6 +3677,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ai/contextual-help', isAuthenticated, async (req: any, res) => {
     try {
       const requestData = aiContextualHelpRequestSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const user = await storage.getUser(userId);
       
@@ -3607,6 +3703,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI conversation history
   app.get('/api/ai/conversations', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const limit = parseInt(req.query.limit as string) || 10;
       
@@ -3636,6 +3735,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initiate workflow validation against business document
   app.post('/api/ai/validate-workflow', requireRole(['admin']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       // Basic rate limiting: check if validation was run recently
@@ -3782,6 +3884,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { format = 'json' } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const validations = await storage.getWorkflowValidations(undefined, 100);
@@ -3838,6 +3943,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export job management routes
   app.get('/api/export-jobs', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const jobs = await storage.getExportJobs(userId);
       res.json(jobs);
@@ -3849,6 +3957,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/export-jobs', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const jobData = {
         ...req.body,
@@ -3906,6 +4017,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Enhanced export routes with real file generation
   app.post('/api/exports', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const exportParams = {
         ...req.body,
@@ -3930,6 +4044,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/exports/history', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const limit = req.query.limit ? parseInt(req.query.limit) : 50;
       const history = await storage.getExportHistory(userId, limit);
@@ -3992,6 +4109,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/periods/:id/close', requireRole(['admin']), strictPeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { adjustments, requireCompliance = true } = req.body;
 
@@ -4041,6 +4161,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/periods/:id/reopen', requireRole(['admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const { reason } = req.body;
 
@@ -4081,6 +4204,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/periods/:id/adjustments/:adjustmentId/approve', requireRole(['admin']), async (req: any, res) => {
     try {
       const { adjustmentId } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const approvedAdjustment = await storage.approvePeriodAdjustment(adjustmentId, userId);
@@ -4205,6 +4331,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/shipments', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const shipmentData = insertShipmentSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const shipment = await storage.createShipment({ ...shipmentData, createdBy: userId });
       res.status(201).json(shipment);
@@ -4217,6 +4346,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/shipments/from-stock', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const shipmentData = createShipmentFromStockSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const shipment = await storage.createShipmentFromWarehouseStock(shipmentData, userId);
       res.status(201).json(shipment);
@@ -4242,6 +4374,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status, actualDepartureDate, actualArrivalDate } = shipmentStatusUpdateSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       let actualDate: Date | undefined;
@@ -4332,6 +4467,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/shipping-costs', requireRole(['admin', 'finance']), approvalMiddleware.shippingOperation, genericPeriodGuard, async (req: any, res) => {
     try {
       const costData = addShippingCostSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       // Require exchangeRate for non-USD shipping costs (same as capital entries)
@@ -4396,6 +4534,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/delivery-tracking', requireRole(['admin', 'warehouse']), approvalMiddleware.shippingOperation, async (req: any, res) => {
     try {
       const trackingData = addDeliveryTrackingSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const tracking = await storage.addDeliveryTracking(trackingData, userId);
       res.status(201).json(tracking);
@@ -4420,6 +4561,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/delivery-tracking/:id/notify', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const tracking = await storage.markCustomerNotified(id, userId);
       res.json(tracking);
@@ -4539,6 +4683,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fundingSource: z.enum(['capital', 'operational', 'supplier']).default('operational')
       }).parse(req.body);
       
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const result = await commissionCalculationService.calculateAndApplyCommission(request, userId);
       res.json(result);
@@ -4602,6 +4749,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
       
       const resultData = { ...request, inspectionId };
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const result = await inspectionWorkflowService.recordInspectionResults(resultData, userId);
@@ -4627,6 +4777,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
       
       const settlementData = { ...request, inspectionId };
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const result = await inspectionWorkflowService.requestSettlement(settlementData, userId);
@@ -4786,6 +4939,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         justification: z.string().min(1)
       }).parse(req.body);
       
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       // Validate leg sequencing before confirmation
@@ -4910,6 +5066,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { splitQuantity } = z.object({
         splitQuantity: z.string()
       }).parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const result = await storage.splitWarehouseBatch(id, splitQuantity, userId);
@@ -4972,6 +5131,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/warehouse/quality-inspections/:id/approve', requireRole(['admin', 'warehouse']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const inspection = await storage.approveQualityInspection(id, userId);
       res.json(inspection);
@@ -5005,6 +5167,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         consumptionType: z.string(),
         allocatedTo: z.string().optional()
       }).parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const consumptions = await storage.consumeInventoryFIFO(warehouseStockId, quantity, consumptionType, userId, allocatedTo);
@@ -5122,6 +5287,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/warehouse/stock-transfers/:id/execute', requireRole(['admin', 'warehouse']), approvalMiddleware.warehouseOperation, warehousePeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const transfer = await storage.executeStockTransfer(id, userId);
       res.json(transfer);
@@ -5167,6 +5335,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/warehouse/inventory-adjustments/:id/approve', requireRole(['admin']), warehousePeriodGuard, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const adjustment = await storage.approveInventoryAdjustment(id, userId);
       res.json(adjustment);
@@ -5181,6 +5352,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { qualityGrade, qualityScore } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const stock = await storage.assignQualityGradeToStock(id, qualityGrade, qualityScore, userId);
       res.json(stock);
@@ -5194,6 +5368,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { batchId } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const stock = await storage.assignBatchToStock(id, batchId, userId);
       res.json(stock);
@@ -5330,6 +5507,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/customers/:id', requireRole(['admin', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const customer = await storage.deactivateCustomer(id, userId);
       res.json(customer);
@@ -5455,6 +5635,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { status } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       let order;
@@ -5486,6 +5669,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/sales-orders/:id', requireRole(['admin', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const order = await storage.cancelSalesOrder(id, 'Order deleted', userId);
       res.json(order);
@@ -5498,6 +5684,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/sales-orders/:id/fulfill', requireRole(['admin', 'sales', 'warehouse']), validateWarehouseSource(), approvalMiddleware.saleOrder, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const order = await storage.fulfillSalesOrder(id, userId);
       res.json(order);
@@ -5749,6 +5938,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const documentData = documentUploadSchema.parse(req.body);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const result = await DocumentService.processFileUpload(req.file, documentData, userId);
@@ -5776,6 +5968,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/documents', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
     try {
       const searchRequest = documentSearchSchema.parse(req.query);
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const result = await DocumentService.searchDocuments(searchRequest, userId);
@@ -5790,6 +5985,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/documents/:id', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const document = await storage.getDocumentWithMetadata(id, userId);
@@ -5809,6 +6007,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const updateData = documentUpdateSchema.parse({ ...req.body, id });
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const document = await storage.updateDocument(id, updateData, {
@@ -5828,6 +6029,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/documents/:id', requireRole(['admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       await DocumentService.deleteDocument(id, userId);
@@ -5842,6 +6046,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/documents/:id/download', requireRole(['admin', 'finance', 'purchasing', 'warehouse', 'sales']), async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const fileInfo = await DocumentService.downloadDocument(id, userId);
@@ -5879,6 +6086,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { id } = req.params;
       const versionData = documentVersionCreateSchema.parse({ ...req.body, documentId: id });
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const result = await DocumentService.createDocumentVersion(id, req.file, versionData, userId);
@@ -5910,6 +6120,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const complianceData = documentComplianceUpdateSchema.parse({ ...req.body, documentId: id });
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const compliance = await storage.addDocumentCompliance(complianceData, {
@@ -5928,6 +6141,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Compliance dashboard
   app.get('/api/compliance/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const dashboard = await DocumentService.getComplianceDashboard(userId);
       res.json(dashboard);
@@ -6026,6 +6242,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/documents/bulk/status', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
       const { documentIds, status } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       if (!Array.isArray(documentIds) || !status) {
@@ -6043,6 +6262,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/documents/bulk', requireRole(['admin']), async (req: any, res) => {
     try {
       const { documentIds } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       if (!Array.isArray(documentIds)) {
@@ -6064,6 +6286,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification Settings Routes
   app.get('/api/notifications/settings', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const settings = await storage.getNotificationSettings(userId);
       
@@ -6099,6 +6324,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/notifications/settings', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const settingsData = updateNotificationSettingSchema.parse(req.body);
       const auditContext = auditService.extractRequestContext(req);
@@ -6113,6 +6341,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/notifications/settings/preferences', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const preferences = await storage.getUserNotificationPreferences(userId);
       res.json(preferences);
@@ -6213,6 +6444,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification Queue Routes
   app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const filter = { ...req.query, userId } as any;
       
@@ -6252,6 +6486,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/notifications/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const notification = await storage.getNotification(id);
@@ -6270,6 +6507,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const notification = await storage.markNotificationAsRead(id, userId);
@@ -6283,6 +6523,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/notifications/:id/dismiss', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       const notification = await storage.dismissNotification(id, userId);
@@ -6296,6 +6539,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/notifications/bulk-read', isAuthenticated, async (req: any, res) => {
     try {
       const { notificationIds } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       if (!Array.isArray(notificationIds)) {
@@ -6313,6 +6559,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/notifications/bulk-dismiss', isAuthenticated, async (req: any, res) => {
     try {
       const { notificationIds } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       if (!Array.isArray(notificationIds)) {
@@ -6416,6 +6665,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notification History Routes
   app.get('/api/notifications/history', isAuthenticated, async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const filter = notificationHistoryFilterSchema.optional().parse(req.query);
       const history = await storage.getUserNotificationHistory(userId, filter);
@@ -6444,6 +6696,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Monitoring Routes
   app.get('/api/notifications/monitoring/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const dashboard = await storage.getAlertMonitoringDashboard(userId);
       res.json(dashboard);
@@ -6522,6 +6777,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/notifications/delivery-status/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       
       // Check if user has access to this notification
@@ -6623,6 +6881,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/compliance/dashboard - Compliance dashboard overview
   app.get('/api/compliance/dashboard', isAuthenticated, requireRole(['admin', 'finance']), async (req: any, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const userId = req.user.id;
       const dashboard = await storage.getComplianceDashboard(userId);
       res.json(dashboard);

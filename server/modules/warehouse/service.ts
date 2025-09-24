@@ -201,7 +201,16 @@ class WarehouseEnhancementService {
         .where(conditions.length > 0 ? and(...conditions) : undefined);
 
       // Group data by supplier
-      const supplierGroups = new Map<string, any[]>();
+      interface FilteringRecord {
+        supplierId: string;
+        supplierName: string;
+        inputKg: string;
+        outputCleanKg: string;
+        outputNonCleanKg: string;
+        filterYield: string;
+        createdAt: Date;
+      }
+      const supplierGroups = new Map<string, FilteringRecord[]>();
       for (const record of filteringData) {
         if (!supplierGroups.has(record.supplierId)) {
           supplierGroups.set(record.supplierId, []);
@@ -215,10 +224,10 @@ class WarehouseEnhancementService {
         const supplierName = records[0].supplierName;
         
         // Calculate metrics
-        const totalProcessedKg = records.reduce((sum, r) => sum + parseFloat(r.inputKg), 0);
-        const cleanOutputKg = records.reduce((sum, r) => sum + parseFloat(r.outputCleanKg), 0);
-        const nonCleanOutputKg = records.reduce((sum, r) => sum + parseFloat(r.outputNonCleanKg), 0);
-        const averageYieldPercent = records.reduce((sum, r) => sum + parseFloat(r.filterYield), 0) / records.length;
+        const totalProcessedKg = records.reduce((sum: number, r: FilteringRecord) => sum + parseFloat(r.inputKg), 0);
+        const cleanOutputKg = records.reduce((sum: number, r: FilteringRecord) => sum + parseFloat(r.outputCleanKg), 0);
+        const nonCleanOutputKg = records.reduce((sum: number, r: FilteringRecord) => sum + parseFloat(r.outputNonCleanKg), 0);
+        const averageYieldPercent = records.reduce((sum: number, r: FilteringRecord) => sum + parseFloat(r.filterYield), 0) / records.length;
         const filterYieldPercent = totalProcessedKg > 0 ? (cleanOutputKg / totalProcessedKg) * 100 : 0;
         
         // Determine quality trend (simplified - would use historical comparison)
