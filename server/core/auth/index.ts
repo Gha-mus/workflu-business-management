@@ -3,8 +3,8 @@
  * Unified auth interface for Supabase Authentication
  */
 
-import { RequestHandler } from 'express';
-import type { AuthUser, AuthProvider } from './types';
+import { RequestHandler, Request, Response, NextFunction, Express } from 'express';
+import type { AuthUser, AuthProvider, AuthenticatedRequest } from './types';
 
 // Get auth provider from environment variable
 const AUTH_PROVIDER = process.env.AUTH_PROVIDER || 'supabase';
@@ -28,7 +28,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   return provider.isAuthenticated(req, res, next);
 };
 
-export const requireRole = (allowedRoles: any[]) => async (req: any, res: any, next: any) => {
+export const requireRole = (allowedRoles: string[]): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.requireRole(allowedRoles)(req, res, next);
 };
@@ -65,12 +65,12 @@ export const requireSuperAdmin: RequestHandler = async (req, res, next) => {
   });
 };
 
-export const requireWarehouseScope = (warehouseCode?: string) => async (req: any, res: any, next: any) => {
+export const requireWarehouseScope = (warehouseCode?: string): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.requireWarehouseScope(warehouseCode)(req, res, next);
 };
 
-export const requireWarehouseScopeForResource = (resourceExtractor: (req: any) => string) => async (req: any, res: any, next: any) => {
+export const requireWarehouseScopeForResource = (resourceExtractor: (req: AuthenticatedRequest) => string): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.requireWarehouseScopeForResource(resourceExtractor)(req, res, next);
 };
@@ -80,23 +80,23 @@ export const hasWarehouseScope = async (userId: string, warehouseCode: string) =
   return provider.hasWarehouseScope(userId, warehouseCode);
 };
 
-export const validateWarehouseSource = () => async (req: any, res: any, next: any) => {
+export const validateWarehouseSource = (): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.validateWarehouseSource()(req, res, next);
 };
 
-export const validateSalesReturn = () => async (req: any, res: any, next: any) => {
+export const validateSalesReturn = (): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.validateSalesReturn()(req, res, next);
 };
 
-export const requireApproval = (operationType: string) => async (req: any, res: any, next: any) => {
+export const requireApproval = (operationType: string): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.requireApproval(operationType)(req, res, next);
 };
 
 // Export session setup function
-export const setupAuth = async (app: any) => {
+export const setupAuth = async (app: Express) => {
   const provider = await getAuthProvider();
   return provider.setupAuth(app);
 };
