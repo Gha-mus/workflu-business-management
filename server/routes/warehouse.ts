@@ -48,12 +48,12 @@ warehouseRouter.post("/stock",
       });
 
       // Create audit log
-      await auditService.logAction({
+      await auditService.logOperation({
         userId: authReq.user.id,
         action: "CREATE",
         entityType: "warehouse_stock",
         entityId: stock.id,
-        description: `Added warehouse stock: ${stock.sourceType} - ${stock.quantityKg}kg`,
+        description: `Added warehouse stock: ${stock.qtyKgTotal}kg total`,
         previousState: null,
         newState: stock
       });
@@ -80,12 +80,12 @@ warehouseRouter.post("/filter",
       const result = await storage.filterWarehouseStock(validatedData);
 
       // Create audit log
-      await auditService.logAction({
+      await auditService.logOperation({
         userId: authReq.user.id,
         action: "UPDATE",
         entityType: "warehouse_stock",
-        entityId: validatedData.stockId,
-        description: `Filtered warehouse stock: ${validatedData.cleanQuantityKg}kg clean, ${validatedData.nonCleanQuantityKg}kg non-clean`,
+        entityId: validatedData.purchaseId,
+        description: `Filtered warehouse stock: ${validatedData.outputCleanKg}kg clean, ${validatedData.outputNonCleanKg}kg non-clean`,
         previousState: null,
         newState: result
       });
@@ -112,12 +112,12 @@ warehouseRouter.post("/move-to-final",
       const result = await storage.moveToFinalWarehouse(validatedData);
 
       // Create audit log
-      await auditService.logAction({
+      await auditService.logOperation({
         userId: authReq.user.id,
         action: "UPDATE",
         entityType: "warehouse_stock",
         entityId: validatedData.stockId,
-        description: `Moved ${validatedData.quantityKg}kg to final warehouse`,
+        description: `Moved stock to final warehouse`,
         previousState: null,
         newState: result
       });

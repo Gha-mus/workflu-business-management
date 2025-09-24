@@ -22,7 +22,7 @@ interface AuditContext {
 interface ChangeRecord {
   entityType: string;
   entityId?: string;
-  action: 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import';
+  action: 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import' | 'validate' | 'auto_correct' | 'password_reset_failed';
   oldValues?: Record<string, any>;
   newValues?: Record<string, any>;
   changedFields?: string[];

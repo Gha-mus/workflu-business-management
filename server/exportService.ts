@@ -616,6 +616,101 @@ export class ExportService {
   }
 
   /**
+   * Get export file path for download
+   */
+  async getExportFile(exportId: string, userId: string): Promise<string> {
+    try {
+      const exportRecord = await storage.getExportJob(exportId);
+      
+      if (!exportRecord) {
+        throw new Error('Export not found');
+      }
+      
+      // Check if user owns this export
+      if (exportRecord.userId !== userId) {
+        throw new Error('Access denied');
+      }
+      
+      if (exportRecord.status !== 'completed') {
+        throw new Error('Export not completed yet');
+      }
+      
+      if (!exportRecord.filePath) {
+        throw new Error('Export file not available');
+      }
+      
+      // Verify file exists
+      try {
+        await stat(exportRecord.filePath);
+        return exportRecord.filePath;
+      } catch (error) {
+        throw new Error('Export file not found on disk');
+      }
+    } catch (error) {
+      console.error(`Error getting export file ${exportId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Schedule an export job
+   */
+  async scheduleExport(params: {
+    userId: string;
+    exportType: string;
+    format: string;
+    schedule?: {
+      frequency: 'daily' | 'weekly' | 'monthly';
+      dayOfWeek?: number;
+      dayOfMonth?: number;
+      time: string;
+    };
+    dateRange?: { start: Date; end: Date };
+    filters?: Record<string, any>;
+    preferences?: {
+      emailDelivery?: boolean;
+      emailRecipients?: string[] | null;
+      compression?: boolean;
+      customFields?: unknown;
+    };
+  }): Promise<ExportJob> {
+    try {
+      // For now, create immediate export since scheduling infrastructure isn't set up
+      // In a full implementation, this would create a scheduled job
+      const exportRecord = await this.createExport({
+        userId: params.userId,
+        exportType: params.exportType,
+        format: params.format,
+        dateRange: params.dateRange,
+        filters: params.filters,
+        preferences: params.preferences
+      });
+      
+      // Convert ExportHistory to ExportJob format
+      const job: ExportJob = {
+        id: exportRecord.id,
+        userId: params.userId,
+        jobName: `${params.exportType}_export_${exportRecord.id}`,
+        exportType: params.exportType,
+        format: params.format,
+        createdAt: exportRecord.createdAt || new Date(),
+        updatedAt: new Date(),
+        parameters: exportRecord.parameters as any,
+        emailRecipients: params.preferences?.emailRecipients || null,
+        schedule: params.schedule ? JSON.stringify(params.schedule) : '',
+        nextRun: null,
+        lastRun: null,
+        isActive: true
+      };
+      
+      return job;
+    } catch (error) {
+      console.error('Error scheduling export:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Validate export parameters
    */
   validateExportParams(params: any): { valid: boolean; errors: string[] } {
