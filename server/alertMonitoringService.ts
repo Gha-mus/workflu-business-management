@@ -465,7 +465,7 @@ class AlertMonitoringService {
 
       for (const purchase of purchases) {
         if (purchase.createdAt && purchase.createdAt > yesterday) {
-          const totalValue = purchase.totalCost || 0;
+          const totalValue = purchase.total || 0;
           
           metrics.push({
             type: 'purchase',
@@ -616,8 +616,8 @@ class AlertMonitoringService {
       const now = new Date();
 
       for (const shipment of shipments) {
-        if (shipment.expectedDelivery && shipment.status !== 'delivered') {
-          const expectedDate = new Date(shipment.expectedDelivery);
+        if (shipment.estimatedArrivalDate && shipment.status !== 'delivered') {
+          const expectedDate = new Date(shipment.estimatedArrivalDate);
           const daysDelayed = Math.ceil((now.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24));
 
           if (daysDelayed > 0) {
