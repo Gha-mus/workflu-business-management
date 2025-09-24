@@ -12,7 +12,8 @@ import type {
   WarehouseStockResponse,
   FinancialSummaryResponse,
   InventoryAnalyticsResponse,
-  TradingActivityResponse
+  TradingActivityResponse,
+  WorkflowValidationResponse
 } from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -362,12 +363,12 @@ export default function Reports() {
   });
 
   // Validation queries
-  const { data: latestValidation, isLoading: validationLoading, refetch: refetchValidation } = useQuery({
+  const { data: latestValidation, isLoading: validationLoading, refetch: refetchValidation } = useQuery<WorkflowValidationResponse>({
     queryKey: ['/api/ai/validation/latest'],
     enabled: isAuthenticated
   });
 
-  const { data: validationHistory } = useQuery({
+  const { data: validationHistory } = useQuery<WorkflowValidationResponse[]>({
     queryKey: ['/api/ai/validation/history', 'limit=5'],
     enabled: isAuthenticated
   });
@@ -1157,7 +1158,7 @@ export default function Reports() {
                     <CardContent>
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={tradingActivity?.timeAnalysis ? Object.entries(tradingActivity.timeAnalysis).map(([month, data]) => ({ month, volume: (data as any)?.volume || 0, count: (data as any)?.count || 0 })) : []}>
+                          <BarChart data={monthlyData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="month" />
                             <YAxis />
@@ -1165,6 +1166,13 @@ export default function Reports() {
                             <Legend />
                             <Bar dataKey="volume" fill="#3B82F6" name="Volume (kg)" />
                             <Bar dataKey="count" fill="#10B981" name="Orders" />
+                            <Bar dataKey="amount" fill="#3B82F6" name="Amount ($)" />
+                            <Bar dataKey="weight" fill="#10B981" name="Weight (kg)" />
+                            <XAxis dataKey="month" />
+                            <YAxis />
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <Tooltip />
+                            <Legend />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -1353,7 +1361,7 @@ export default function Reports() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleExportValidation(latestValidation.validationId)}
+                            onClick={() => handleExportValidation(latestValidation?.validationId || '')}
                             disabled={isExporting}
                             data-testid="button-export-validation"
                           >
@@ -1363,36 +1371,36 @@ export default function Reports() {
                         </div>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Completed: {new Date(latestValidation.completedAt).toLocaleString()}
+                        Completed: {latestValidation?.completedAt ? new Date(latestValidation.completedAt).toLocaleString() : 'N/A'}
                       </p>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                         <div className="text-center p-4 border rounded-lg">
                           <p className="text-2xl font-bold text-red-600">
-                            {latestValidation.summary?.criticalGaps || 0}
+                            {latestValidation?.summary?.criticalGaps || 0}
                           </p>
                           <p className="text-sm text-muted-foreground">Critical Gaps</p>
                         </div>
                         <div className="text-center p-4 border rounded-lg">
                           <p className="text-2xl font-bold text-yellow-600">
-                            {latestValidation.summary?.highPriorityGaps || 0}
+                            {latestValidation?.summary?.highPriorityGaps || 0}
                           </p>
                           <p className="text-sm text-muted-foreground">High Priority</p>
                         </div>
                         <div className="text-center p-4 border rounded-lg">
                           <p className="text-2xl font-bold text-blue-600">
-                            {latestValidation.summary?.totalGaps || 0}
+                            {latestValidation?.summary?.totalGaps || 0}
                           </p>
                           <p className="text-sm text-muted-foreground">Total Gaps</p>
                         </div>
                       </div>
 
-                      {latestValidation.summary?.recommendations && (
+                      {latestValidation?.summary?.recommendations && (
                         <div className="space-y-2">
                           <h4 className="font-medium">Key Recommendations</h4>
                           <ul className="space-y-1">
-                            {latestValidation.summary.recommendations.slice(0, 3).map((rec: string, index: number) => (
+                            {latestValidation?.summary?.recommendations?.slice(0, 3)?.map((rec: string, index: number) => (
                               <li key={index} className="text-sm text-muted-foreground flex items-start gap-2">
                                 <AlertCircle className="h-4 w-4 mt-0.5 text-blue-500" />
                                 {rec}
@@ -1405,14 +1413,14 @@ export default function Reports() {
                   </Card>
 
                   {/* Stage-by-Stage Analysis */}
-                  {latestValidation.gapReport?.stages && (
+                  {latestValidation?.gapReport?.stages && (
                     <Card>
                       <CardHeader>
                         <h3 className="text-lg font-semibold">Stage Analysis</h3>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
-                          {latestValidation?.gapReport?.stages ? Object.entries(latestValidation.gapReport.stages).map(([stageName, stageData]: [string, any]) => (
+                          {latestValidation?.gapReport?.stages ? Object.entries(latestValidation.gapReport.stages || {}).map(([stageName, stageData]: [string, any]) => (
                             <div key={stageName} className="border rounded-lg p-4">
                               <div className="flex justify-between items-center mb-3">
                                 <h4 className="font-medium capitalize">{stageName.replace('_', ' ')}</h4>

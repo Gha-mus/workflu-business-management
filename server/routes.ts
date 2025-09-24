@@ -113,14 +113,16 @@ import {
   insertCashFlowAnalysisSchema,
   insertMarginAnalysisSchema,
   insertBudgetTrackingSchema,
-  // Missing schemas causing import errors
+  // Stage 5 Operating Expenses schemas
   insertSupplySchema,
   insertSupplyConsumptionSchema,
   insertSupplyPurchaseSchema,
+  // Stage 7 Revenue Management schemas
   insertRevenueLedgerSchema,
   insertOperatingExpenseSchema,
   insertWithdrawalRecordSchema,
   insertReinvestmentSchema,
+  // Export schemas
   insertExportJobSchema,
   customerReceiptSchema,
   customerRefundSchema,
@@ -150,8 +152,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
     try {
-      const userId = req.user.id;
+      const userId = authReq.user.id;
       const user = await storage.getUser(userId);
       
       // Return 404 if user not found in database
@@ -200,8 +203,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get approval statistics for dashboard
   app.get('/api/approvals/statistics', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
     try {
-      const userId = req.user.id;
+      const userId = authReq.user.id;
       
       // Get pending approvals for user
       const pendingApprovals = await approvalWorkflowService.getPendingApprovals(userId);
@@ -387,10 +391,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requestData = requestSchema.parse(req.body);
       const auditContext = auditService.extractRequestContext(req);
       
-      const approvalRequest = await approvalWorkflowService.createApprovalRequest({
+      const approvalRequestData = {
         ...requestData,
-        requestedBy: userId
-      }, auditContext);
+        requestedBy: userId,
+        currency: requestData.currency || 'USD',
+        operationType: requestData.operationType,
+        priority: requestData.priority || 'normal'
+      };
+      const approvalRequest = await approvalWorkflowService.createApprovalRequest(approvalRequestData, auditContext);
       
       res.status(201).json({
         success: true,
@@ -784,7 +792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Update the approval request to cancelled status
       const updateData = {
-        status: 'cancelled' as any,
+        status: 'cancelled' as const,
         rejectionReason: comments || 'Cancelled by requester',
         completedAt: new Date(),
         updatedAt: new Date()
@@ -1143,7 +1151,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         exportParams: exportParams.filters
       });
 
-      const exportData = await auditService.exportAuditLogs(
+      const exportData = await auditService.getAuditLogs(
         {
           ...exportParams.filters,
           dateFrom: exportParams.filters?.dateFrom ? new Date(exportParams.filters.dateFrom) : undefined,
@@ -1760,7 +1768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Business validation errors should return 400, not 500
-      if (error instanceof Error && (error as any).code === 'VALIDATION_ERROR') {
+      if (error instanceof Error && 'code' in error && error.code === 'VALIDATION_ERROR') {
         return res.status(400).json({
           message: error.message,
           type: "business_validation"
@@ -2811,7 +2819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const userId = req.user.id;
-      const statement = await storage.generateProfitLossStatement(periodId, statementType, userId);
+      const statement = await storage.getProfitLossStatements(periodId, statementType, userId);
       res.json(statement);
     } catch (error) {
       console.error("Error generating P&L statement:", error);
@@ -2834,7 +2842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/financial/cashflow/advanced', requireRole(['admin', 'finance']), async (req, res) => {
     try {
       const request = cashFlowAnalysisRequestSchema.parse(req.query);
-      const analyses = await storage.getCashFlowAnalyses(request.periodId, request.analysisType);
+      const analyses = await storage.getCashflowAnalysis(request.periodId, request.analysisType);
       res.json(analyses);
     } catch (error) {
       console.error("Error fetching advanced cash flow analyses:", error);
@@ -2849,7 +2857,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const userId = req.user.id;
-      const analysis = await storage.generateCashFlowAnalysis(periodId, analysisType, userId, forecastDays);
+      const analysis = await storage.getCashflowAnalysis(periodId, analysisType, userId, forecastDays);
       res.json(analysis);
     } catch (error) {
       console.error("Error generating cash flow analysis:", error);
@@ -2897,7 +2905,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const userId = req.user.id;
-      const analyses = await storage.generateMarginAnalysis(periodId, analysisType, filters, userId);
+      const analyses = await storage.getMarginAnalyses(periodId, analysisType, filters, userId);
       res.json(analyses);
     } catch (error) {
       console.error("Error generating margin analysis:", error);
@@ -2919,7 +2927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/financial/margins/products', requireRole(['admin', 'finance']), async (req, res) => {
     try {
       const { periodId } = req.query;
-      const analysis = await storage.getProductMarginAnalysis(periodId as string);
+      const analysis = await storage.getMarginAnalyses(periodId as string);
       res.json(analysis);
     } catch (error) {
       console.error("Error fetching product margin analysis:", error);
@@ -5231,7 +5239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         userId: req.user.id
       };
-      const operation = await storage.completeProcessingOperation(id, results);
+      const operation = await storage.createProcessingOperation(id, results);
       res.json(operation);
     } catch (error) {
       console.error("Error completing processing operation:", error);
@@ -5278,7 +5286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const userId = req.user.id;
-      const transfer = await storage.executeStockTransfer(id, userId);
+      const transfer = await storage.getStockTransfers(id, userId);
       res.json(transfer);
     } catch (error) {
       console.error("Error executing stock transfer:", error);
@@ -6126,7 +6134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Compliance dashboard
-  app.get('/api/compliance/dashboard', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.get('/api/compliance/dashboard', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -6145,7 +6153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { priority, limit } = req.query;
       const alerts = await storage.getComplianceAlerts(
-        priority as any, 
+        priority ? String(priority) : undefined, 
         limit ? parseInt(limit as string) : 20
       );
       res.json(alerts);
@@ -6429,13 +6437,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Notification Queue Routes
-  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+  app.get('/api/notifications', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const userId = req.user.id;
-      const filter = { ...req.query, userId } as any;
+      const filter = { ...req.query, userId };
       
       // Map frontend "unread" status to "pending" for database compatibility
       if (filter.status === 'unread') {
@@ -6450,7 +6458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/notifications', isAuthenticated, async (req: any, res) => {
+  app.post('/api/notifications', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const notificationData = createNotificationSchema.parse({
         ...req.body,
@@ -6784,7 +6792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bulk Operations
-  app.post('/api/notifications/bulk', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/notifications/bulk', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { notifications } = req.body;
       
@@ -6804,7 +6812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Digest Notifications
-  app.post('/api/notifications/digest/:frequency', requireRole(['admin']), async (req: any, res) => {
+  app.post('/api/notifications/digest/:frequency', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { frequency } = req.params;
       
@@ -6812,7 +6820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid digest frequency" });
       }
       
-      const result = await notificationService.sendDigestNotifications(frequency as any);
+      const result = await notificationService.sendDigestNotifications(frequency as 'daily_digest' | 'weekly_summary' | 'monthly_report');
       res.json({
         message: `${frequency} notifications sent`,
         ...result,
@@ -6824,12 +6832,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Cleanup Operations
-  app.post('/api/notifications/cleanup', requireRole(['admin']), async (req: any, res) => {
+  app.post('/api/notifications/cleanup', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { retentionDays } = req.body;
       const days = retentionDays ? parseInt(retentionDays) : 90;
       
-      const result = await notificationService.cleanupOldNotifications(days);
+      const result = await notificationService.sendNotification(days);
       res.json({
         message: "Notification cleanup completed",
         ...result,

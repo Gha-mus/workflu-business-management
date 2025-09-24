@@ -18,7 +18,8 @@ import type {
   WarehouseStock,
   InsertShipmentLeg,
   InsertArrivalCost,
-  InsertShipmentInspection
+  InsertShipmentInspection,
+  ShippingAnalyticsResponse
 } from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -215,7 +216,7 @@ export default function Shipping() {
   });
 
   // Analytics query
-  const { data: analyticsData } = useQuery({
+  const { data: analyticsData } = useQuery<ShippingAnalyticsResponse>({
     queryKey: ['/api/shipping/analytics'],
   });
 
@@ -783,7 +784,7 @@ export default function Shipping() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {analyticsData?.methodDistribution?.map((method: any) => (
+                        {analyticsData?.methodDistribution?.map((method) => (
                           <div key={method.method} className="flex items-center justify-between">
                             <div className="flex items-center">
                               {getMethodIcon(method.method)}
@@ -847,14 +848,14 @@ export default function Shipping() {
                 // Validate and normalize weight data before submission
                 try {
                   // Validate kg inputs using measurement utilities
-                  const netWeightKg = validateKgInput(data.netWeightKg);
-                  const cartonWeightKg = validateKgInput(data.cartonWeightKg);
-                  const grossWeightKg = validateKgInput(data.grossWeightKg);
-                  const chargeableWeightKg = validateKgInput(data.chargeableWeightKg);
+                  const netWeightKg = validateKgInput(parseFloat(data.netWeightKg));
+                  const cartonWeightKg = validateKgInput(parseFloat(data.cartonWeightKg));
+                  const grossWeightKg = validateKgInput(parseFloat(data.grossWeightKg));
+                  const chargeableWeightKg = validateKgInput(parseFloat(data.chargeableWeightKg));
                   const ratePerKg = parseFloat(data.ratePerKg);
                   
                   // Calculate required cost fields
-                  const legBaseCost = (chargeableWeightKg * ratePerKg).toFixed(2);
+                  const legBaseCost = (Number(chargeableWeightKg) * ratePerKg).toFixed(2);
                   const transferCommissionPercent = parseFloat(data.transferCommissionPercent || '0');
                   const commissionAmount = (parseFloat(legBaseCost) * transferCommissionPercent / 100).toFixed(2);
                   const legTotalCost = (parseFloat(legBaseCost) + parseFloat(commissionAmount)).toFixed(2);
@@ -862,10 +863,11 @@ export default function Shipping() {
                   // Round kg values for precision
                   const normalizedData = {
                     ...data,
-                    netWeightKg: roundKg(netWeightKg).toString(),
-                    cartonWeightKg: roundKg(cartonWeightKg).toString(),
-                    grossWeightKg: roundKg(grossWeightKg).toString(),
-                    chargeableWeightKg: roundKg(chargeableWeightKg).toString(),
+                    shipmentId: selectedShipment?.id || (typeof selectedShipment === 'string' ? selectedShipment : ''),
+                    netWeightKg: roundKg(Number(netWeightKg)).toString(),
+                    cartonWeightKg: roundKg(Number(cartonWeightKg)).toString(),
+                    grossWeightKg: roundKg(Number(grossWeightKg)).toString(),
+                    chargeableWeightKg: roundKg(Number(chargeableWeightKg)).toString(),
                     legBaseCost: legBaseCost,
                     legTotalCost: legTotalCost,
                   };

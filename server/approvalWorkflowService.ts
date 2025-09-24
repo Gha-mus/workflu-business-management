@@ -17,13 +17,15 @@ import crypto from "crypto";
 interface ApprovalWorkflowConfig {
   operationType: string;
   amount?: number;
-  currency?: string;
+  currency: string;
   requestedBy: string;
   operationData: any;
   businessContext?: string;
-  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
   requiredBy?: Date;
   attachments?: string[];
+  justification?: string;
+  description?: string;
 }
 
 interface ApprovalDecision {
@@ -344,6 +346,23 @@ class ApprovalWorkflowService {
   }
 
   /**
+   * Get approval request by ID
+   */
+  async getApprovalById(approvalRequestId: string): Promise<ApprovalRequest | null> {
+    try {
+      const [request] = await db
+        .select()
+        .from(approvalRequests)
+        .where(eq(approvalRequests.id, approvalRequestId));
+      
+      return request || null;
+    } catch (error) {
+      console.error(`Error fetching approval request ${approvalRequestId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Generate human-readable approval title
    */
   private generateApprovalTitle(config: ApprovalWorkflowConfig): string {
@@ -619,7 +638,7 @@ class ApprovalWorkflowService {
             eq(approvalRequests.requestedBy, options.userId),
             eq(approvalRequests.currentApprover, options.userId),
             eq(approvalRequests.finalApprover, options.userId)
-          )
+          )!
         );
       }
 

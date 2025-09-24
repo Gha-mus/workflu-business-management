@@ -24,7 +24,7 @@ export interface AuthUser {
 export interface AuthProvider {
   // Core middleware functions
   isAuthenticated: RequestHandler;
-  requireRole: (allowedRoles: User['role'][]) => RequestHandler;
+  requireRole: (allowedRoles: Array<'admin' | 'finance' | 'purchasing' | 'warehouse' | 'sales' | 'worker'>) => RequestHandler;
   requireWarehouseScope: (warehouseCode?: string) => RequestHandler;
   requireWarehouseScopeForResource: (resourceExtractor: (req: AuthenticatedRequest) => string) => RequestHandler;
   hasWarehouseScope: (userId: string, warehouseCode: string) => Promise<boolean>;

@@ -685,7 +685,7 @@ class AlertMonitoringService {
       const mediumThreshold = thresholdValues?.medium;
       const operator = conditionValues?.operator;
       
-      if (criticalThreshold !== undefined && this.checkThreshold(currentValue, criticalThreshold, operator)) {
+      if (criticalThreshold !== undefined && this.checkThreshold(currentValue, criticalThreshold, operator || 'gte')) {
         triggered = true;
         severity = 'critical';
       } else if (highThreshold !== undefined && this.checkThreshold(currentValue, highThreshold, operator)) {
