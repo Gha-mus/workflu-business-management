@@ -212,7 +212,7 @@ export default function Purchases() {
       setCartonCount('');
       setShowCartonEquivalents(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
         : error?.message || error?.toString() || "Failed to create purchase";
@@ -240,7 +240,7 @@ export default function Purchases() {
       setShowPaymentModal(false);
       paymentForm.reset();
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
         : error?.message || error?.toString() || "Failed to record payment";
@@ -277,7 +277,7 @@ export default function Purchases() {
       setSelectedPurchase(null);
       purchaseForm.reset(purchaseFormDefaults);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
         : error?.message || error?.toString() || "Failed to update purchase";
@@ -297,7 +297,7 @@ export default function Purchases() {
       toast({ title: "Success", description: "Purchase cancelled successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
         : error?.message || error?.toString() || "Failed to cancel purchase";

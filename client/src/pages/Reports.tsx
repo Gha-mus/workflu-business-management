@@ -206,10 +206,11 @@ export default function Reports() {
       await refetchValidation();
       setShowValidationResults(true);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Validation error:', error);
       
-      if (error.message.includes('rate limit') || error.message.includes('recently')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('rate limit') || errorMessage.includes('recently')) {
         toast({
           title: "Rate Limited",
           description: "Validation was run recently. Please wait before running again.",
