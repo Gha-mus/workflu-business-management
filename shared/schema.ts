@@ -3605,6 +3605,23 @@ export interface ShipmentWithDetailsResponse extends Shipment {
 }
 
 export interface ShippingAnalyticsResponse {
+  // Top-level properties that frontend expects directly
+  totalShipments: number;
+  totalShippingCosts: number;
+  avgCostPerKg: number;
+  onTimeDeliveryRate: number;
+  methodDistribution: Array<{
+    method: string;
+    count: number;
+    percentage: number;
+  }>;
+  costBreakdown: {
+    legs: number;
+    arrival: number;
+    [key: string]: number;
+  };
+  
+  // Detailed nested data for advanced analytics
   summary: {
     totalShipments: number;
     inTransit: number;
@@ -3620,7 +3637,7 @@ export interface ShippingAnalyticsResponse {
     averageCostPerKg: number;
     rating: number;
   }>;
-  costBreakdown: Array<{
+  costBreakdownDetailed: Array<{
     costType: string;
     totalUsd: number;
     percentage: number;
@@ -3773,6 +3790,10 @@ export const financialSummaryResponseSchema = z.object({
     totalOutstanding: z.number(),
     totalInventoryValue: z.number(),
     netPosition: z.number(),
+    // Add missing properties that server expects
+    totalRevenue: z.number(),
+    totalCapitalIn: z.number(),
+    totalPurchasePayments: z.number(),
   }),
   currencyBreakdown: z.object({
     usd: z.object({
@@ -3835,6 +3856,14 @@ export const inventoryAnalyticsResponseSchema = z.object({
     supplierName: z.string(),
     totalKg: z.number(),
     valueUsd: z.number(),
+  })),
+  // Add missing property that frontend expects
+  lowStockItems: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    currentStock: z.number(),
+    minStock: z.number(),
+    status: z.string(),
   })),
 });
 
@@ -3971,6 +4000,25 @@ export const periodComparisonRequestSchema = z.object({
   periodIds: z.array(z.string()).min(2).max(4), // Compare 2-4 periods
   metrics: z.array(z.enum(['revenue', 'expenses', 'profit', 'inventory', 'capital'])).optional(),
 });
+
+// Workflow Validation Response Interface - for Reports.tsx
+export interface WorkflowValidationResponse {
+  validationId: string; // Maps to id from workflowValidations
+  completedAt: Date | string;
+  summary: {
+    criticalGaps?: number;
+    highPriorityGaps?: number;
+    totalGaps?: number;
+    recommendations?: string[];
+    [key: string]: any;
+  };
+  gapReport: {
+    [key: string]: any;
+  };
+  overallStatus: string;
+  stageResults: any;
+  isLatest: boolean;
+}
 
 // Response Types
 export type FinancialSummaryResponse = z.infer<typeof financialSummaryResponseSchema>;
