@@ -222,7 +222,7 @@ export const supplierQualityAssessments = pgTable("supplier_quality_assessments"
 });
 
 // Orders table
-export const orders: any = pgTable("orders", {
+export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderNumber: varchar("order_number").notNull().unique(),
   status: varchar("status").notNull().default('draft'),
@@ -374,7 +374,7 @@ export const carriers = pgTable("carriers", {
 });
 
 // Shipments table
-export const shipments: any = pgTable("shipments", {
+export const shipments = pgTable("shipments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   shipmentNumber: varchar("shipment_number").notNull().unique(),
   orderId: varchar("order_id").notNull().references(() => orders.id),
@@ -983,7 +983,7 @@ export const documents = pgTable("documents", {
   // Version control
   currentVersion: integer("current_version").notNull().default(1),
   isLatestVersion: boolean("is_latest_version").notNull().default(true),
-  parentDocumentId: varchar("parent_document_id").references((): any => documents.id), // For document hierarchies
+  parentDocumentId: varchar("parent_document_id"), // For document hierarchies
   
   // Search and organization
   tags: text("tags").array(), // Tags for searching and organization
@@ -1008,7 +1008,13 @@ export const documents = pgTable("documents", {
   modifiedAt: timestamp("modified_at").defaultNow(),
   approvedAt: timestamp("approved_at"),
   archivedAt: timestamp("archived_at"),
-});
+}, (table) => [  
+  foreignKey({
+    columns: [table.parentDocumentId],
+    foreignColumns: [table.id],
+    name: "documents_parent_document_fk"
+  })
+]);
 
 // Document versions table - Version control system
 export const documentVersions = pgTable("document_versions", {
@@ -1032,13 +1038,13 @@ export const documentVersions = pgTable("document_versions", {
   isApproved: boolean("is_approved").notNull().default(false),
   
   // Version relationships
-  previousVersionId: varchar("previous_version_id").references((): any => documentVersions.id),
+  previousVersionId: varchar("previous_version_id"),
   mergedFromVersionIds: text("merged_from_version_ids").array(), // If version was created by merging
   
   // Version lifecycle
   createdBy: varchar("created_by").notNull().references(() => users.id),
   approvedBy: varchar("approved_by").references(() => users.id),
-  supersededBy: varchar("superseded_by").references((): any => documentVersions.id),
+  supersededBy: varchar("superseded_by"),
   
   createdAt: timestamp("created_at").defaultNow(),
   approvedAt: timestamp("approved_at"),
@@ -1046,6 +1052,16 @@ export const documentVersions = pgTable("document_versions", {
 }, (table) => [
   index("idx_document_versions_document_id").on(table.documentId),
   index("idx_document_versions_version").on(table.documentId, table.version),
+  foreignKey({
+    columns: [table.previousVersionId],
+    foreignColumns: [table.id],
+    name: "document_versions_previous_fk"
+  }),
+  foreignKey({
+    columns: [table.supersededBy],
+    foreignColumns: [table.id],
+    name: "document_versions_superseded_fk"
+  })
 ]);
 
 // Document metadata table - Flexible key-value metadata storage
@@ -1157,7 +1173,7 @@ export const documentAccessLogs = pgTable("document_access_logs", {
 ]);
 
 // Document workflow states table - Track documents through approval workflows
-export const documentWorkflowStates: any = pgTable("document_workflow_states", {
+export const documentWorkflowStates = pgTable("document_workflow_states", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   documentId: varchar("document_id").notNull().references(() => documents.id),
   versionId: varchar("version_id").references(() => documentVersions.id),
@@ -1180,8 +1196,8 @@ export const documentWorkflowStates: any = pgTable("document_workflow_states", {
   comments: text("comments"),
   
   // Workflow tracking
-  previousStateId: varchar("previous_state_id").references((): any => documentWorkflowStates.id),
-  nextStateId: varchar("next_state_id").references((): any => documentWorkflowStates.id),
+  previousStateId: varchar("previous_state_id"),
+  nextStateId: varchar("next_state_id"),
   
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1190,6 +1206,16 @@ export const documentWorkflowStates: any = pgTable("document_workflow_states", {
   index("idx_document_workflow_states_document_id").on(table.documentId),
   index("idx_document_workflow_states_assigned_to").on(table.assignedTo),
   index("idx_document_workflow_states_active").on(table.isActive),
+  foreignKey({
+    columns: [table.previousStateId],
+    foreignColumns: [table.id],
+    name: "document_workflow_states_previous_fk"
+  }),
+  foreignKey({
+    columns: [table.nextStateId],
+    foreignColumns: [table.id],
+    name: "document_workflow_states_next_fk"
+  })
 ]);
 
 // ===============================================
