@@ -250,9 +250,9 @@ revenuesRouter.get("/analytics",
       const withdrawals = await storage.getWithdrawalRecords();
       const reinvestments = await storage.getReinvestments();
       
-      const totalRevenue = transactions.reduce((sum, t) => sum + parseFloat(t.amountUsd || '0'), 0);
-      const totalWithdrawals = withdrawals.reduce((sum, w) => sum + parseFloat(w.amountUsd || '0'), 0);
-      const totalReinvestments = reinvestments.reduce((sum, r) => sum + parseFloat(r.amountUsd || '0'), 0);
+      const totalRevenue = transactions.reduce((sum: number, t: any) => sum + parseFloat(t.amountUsd || '0'), 0);
+      const totalWithdrawals = withdrawals.reduce((sum: number, w: any) => sum + parseFloat(w.amountUsd || '0'), 0);
+      const totalReinvestments = reinvestments.reduce((sum: number, r: any) => sum + parseFloat(r.amountUsd || '0'), 0);
       
       const analytics = {
         totalRevenue,

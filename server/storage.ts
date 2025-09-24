@@ -4169,7 +4169,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     const activeSuppliers = suppliers_.filter(s => s.metrics.totalPurchases > 0);
-    const topPerformer = activeSuppliers.reduce((best, current) => 
+    const topPerformer = activeSuppliers.reduce((best: any, current: any) => 
       current.metrics.totalValue > best.metrics.totalValue ? current : best,
       activeSuppliers[0]
     );
@@ -4194,7 +4194,7 @@ export class DatabaseStorage implements IStorage {
       .from(orders)
       .groupBy(orders.status);
 
-    const stats = orderStats.reduce((acc, stat) => {
+    const stats = orderStats.reduce((acc: {total: number, completed: number, pending: number, cancelled: number}, stat: any) => {
       const statusCount = Number(stat.count || 0);
       acc.total += statusCount;
       
@@ -7310,7 +7310,7 @@ export class DatabaseStorage implements IStorage {
   async calculateSalesOrderTotals(salesOrderId: string): Promise<SalesOrder> {
     const items = await this.getSalesOrderItems(salesOrderId);
     
-    const subtotalAmount = items.reduce((sum, item) => 
+    const subtotalAmount = items.reduce((sum: number, item: any) => 
       sum + parseFloat(item.lineTotal || '0'), 0);
     
     const totalAmount = subtotalAmount; // Can add taxes, shipping, etc. here

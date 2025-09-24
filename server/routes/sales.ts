@@ -38,7 +38,7 @@ salesRouter.post("/orders",
       
       // CREDIT LIMIT ENFORCEMENT - Check customer credit before creating order
       if (validatedData.customerId && validatedData.items && validatedData.items.length > 0) {
-        const orderAmount = validatedData.items.reduce((sum, item) => {
+        const orderAmount = validatedData.items.reduce((sum: Decimal, item: any) => {
           const itemTotal = new Decimal(item.unitPriceUsd || 0).mul(item.quantityKg || 0);
           return sum.add(itemTotal);
         }, new Decimal(0));
@@ -147,7 +147,7 @@ salesRouter.get("/customers", isAuthenticated, async (req: AuthenticatedRequest,
 salesRouter.get("/analytics", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     const orders = await storage.getSalesOrders();
-    const totalRevenueUsd = orders?.reduce((sum, order) => {
+    const totalRevenueUsd = orders?.reduce((sum: Decimal, order: any) => {
       return sum.add(new Decimal(order.totalAmountUsd?.toString() || '0'));
     }, new Decimal(0)).toNumber();
     

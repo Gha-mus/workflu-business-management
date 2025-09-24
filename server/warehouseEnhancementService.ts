@@ -215,17 +215,17 @@ class WarehouseEnhancementService {
         const supplierName = records[0].supplierName;
         
         // Calculate metrics
-        const totalProcessedKg = records.reduce((sum, r) => sum.add(new Decimal(r.inputKg)), new Decimal(0)).toNumber();
-        const cleanOutputKg = records.reduce((sum, r) => sum.add(new Decimal(r.outputCleanKg)), new Decimal(0)).toNumber();
-        const nonCleanOutputKg = records.reduce((sum, r) => sum.add(new Decimal(r.outputNonCleanKg)), new Decimal(0)).toNumber();
-        const averageYieldPercent = records.reduce((sum, r) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(records.length).toNumber();
+        const totalProcessedKg = records.reduce((sum: Decimal, r: any) => sum.add(new Decimal(r.inputKg)), new Decimal(0)).toNumber();
+        const cleanOutputKg = records.reduce((sum: Decimal, r: any) => sum.add(new Decimal(r.outputCleanKg)), new Decimal(0)).toNumber();
+        const nonCleanOutputKg = records.reduce((sum: Decimal, r: any) => sum.add(new Decimal(r.outputNonCleanKg)), new Decimal(0)).toNumber();
+        const averageYieldPercent = records.reduce((sum: Decimal, r: any) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(records.length).toNumber();
         const filterYieldPercent = totalProcessedKg > 0 ? (cleanOutputKg / totalProcessedKg) * 100 : 0;
         
         // Determine quality trend (simplified - would use historical comparison)
         let qualityTrend: 'improving' | 'stable' | 'declining' = 'stable';
         if (records.length >= 3) {
-          const recent = records.slice(-3).reduce((sum, r) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(3).toNumber();
-          const earlier = records.slice(0, -3).reduce((sum, r) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(Math.max(records.length - 3, 1)).toNumber();
+          const recent = records.slice(-3).reduce((sum: Decimal, r: any) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(3).toNumber();
+          const earlier = records.slice(0, -3).reduce((sum: Decimal, r: any) => sum.add(new Decimal(r.filterYield)), new Decimal(0)).div(Math.max(records.length - 3, 1)).toNumber();
           
           if (recent > earlier + 2) qualityTrend = 'improving';
           else if (recent < earlier - 2) qualityTrend = 'declining';
@@ -241,7 +241,7 @@ class WarehouseEnhancementService {
             filterYieldPercent,
             averageYieldPercent,
             totalBatches: records.length,
-            lastFilteringDate: records.length > 0 ? new Date(Math.max(...records.map(r => r.createdAt.getTime()))) : null,
+            lastFilteringDate: records.length > 0 ? new Date(Math.max(...records.map((r: any) => r.createdAt.getTime()))) : null,
           },
           qualityTrend,
         });
