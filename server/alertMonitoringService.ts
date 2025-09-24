@@ -219,14 +219,14 @@ class AlertMonitoringService {
       try {
         // Check if configuration already exists
         const existing = await storage.getAlertConfigurations({
-          alertType: config.alertType,
-          alertCategory: config.alertCategory,
+          alertType: config.alertType as any,
+          alertCategory: config.alertCategory as any,
         });
 
         const alreadyExists = existing.some(c => c.name === config.name);
         
         if (!alreadyExists) {
-          await storage.createAlertConfiguration(config);
+          await storage.createAlertConfiguration(config as any);
           console.log(`✅ Created default alert configuration: ${config.name}`);
         }
       } catch (error) {
@@ -435,9 +435,9 @@ class AlertMonitoringService {
           type: 'inventory',
           category: 'stock_level',
           currentValue: item.currentStock,
-          threshold: item.minimumStock,
-          unit: item.unit,
-          trend: item.currentStock < item.minimumStock ? 'down' : 'stable',
+          threshold: item.minStock,
+          unit: 'kg', // Default unit since property doesn't exist
+          trend: item.currentStock < item.minStock ? 'down' : 'stable',
           lastUpdated: new Date(),
           entityType: 'warehouse_stock',
           entityId: item.id,
@@ -500,7 +500,7 @@ class AlertMonitoringService {
         // Check for large orders or overdue payments
         const totalValue = order.totalAmount || 0;
         
-        if (totalValue > 50000) { // Large order threshold
+        if (typeof totalValue === 'number' && totalValue > 50000) { // Large order threshold
           metrics.push({
             type: 'sales',
             category: 'large_order',
@@ -676,13 +676,18 @@ class AlertMonitoringService {
       const currentValue = typeof metric.currentValue === 'string' ? parseFloat(metric.currentValue) : metric.currentValue;
       
       // Check thresholds in order of severity
-      if (this.checkThreshold(currentValue, thresholds.critical, conditions.operator)) {
+      const criticalThreshold = (thresholds as any)?.critical;
+      const highThreshold = (thresholds as any)?.high;
+      const mediumThreshold = (thresholds as any)?.medium;
+      const operator = (conditions as any)?.operator;
+      
+      if (criticalThreshold !== undefined && this.checkThreshold(currentValue, criticalThreshold, operator)) {
         triggered = true;
         severity = 'critical';
-      } else if (this.checkThreshold(currentValue, thresholds.high, conditions.operator)) {
+      } else if (highThreshold !== undefined && this.checkThreshold(currentValue, highThreshold, operator)) {
         triggered = true;
         severity = 'high';
-      } else if (this.checkThreshold(currentValue, thresholds.medium, conditions.operator)) {
+      } else if (mediumThreshold !== undefined && this.checkThreshold(currentValue, mediumThreshold, operator)) {
         triggered = true;
         severity = 'medium';
       }
@@ -709,7 +714,7 @@ class AlertMonitoringService {
         alertId: `${config.id}_${metric.entityId}_${Date.now()}`,
         triggered: true,
         currentValue: metric.currentValue,
-        threshold: metric.threshold || thresholds[severity],
+        threshold: metric.threshold || (thresholds as any)?.[severity],
         severity,
         message,
         actionUrl,
