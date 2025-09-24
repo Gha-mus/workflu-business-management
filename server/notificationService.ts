@@ -791,6 +791,7 @@ class NotificationService {
       priority: params.priority,
       title: params.title,
       message: params.message,
+      channels: ['in_app', 'email'] as any[], // Default notification channels
       entityType: params.entityType,
       entityId: params.entityId,
       actionUrl: params.actionUrl,

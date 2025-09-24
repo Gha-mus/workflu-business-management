@@ -11149,6 +11149,8 @@ export class DatabaseStorage implements IStorage {
         description: receiptData.description,
         note: receiptData.note,
         date: receiptData.recognitionDate ? new Date(receiptData.recognitionDate) : new Date(),
+        createdBy: auditContext.userId, // Required field
+        accountingPeriod: this.getCurrentAccountingPeriod(), // Required field
       };
 
       return await this.createRevenueLedgerEntry(entryData, auditContext);
@@ -11292,6 +11294,7 @@ export class DatabaseStorage implements IStorage {
           description: `Partner withdrawal - ${withdrawalData.partner}`,
           note: withdrawalData.note,
           accountingPeriod: this.getCurrentAccountingPeriod(),
+          createdBy: auditContext.userId, // Required field
         };
 
         await tx

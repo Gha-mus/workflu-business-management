@@ -432,7 +432,7 @@ export class DocumentService {
     });
     
     // Clean up files
-    const filesToDelete = [document.filePath, ...versions.map(v => v.filePath)];
+    const filesToDelete = [document.filePath, ...versions.map((v: { filePath: string }) => v.filePath)];
     for (const filePath of filesToDelete) {
       try {
         await fs.unlink(filePath);
