@@ -241,6 +241,7 @@ export const capitalEntries = pgTable("capital_entries", {
   description: text("description"),
   paymentCurrency: varchar("payment_currency").notNull().default('USD'),
   exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  isValidated: boolean("is_validated").notNull().default(false),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -3647,7 +3648,7 @@ export const shipmentStatusUpdateSchema = z.object({
 export const createShipmentFromStockSchema = z.object({
   orderId: z.string().min(1, "Order ID is required"),
   carrierId: z.string().min(1, "Carrier ID is required"),
-  method: z.enum(['sea_freight', 'air_freight', 'land_transport', 'courier']),
+  method: z.enum(['sea', 'air', 'land', 'rail', 'multimodal']),
   originAddress: z.string().min(1, "Origin address is required"),
   destinationAddress: z.string().min(1, "Destination address is required"),
   estimatedDepartureDate: z.string().optional(),
@@ -3705,7 +3706,7 @@ export const carrierFilterSchema = z.object({
 
 export const shipmentFilterSchema = z.object({
   status: z.enum(['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']).optional(),
-  method: z.enum(['sea_freight', 'air_freight', 'land_transport', 'courier']).optional(),
+  method: z.enum(['sea', 'air', 'land', 'rail', 'multimodal']).optional(),
   carrierId: z.string().optional(),
   orderId: z.string().optional(),
   startDate: z.string().optional(),
