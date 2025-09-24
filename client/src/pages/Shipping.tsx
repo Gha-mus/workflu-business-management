@@ -56,7 +56,7 @@ import {
 const createLegSchema = z.object({
   legNumber: z.number().int().positive("Leg number must be positive"),
   carrierId: z.string().min(1, "Carrier is required"),
-  method: z.enum(['sea_freight', 'air_freight', 'land_freight']),
+  method: z.enum(['sea', 'air', 'land', 'rail', 'multimodal']),
   originAddress: z.string().min(1, "Origin address is required"),
   destinationAddress: z.string().min(1, "Destination address is required"),
   netWeightKg: z.string().min(1, "Net weight is required"),
@@ -123,7 +123,7 @@ export default function Shipping() {
     defaultValues: {
       legNumber: 1,
       carrierId: '',
-      method: 'sea_freight',
+      method: 'sea',
       originAddress: '',
       destinationAddress: '',
       netWeightKg: '',
@@ -260,11 +260,11 @@ export default function Shipping() {
   // Helper functions
   const getMethodIcon = (method: string) => {
     switch (method) {
-      case 'sea_freight':
+      case 'sea':
         return <Ship className="h-4 w-4" />;
-      case 'air_freight':
+      case 'air':
         return <Plane className="h-4 w-4" />;
-      case 'land_freight':
+      case 'land':
         return <Truck className="h-4 w-4" />;
       default:
         return <Package2 className="h-4 w-4" />;
@@ -930,9 +930,11 @@ export default function Shipping() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="sea_freight">Sea Freight</SelectItem>
-                        <SelectItem value="air_freight">Air Freight</SelectItem>
-                        <SelectItem value="land_freight">Land Freight</SelectItem>
+                        <SelectItem value="sea">Sea Freight</SelectItem>
+                        <SelectItem value="air">Air Freight</SelectItem>
+                        <SelectItem value="land">Land Freight</SelectItem>
+                        <SelectItem value="rail">Rail</SelectItem>
+                        <SelectItem value="multimodal">Multimodal</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
