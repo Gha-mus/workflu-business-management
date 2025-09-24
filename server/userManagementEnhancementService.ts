@@ -10,8 +10,8 @@
 import { db } from "./db";
 import { 
   users,
-  auditLogs
-} from "../shared/schema";
+  auditLog
+} from "@shared/schema";
 import { eq, and, not } from "drizzle-orm";
 import { notificationService } from "./notificationService";
 import { auditService } from "./auditService";
@@ -83,7 +83,7 @@ class UserManagementEnhancementService {
           {
             entityType: 'users',
             entityId: request.userId,
-            action: 'create',
+            action: 'blocked',
             operationType: 'sensitive_change',
             description: `Sensitive change blocked: ${request.changeType}`,
             newValues: {
@@ -127,7 +127,7 @@ class UserManagementEnhancementService {
         {
           entityType: 'users',
           entityId: request.userId,
-          action: 'approve',
+          action: 'approved',
           operationType: 'sensitive_change',
           description: `Sensitive change approved: ${request.changeType}`,
           newValues: {

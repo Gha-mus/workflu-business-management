@@ -180,7 +180,6 @@ class CommissionCalculationService {
       // Route through approval workflow - respects thresholds and role-based approvals
       const approvalResult = await approvalWorkflowService.createApprovalRequest({
         operationType: 'capital_entry',
-        currency: 'USD',
         requestedBy: userId,
         description: `Shipping commission payment: ${commissionUsd} USD for leg ${shipmentLegId}`,
         operationData: capitalEntryData,

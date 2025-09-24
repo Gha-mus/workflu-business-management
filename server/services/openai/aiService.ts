@@ -1087,11 +1087,7 @@ Ensure comprehensive coverage of all operational aspects mentioned in the docume
     }
     
     // Use safe parser with appropriate fallback  
-    return safeParseAIResponse(result, {
-      stages: [], // Add missing required property
-      overallRequirements: [], // Add missing required property
-      complianceRules: [], // Add missing required property
-    });
+    return safeParseAIResponse(result, {});
   }
 
   /**

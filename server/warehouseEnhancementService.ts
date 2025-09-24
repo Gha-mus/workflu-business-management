@@ -137,8 +137,8 @@ class WarehouseEnhancementService {
 
           alerts.push({
             stockId: stock.stockId,
-            orderId: stock.orderId || '',
-            supplierName: stock.supplierName || '',
+            orderId: stock.orderId,
+            supplierName: stock.supplierName,
             quantityKg: new Decimal(stock.quantityKg).toNumber(),
             daysWaiting,
             priority,
@@ -217,15 +217,12 @@ class WarehouseEnhancementService {
         if (!supplierGroups.has(record.supplierId)) {
           supplierGroups.set(record.supplierId, []);
         }
-        supplierGroups.get(record.supplierId)!.push({
-          ...record,
-          createdAt: record.createdAt || new Date()
-        });
+        supplierGroups.get(record.supplierId)!.push(record);
       }
 
       const reports: SupplierFilteringReport[] = [];
 
-      for (const [supplierId, records] of Array.from(supplierGroups.entries())) {
+      for (const [supplierId, records] of supplierGroups) {
         const supplierName = records[0].supplierName;
         
         // Calculate metrics
@@ -333,30 +330,30 @@ class WarehouseEnhancementService {
 
       // Check quantities
       const expectedCleanKg = new Decimal(warehouseStockRecord.qtyKgClean);
-      if (expectedCleanKg.minus(cleanOutput).abs().gt(0.01)) {
-        errors.push(`Clean quantity mismatch: Expected ${cleanOutput.toNumber()}, got ${expectedCleanKg.toNumber()}`);
+      if (Math.abs(expectedCleanKg - cleanOutput) > 0.01) {
+        errors.push(`Clean quantity mismatch: Expected ${cleanOutput}, got ${expectedCleanKg}`);
       }
 
       const expectedNonCleanKg = new Decimal(warehouseStockRecord.qtyKgNonClean);
-      if (expectedNonCleanKg.minus(nonCleanOutput).abs().gt(0.01)) {
-        errors.push(`Non-clean quantity mismatch: Expected ${nonCleanOutput.toNumber()}, got ${expectedNonCleanKg.toNumber()}`);
+      if (Math.abs(expectedNonCleanKg - nonCleanOutput) > 0.01) {
+        errors.push(`Non-clean quantity mismatch: Expected ${nonCleanOutput}, got ${expectedNonCleanKg}`);
       }
 
       // Check filter yield
-      const calculatedYield = totalInput.gt(0) ? cleanOutput.div(totalInput).mul(100).toNumber() : 0;
-      if (Math.abs(calculatedYield - filterYield.toNumber()) > 0.01) {
-        errors.push(`Filter yield mismatch: Expected ${calculatedYield.toFixed(2)}%, got ${filterYield.toNumber().toFixed(2)}%`);
+      const calculatedYield = totalInput > 0 ? (cleanOutput / totalInput) * 100 : 0;
+      if (Math.abs(calculatedYield - filterYield) > 0.01) {
+        errors.push(`Filter yield mismatch: Expected ${calculatedYield.toFixed(2)}%, got ${filterYield.toFixed(2)}%`);
       }
 
       const validation: CostRedistributionValidation = {
         orderId,
-        originalCostPerKg: originalCostPerKg.toNumber(),
-        redistributedCleanCostPerKg: redistributedCleanCostPerKg,
-        totalInput: totalInput.toNumber(),
-        cleanOutput: cleanOutput.toNumber(),
-        nonCleanOutput: nonCleanOutput.toNumber(),
-        filterYield: filterYield.toNumber(),
-        costSavingsFromNonClean: costSavingsFromNonClean,
+        originalCostPerKg,
+        redistributedCleanCostPerKg,
+        totalInput,
+        cleanOutput,
+        nonCleanOutput,
+        filterYield,
+        costSavingsFromNonClean,
         isValid: errors.length === 0,
         errors,
       };
@@ -408,6 +405,7 @@ class WarehouseEnhancementService {
           unitCostCleanUsd: validation.redistributedCleanCostPerKg.toString(),
           qtyKgClean: validation.cleanOutput.toString(),
           qtyKgNonClean: validation.nonCleanOutput.toString(),
+          updatedAt: new Date(),
         })
         .where(and(
           eq(warehouseStock.orderId, orderId),

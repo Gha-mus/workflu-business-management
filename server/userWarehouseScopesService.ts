@@ -11,15 +11,12 @@
 
 import { db } from "./db";
 import { 
-  userWarehouseScopes, users, warehouseStock, User
+  userWarehouseScopes, users, warehouseStock,
+  InsertUserWarehouseScope, SelectUserWarehouseScope, SelectUser
 } from "../shared/schema";
-
-// Define types directly from table
-type InsertUserWarehouseScope = typeof userWarehouseScopes.$inferInsert;
-type SelectUserWarehouseScope = typeof userWarehouseScopes.$inferSelect;
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { auditService } from "./auditService";
-import { notificationService } from "./notificationService";
+import { AuditService } from "./auditService";
+import { NotificationService } from "./notificationService";
 
 // Request interfaces for warehouse scope management
 export interface UserWarehouseScopeRequest {
@@ -96,8 +93,12 @@ export interface PermissionAuditEntry {
  */
 class UserWarehouseScopesService {
   private static instance: UserWarehouseScopesService;
+  private auditService: AuditService;
+  private notificationService: NotificationService;
 
   private constructor() {
+    this.auditService = AuditService.getInstance();
+    this.notificationService = NotificationService.getInstance();
     console.log("UserWarehouseScopesService initialized for Stage 8 warehouse-level permissions");
   }
 
@@ -152,7 +153,7 @@ class UserWarehouseScopesService {
       }
 
       // Create audit log
-      await auditService.logOperation(
+      await this.auditService.logOperation(
         {
           userId: grantedBy,
           userName: 'Warehouse Administrator',
@@ -175,14 +176,12 @@ class UserWarehouseScopesService {
       );
 
       // Send notification to the user
-      await notificationService.sendNotification({
+      await this.notificationService.sendNotification({
         userId: request.userId,
+        type: 'permission_granted',
         title: 'Warehouse Access Granted',
         message: `You have been granted access to warehouse ${request.warehouseCode}`,
-        alertType: 'operational_alert',
-        alertCategory: 'system_health',
-        priority: 'medium',
-        channels: ['in_app']
+        data: { warehouseCode: request.warehouseCode, scopeId }
       });
 
       return scopeId;
@@ -219,7 +218,7 @@ class UserWarehouseScopesService {
       }
 
       // Create audit log
-      await auditService.logOperation(
+      await this.auditService.logOperation(
         {
           userId: revokedBy,
           userName: 'Warehouse Administrator',
@@ -242,14 +241,12 @@ class UserWarehouseScopesService {
       );
 
       // Send notification to the user
-      await notificationService.sendNotification({
+      await this.notificationService.sendNotification({
         userId: userId,
+        type: 'permission_revoked',
         title: 'Warehouse Access Revoked',
         message: `Your access to warehouse ${warehouseCode} has been revoked${reason ? `: ${reason}` : ''}`,
-        alertType: 'operational_alert',
-        alertCategory: 'system_health',
-        priority: 'high',
-        channels: ['in_app', 'email']
+        data: { warehouseCode, reason }
       });
     } catch (error) {
       console.error("Error revoking warehouse scope:", error);
@@ -468,7 +465,7 @@ class UserWarehouseScopesService {
       }
 
       // Create audit log for bulk operation
-      await auditService.logOperation(
+      await this.auditService.logOperation(
         {
           userId: managedBy,
           userName: 'Warehouse Administrator',
@@ -541,7 +538,7 @@ class UserWarehouseScopesService {
 
         if (!hasAccess) {
           // Log access denial
-          await auditService.logOperation(
+          await this.auditService.logOperation(
             {
               userId,
               userName: 'System',

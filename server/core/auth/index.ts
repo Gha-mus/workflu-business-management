@@ -28,7 +28,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   return provider.isAuthenticated(req, res, next);
 };
 
-export const requireRole = (allowedRoles: Array<'admin' | 'finance' | 'purchasing' | 'warehouse' | 'sales' | 'worker'>): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
+export const requireRole = (allowedRoles: string[]): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.requireRole(allowedRoles)(req, res, next);
 };
