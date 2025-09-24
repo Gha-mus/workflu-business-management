@@ -2440,6 +2440,13 @@ export type NotificationTemplate = typeof notificationTemplates.$inferSelect;
 export type InsertNotificationTemplate = z.infer<typeof insertNotificationTemplateSchema>;
 export type UpdateNotificationTemplate = z.infer<typeof updateNotificationTemplateSchema>;
 
+// ===== REVENUE MANAGEMENT FILTER TYPE EXPORTS =====
+
+// Revenue management filter types
+export type RevenueLedgerFilter = z.infer<typeof revenueLedgerFilterSchema>;
+export type WithdrawalRecordFilter = z.infer<typeof withdrawalRecordFilterSchema>;
+export type ReinvestmentFilter = z.infer<typeof reinvestmentFilterSchema>;
+
 // ===== FINAL NOTIFICATION AND FILTERING SCHEMAS =====
 
 // Notification history filter schema
@@ -2546,7 +2553,49 @@ export const updateApiKeySchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+// ===== NOTIFICATION SYSTEM SCHEMAS =====
+
+// Notification settings schemas
+export const insertNotificationSettingSchema = z.object({
+  userId: z.string().min(1),
+  emailEnabled: z.boolean().default(true),
+  smsEnabled: z.boolean().default(false),
+  inAppEnabled: z.boolean().default(true),
+  criticalAlertsOnly: z.boolean().default(false),
+});
+
+export const updateNotificationSettingSchema = z.object({
+  emailEnabled: z.boolean().optional(),
+  smsEnabled: z.boolean().optional(),
+  inAppEnabled: z.boolean().optional(),
+  criticalAlertsOnly: z.boolean().optional(),
+});
+
+// Notification queue schemas
+export const insertNotificationQueueSchema = z.object({
+  userId: z.string().min(1),
+  type: z.string().min(1),
+  channel: z.enum(['email', 'sms', 'in_app']),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).default('normal'),
+  scheduledFor: z.string().optional(),
+});
+
 // ===== FINAL FILTER SCHEMAS =====
+
+// Notification queue filter schema  
+export const notificationQueueFilterSchema = z.object({
+  status: z.string().optional(),
+  type: z.string().optional(),
+  priority: z.string().optional(),
+  channel: z.string().optional(),
+  userId: z.string().optional(),
+  search: z.string().optional(),
+  limit: z.number().default(50),
+  offset: z.number().default(0),
+});
+
 
 // Notification template filter schema
 export const notificationTemplateFilterSchema = z.object({
@@ -2579,6 +2628,56 @@ export const auditLogFilterSchema = z.object({
   offset: z.number().default(0),
 });
 
+// ===== REVENUE MANAGEMENT FILTER SCHEMAS =====
+
+// Revenue ledger filter schema
+export const revenueLedgerFilterSchema = z.object({
+  type: z.string().optional(),
+  customerId: z.string().optional(),
+  salesOrderId: z.string().optional(),
+  currency: z.string().optional(),
+  amountFrom: z.string().optional(),
+  amountTo: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  reference: z.string().optional(),
+  search: z.string().optional(),
+  limit: z.number().default(50),
+  offset: z.number().default(0),
+});
+
+// Withdrawal record filter schema
+export const withdrawalRecordFilterSchema = z.object({
+  currency: z.string().optional(),
+  amountFrom: z.string().optional(),
+  amountTo: z.string().optional(),
+  withdrawalReason: z.string().optional(),
+  paymentMethod: z.string().optional(),
+  bankAccount: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  reference: z.string().optional(),
+  search: z.string().optional(),
+  limit: z.number().default(50),
+  offset: z.number().default(0),
+});
+
+// Reinvestment filter schema
+export const reinvestmentFilterSchema = z.object({
+  reinvestmentType: z.string().optional(),
+  currency: z.string().optional(),
+  amountFrom: z.string().optional(),
+  amountTo: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  description: z.string().optional(),
+  expectedROIFrom: z.string().optional(),
+  expectedROITo: z.string().optional(),
+  search: z.string().optional(),
+  limit: z.number().default(50),
+  offset: z.number().default(0),
+});
+
 // Performance tracking schemas
 export const systemPerformanceMetricsSchema = z.object({
   period: z.enum(['last_hour', 'last_day', 'last_week', 'last_month']).default('last_day'),
@@ -2597,6 +2696,421 @@ export const reinvestmentApprovalSchema = z.object({
   approvedAt: z.string().optional(),
 });
 
+// Withdrawal approval schema
+export const withdrawalApprovalSchema = z.object({
+  withdrawalId: z.string().min(1, 'Withdrawal ID is required'),
+  approved: z.boolean(),
+  approvedAmount: z.string().optional(),
+  approvalNotes: z.string().optional(),
+  conditions: z.string().optional(),
+  approvedAt: z.string().optional(),
+});
+
+// Warehouse cost correction schema
+export const warehouseCostCorrectionSchema = z.object({
+  warehouseStockId: z.string().min(1, 'Warehouse stock ID is required'),
+  newCostPerKg: z.string().min(1, 'New cost per kg is required'),
+  reason: z.string().min(1, 'Reason for correction is required'),
+  adjustmentAmount: z.string().optional(),
+  approvedBy: z.string().optional(),
+});
+
+// Warehouse cost validation schema
+export const warehouseCostValidationSchema = z.object({
+  warehouseStockId: z.string().min(1, 'Warehouse stock ID is required'),
+  expectedCostPerKg: z.string().min(1, 'Expected cost per kg is required'),
+  actualCostPerKg: z.string().min(1, 'Actual cost per kg is required'),
+  tolerance: z.number().default(0.05), // 5% tolerance
+});
+
+// Commission calculation schema
+export const commissionCalculationSchema = z.object({
+  shipmentLegId: z.string().min(1, 'Shipment leg ID is required'),
+  calculationType: z.enum(['percentage', 'fixed', 'tiered']).default('percentage'),
+  commissionRate: z.number().min(0).max(1),
+  baseCostUsd: z.string().min(1, 'Base cost is required'),
+  minimumCommission: z.number().optional(),
+  maximumCommission: z.number().optional(),
+});
+
+// Landed cost calculation schema  
+export const landedCostCalculationSchema = z.object({
+  shipmentId: z.string().min(1, 'Shipment ID is required'),
+  includeCommission: z.boolean().default(true),
+  includeLandingCosts: z.boolean().default(true),
+  includeStorage: z.boolean().default(true),
+  forceRecalculation: z.boolean().default(false),
+});
+
+// Inspection schema
+export const inspectionSchema = z.object({
+  shipmentId: z.string().min(1, 'Shipment ID is required'),
+  inspectionType: z.string().min(1, 'Inspection type is required'),
+  inspector: z.string().min(1, 'Inspector is required'),
+  inspectionDate: z.string().min(1, 'Inspection date is required'),
+  qualityGrade: z.enum(['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']).optional(),
+  notes: z.string().optional(),
+  defectsFound: z.array(z.string()).optional(),
+});
+
+// Inspection settlement schema
+export const inspectionSettlementSchema = z.object({
+  inspectionId: z.string().min(1, 'Inspection ID is required'),
+  settlementType: z.enum(['accepted', 'rejected', 'conditional']),
+  acceptedWeightKg: z.number().min(0).optional(),
+  rejectedWeightKg: z.number().min(0).optional(),
+  priceAdjustment: z.number().optional(),
+  conditions: z.string().optional(),
+  settlementNotes: z.string().optional(),
+});
+
+// Operating expense categories table (missing)
+export const operatingExpenseCategories = pgTable("operating_expense_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert operating expense category schema
+export const insertOperatingExpenseCategorySchema = createInsertSchema(operatingExpenseCategories).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Operating expenses table (missing)
+export const operatingExpenses = pgTable("operating_expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").notNull().references(() => operatingExpenseCategories.id),
+  description: text("description").notNull(),
+  amount: decimal("amount").notNull(),
+  currency: varchar("currency").notNull().default('USD'),
+  date: timestamp("date").notNull(),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Supply inventory table (missing)
+export const supplyInventory = pgTable("supply_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  supplyId: varchar("supply_id").notNull(),
+  quantityOnHand: decimal("quantity_on_hand").notNull().default('0'),
+  unitCost: decimal("unit_cost").notNull(),
+  lastRestocked: timestamp("last_restocked"),
+  lowStockThreshold: decimal("low_stock_threshold").default('10'),
+  location: varchar("location"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Supply purchases table (missing)
+export const supplyPurchases = pgTable("supply_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  supplyId: varchar("supply_id").notNull(),
+  quantity: decimal("quantity").notNull(),
+  unitCost: decimal("unit_cost").notNull(),
+  totalCost: decimal("total_cost").notNull(),
+  supplier: varchar("supplier").notNull(),
+  purchaseDate: timestamp("purchase_date").notNull(),
+  receivedDate: timestamp("received_date"),
+  status: varchar("status").notNull().default('pending'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Documents table (missing)
+export const documents = pgTable("documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fileName: varchar("file_name").notNull(),
+  fileType: varchar("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  uploadPath: varchar("upload_path").notNull(),
+  uploadedBy: varchar("uploaded_by").notNull().references(() => users.id),
+  entityType: varchar("entity_type"),
+  entityId: varchar("entity_id"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Notification queue table (missing)
+export const notificationQueue = pgTable("notification_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: varchar("type").notNull(),
+  channel: varchar("channel").notNull(),
+  subject: varchar("subject").notNull(),
+  body: text("body").notNull(),
+  priority: varchar("priority").notNull().default('normal'),
+  status: varchar("status").notNull().default('pending'),
+  scheduledFor: timestamp("scheduled_for"),
+  sentAt: timestamp("sent_at"),
+  failureReason: text("failure_reason"),
+  retryCount: integer("retry_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sales returns table (missing)
+export const salesReturns = pgTable("sales_returns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  originalSaleId: varchar("original_sale_id").notNull(),
+  returnReason: text("return_reason").notNull(),
+  returnedQuantityKg: decimal("returned_quantity_kg").notNull(),
+  refundAmount: decimal("refund_amount").notNull(),
+  returnStatus: varchar("return_status").notNull().default('pending'),
+  processedBy: varchar("processed_by").references(() => users.id),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ===== RESPONSE TYPES =====
+// These types are used for API responses and frontend data consumption
+
+// Orders Response - Comprehensive order data with related information
+export interface OrdersResponse {
+  orders: Order[];
+  totalCount: number;
+  totalValueUsd: number;
+  statusSummary: Record<string, number>;
+  pagination?: {
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+// Financial Summary Response - Aggregated financial metrics
+export interface FinancialSummaryResponse {
+  totalCapital: number;
+  totalInvestments: number;
+  totalWithdrawals: number;
+  netPosition: number;
+  currency: string;
+  period: string;
+  metrics: FinancialMetric[];
+  periodComparison?: {
+    previousPeriod: number;
+    percentageChange: number;
+  };
+}
+
+// Trading Activity Response - Trading and purchase activity overview
+export interface TradingActivityResponse {
+  totalPurchases: number;
+  totalSales: number;
+  totalVolume: number;
+  totalValueUsd: number;
+  recentPurchases: Purchase[];
+  recentSales: SalesOrder[];
+  metrics: {
+    averagePurchasePrice: number;
+    averageSalePrice: number;
+    profitMargin: number;
+    volumeTrend: string;
+  };
+}
+
+// Settings Response - System configuration data
+export interface SettingsResponse {
+  settings: Setting[];
+  categories: Record<string, Setting[]>;
+  numberingSchemes: NumberingScheme[];
+  systemInfo: {
+    version: string;
+    lastUpdated: string;
+    criticalSettingsCount: number;
+  };
+}
+
+// Capital Entries Response - Capital movement data
+export interface CapitalEntriesResponse {
+  entries: CapitalEntry[];
+  totalCount: number;
+  summary: {
+    totalCapitalIn: number;
+    totalCapitalOut: number;
+    netCapital: number;
+    currency: string;
+  };
+  byType: Record<string, number>;
+  pagination?: {
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+// Purchases Response - Purchase data with supplier information
+export interface PurchasesResponse {
+  purchases: (Purchase & {
+    supplier: Supplier;
+    order?: Order;
+    payments: PurchasePayment[];
+  })[];
+  totalCount: number;
+  summary: {
+    totalAmount: number;
+    totalPaid: number;
+    totalRemaining: number;
+    currency: string;
+  };
+  byStatus: Record<string, number>;
+  bySupplier: Record<string, { count: number; totalAmount: number }>;
+}
+
+// Suppliers Response - Supplier data with quality metrics
+export interface SuppliersResponse {
+  suppliers: (Supplier & {
+    recentPurchases: Purchase[];
+    qualityAssessments: SupplierQualityAssessment[];
+    statistics: {
+      totalPurchases: number;
+      totalAmount: number;
+      averageQualityScore: number;
+      lastPurchaseDate: string | null;
+    };
+  })[];
+  totalCount: number;
+  qualitySummary: Record<string, number>;
+  countryDistribution: Record<string, number>;
+}
+
+// Document Search Response - Document search results
+export interface DocumentSearchResponse {
+  documents: DocumentWithMetadata[];
+  totalCount: number;
+  facets: {
+    types: Record<string, number>;
+    categories: Record<string, number>;
+    entities: Record<string, number>;
+  };
+  searchMetadata: {
+    query: string;
+    took: number;
+    maxScore: number;
+  };
+}
+
+// Capital Balance Response - Current capital position
+export interface CapitalBalanceResponse {
+  currentBalance: number;
+  availableBalance: number;
+  pendingTransactions: number;
+  currency: string;
+  breakdown: {
+    capitalIn: number;
+    capitalOut: number;
+    reversals: number;
+    reclassifications: number;
+  };
+  recentEntries: CapitalEntry[];
+  projections?: {
+    nextMonth: number;
+    nextQuarter: number;
+  };
+}
+
+// Document with Metadata - Enhanced document type
+export interface DocumentWithMetadata {
+  id: string;
+  title: string;
+  type: string;
+  category: string;
+  filePath: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  uploadPath: string;
+  uploadedBy: string;
+  entityType?: string;
+  entityId?: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  metadata?: {
+    pageCount?: number;
+    wordCount?: number;
+    extractedText?: string;
+    tags?: string[];
+    ai_analysis?: {
+      summary: string;
+      entities: string[];
+      sentiment: string;
+      confidence: number;
+    };
+  };
+}
+
+// Document Analytics - Document usage and analytics
+export interface DocumentAnalytics {
+  totalDocuments: number;
+  documentsByType: Record<string, number>;
+  documentsByCategory: Record<string, number>;
+  recentUploads: DocumentWithMetadata[];
+  storageStats: {
+    totalSize: number;
+    averageSize: number;
+    largestDocument: number;
+  };
+  usage: {
+    uploadsThisMonth: number;
+    viewsThisMonth: number;
+    downloadsThisMonth: number;
+  };
+}
+
+// Compliance Dashboard - Compliance monitoring overview
+export interface ComplianceDashboard {
+  overallScore: number;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  alerts: ComplianceAlert[];
+  metrics: {
+    pendingApprovals: number;
+    overdueApprovals: number;
+    completedAudits: number;
+    openIssues: number;
+  };
+  trends: {
+    complianceScoreHistory: Array<{ date: string; score: number }>;
+    alertFrequency: Array<{ period: string; count: number }>;
+  };
+  categories: Record<string, {
+    score: number;
+    status: 'compliant' | 'warning' | 'violation';
+    lastReview: string;
+  }>;
+}
+
+// Compliance Alert - Individual compliance alert
+export interface ComplianceAlert {
+  id: string;
+  type: 'approval_overdue' | 'policy_violation' | 'data_inconsistency' | 'system_issue';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  description: string;
+  entityType?: string;
+  entityId?: string;
+  affectedArea: string;
+  recommendedAction: string;
+  status: 'open' | 'acknowledged' | 'resolved' | 'dismissed';
+  createdAt: Date;
+  resolvedAt?: Date;
+  assignedTo?: string;
+  metadata?: {
+    ruleId?: string;
+    threshold?: number;
+    actualValue?: number;
+    context?: Record<string, any>;
+  };
+}
+
 // Final comprehensive export verification
 // This comprehensive schema file now includes all the following:
 // - Core business entities (purchases, shipping, inventory, customers, suppliers)
@@ -2606,3 +3120,4 @@ export const reinvestmentApprovalSchema = z.object({
 // - Alert and reporting systems
 // - User management and authentication
 // - System administration and monitoring
+// - Response types for API endpoints and frontend consumption

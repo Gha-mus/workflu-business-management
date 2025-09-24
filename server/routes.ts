@@ -151,7 +151,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/auth/user', isAuthenticated, async (req, res: Response) => {
     const authReq = req as AuthenticatedRequest;
     try {
       const userId = authReq.user.id;
@@ -170,7 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User management routes (admin only)
-  app.get('/api/users', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/users', requireRole(['admin']), async (req, res: Response) => {
     try {
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
@@ -180,7 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/users/:id/role', requireRole(['admin']), approvalMiddleware.userRoleChange, async (req: AuthenticatedRequest, res: Response) => {
+  app.patch('/api/users/:id/role', requireRole(['admin']), approvalMiddleware.userRoleChange, async (req, res: Response) => {
     try {
       const { id } = req.params;
       const roleUpdateSchema = z.object({
@@ -202,7 +202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================================
 
   // Get approval statistics for dashboard
-  app.get('/api/approvals/statistics', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/statistics', isAuthenticated, async (req, res: Response) => {
     const authReq = req as AuthenticatedRequest;
     try {
       const userId = authReq.user.id;
@@ -236,7 +236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get pending approval requests for current user (as approver)
-  app.get('/api/approvals/pending', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/pending', isAuthenticated, async (req, res: Response) => {
     try {
       const userId = req.user.id;
       const { operationType, priority, limit = '50', offset = '0' } = req.query;
@@ -256,7 +256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval requests submitted by current user
-  app.get('/api/approvals/my-requests', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/my-requests', isAuthenticated, async (req, res: Response) => {
     try {
       const userId = req.user.id;
       const { status, operationType, limit = '50', offset = '0' } = req.query;
@@ -280,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ]);
         
         approvals = [...pending, ...approved, ...rejected, ...escalated]
-          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+          .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime())
           .slice(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string));
       }
 
@@ -292,7 +292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval history/all approvals (admin/manager view)
-  app.get('/api/approvals/history', requireRole(['admin', 'finance', 'purchasing']), async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/history', requireRole(['admin', 'finance', 'purchasing']), async (req, res: Response) => {
     try {
       const { status = 'all', operationType, userId, limit = '100', offset = '0' } = req.query;
       
@@ -316,7 +316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ]);
         
         approvals = [...pending, ...approved, ...rejected, ...escalated, ...cancelled]
-          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+          .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime())
           .slice(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string));
       }
 
@@ -328,7 +328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Process approval decision (approve, reject, escalate, delegate)
-  app.post('/api/approvals/:id/decision', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/approvals/:id/decision', isAuthenticated, async (req, res: Response) => {
     try {
       const { id } = req.params;
       const userId = req.user.id;
@@ -374,7 +374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create approval request manually (for exceptional cases)
-  app.post('/api/approvals/requests', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/approvals/requests', isAuthenticated, async (req, res: Response) => {
     try {
       const userId = req.user.id;
       
@@ -396,7 +396,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         requestedBy: userId,
         currency: requestData.currency || 'USD',
         operationType: requestData.operationType,
-        priority: requestData.priority || 'normal'
+        priority: requestData.priority || 'normal',
+        operationData: requestData.operationData || {}
       };
       const approvalRequest = await approvalWorkflowService.createApprovalRequest(approvalRequestData, auditContext);
       
@@ -415,7 +416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get specific approval request details
-  app.get('/api/approvals/requests/:id', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/requests/:id', isAuthenticated, async (req, res: Response) => {
     try {
       const { id } = req.params;
       
@@ -446,7 +447,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Check if operation requires approval
-  app.post('/api/approvals/check-requirement', isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/approvals/check-requirement', isAuthenticated, async (req, res: Response) => {
     try {
       const userId = req.user.id;
       
@@ -481,9 +482,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currency,
         approvalChain: approvalChain ? {
           id: approvalChain.id,
-          name: approvalChain.name,
-          requiredRoles: approvalChain.requiredRoles,
-          estimatedTime: approvalChain.estimatedTimeHours ? `${approvalChain.estimatedTimeHours} hours` : 'Variable'
+          name: approvalChain.chainName,
+          requiredRoles: approvalChain.roleRestrictions,
+          estimatedTime: approvalChain.escalateAfterHours ? `${approvalChain.escalateAfterHours} hours` : 'Variable'
         } : null
       });
     } catch (error) {
@@ -493,7 +494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval chains configuration (admin only)
-  app.get('/api/approvals/chains', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/chains', requireRole(['admin']), async (req, res: Response) => {
     try {
       const chains = await storage.getApprovalChains();
       res.json(chains);
@@ -504,7 +505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // CRITICAL SECURITY ENDPOINT: Get approval chain coverage diagnostics (admin only)
-  app.get('/api/approvals/diagnostics', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/approvals/diagnostics', requireRole(['admin']), async (req, res: Response) => {
     try {
       console.log("🔍 Admin requested approval chain diagnostics");
 
