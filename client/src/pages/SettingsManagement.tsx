@@ -535,8 +535,8 @@ export default function SettingsManagement() {
       setSelectedSetting(null);
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to update setting', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to update setting', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -553,8 +553,8 @@ export default function SettingsManagement() {
       setShowSnapshotDialog(false);
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to create snapshot', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to create snapshot', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -568,8 +568,8 @@ export default function SettingsManagement() {
     onSuccess: (data) => {
       toast({ title: 'Entity number generated successfully!', description: `Generated: ${data.entityNumber}` });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to generate number', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to generate number', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -586,8 +586,8 @@ export default function SettingsManagement() {
         description: `${data.amountETB} ETB = ${data.amountUSD} USD (Rate: ${data.exchangeRate})`
       });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to convert currency', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to convert currency', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 

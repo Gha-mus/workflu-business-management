@@ -303,8 +303,8 @@ export default function WarehouseOperations() {
       queryClient.invalidateQueries({ queryKey: ['/api/warehouse/inventory-adjustments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/warehouse/stock'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to create adjustment', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to create adjustment', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -320,8 +320,8 @@ export default function WarehouseOperations() {
       transferForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/warehouse/stock-transfers'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to create transfer', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to create transfer', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -337,8 +337,8 @@ export default function WarehouseOperations() {
       processingForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/warehouse/processing-operations'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to create operation', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to create operation', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -354,8 +354,8 @@ export default function WarehouseOperations() {
       inspectionForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/warehouse/stock'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to create inspection', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to create inspection', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 

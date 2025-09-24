@@ -125,10 +125,10 @@ function Users() {
       setNewUserDisplayName("");
       setNewUserRole("worker");
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Creation Failed",
-        description: error.message || "Failed to create user. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to create user. Please try again.",
         variant: "destructive",
       });
     },
@@ -173,10 +173,10 @@ function Users() {
         description: `User has been ${activate ? "activated" : "deactivated"} successfully.`,
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Update Failed",
-        description: error.message || "Failed to update user status.",
+        description: error instanceof Error ? error.message : "Failed to update user status.",
         variant: "destructive",
       });
     },
@@ -193,10 +193,10 @@ function Users() {
         description: "Password reset email sent successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Reset Failed",
-        description: error.message || "Failed to send password reset email.",
+        description: error instanceof Error ? error.message : "Failed to send password reset email.",
         variant: "destructive",
       });
     },
@@ -218,10 +218,10 @@ function Users() {
         description: "User display name updated successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Update Failed",
-        description: error.message || "Failed to update display name.",
+        description: error instanceof Error ? error.message : "Failed to update display name.",
         variant: "destructive",
       });
     },
@@ -270,11 +270,11 @@ function Users() {
       setSoftDeleteUser(null);
       setForceDeleteOption(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       // Parse the error response
       let errorData: any = null;
       
-      if (error.message) {
+      if (error instanceof Error && error.message) {
         try {
           // Try to extract JSON from error message
           const jsonPart = error.message.substring(error.message.indexOf('{'));

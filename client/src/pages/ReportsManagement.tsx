@@ -332,8 +332,8 @@ export default function ReportsManagement() {
       exportForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/export-jobs'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to submit export request', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to submit export request', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
@@ -349,8 +349,8 @@ export default function ReportsManagement() {
       scheduledReportForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/export-jobs'] });
     },
-    onError: (error: any) => {
-      toast({ title: 'Failed to create scheduled report', description: error.message, variant: 'destructive' });
+    onError: (error: unknown) => {
+      toast({ title: 'Failed to create scheduled report', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }
   });
 
