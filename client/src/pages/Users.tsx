@@ -244,14 +244,15 @@ function Users() {
       const deletedUser = users?.find(u => u.id === userId);
       
       // Handle success based on mode
-      if (data.success) {
+      const responseData = data as any;
+      if (responseData?.success) {
         let message = "";
-        if (data.mode === "hard") {
+        if (responseData?.mode === "hard") {
           message = "User deleted successfully";
-        } else if (data.mode === "soft") {
+        } else if (responseData?.mode === "soft") {
           message = "User account deactivated due to existing business records";
         } else {
-          message = data.message || "User removed from the system";
+          message = responseData?.message || "User removed from the system";
         }
         
         toast({
@@ -261,7 +262,7 @@ function Users() {
         });
       } else {
         // Handle structured error response even in onSuccess (shouldn't happen but just in case)
-        handleDeleteError(data);
+        handleDeleteError(responseData);
       }
       
       setDeleteUserOpen(false);

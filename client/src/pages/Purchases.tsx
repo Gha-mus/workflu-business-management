@@ -215,7 +215,7 @@ export default function Purchases() {
     onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
-        : error?.message || error?.toString() || "Failed to create purchase";
+        : (error instanceof Error ? error.message : String(error)) || "Failed to create purchase";
       toast({
         title: "Error",
         description: errorMessage,
@@ -243,7 +243,7 @@ export default function Purchases() {
     onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
-        : error?.message || error?.toString() || "Failed to record payment";
+        : (error instanceof Error ? error.message : String(error)) || "Failed to record payment";
       toast({
         title: "Error",
         description: errorMessage,
@@ -280,7 +280,7 @@ export default function Purchases() {
     onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
-        : error?.message || error?.toString() || "Failed to update purchase";
+        : (error instanceof Error ? error.message : String(error)) || "Failed to update purchase";
       toast({
         title: "Error",
         description: errorMessage,
@@ -300,7 +300,7 @@ export default function Purchases() {
     onError: (error: unknown) => {
       const errorMessage = typeof error === 'string' 
         ? error 
-        : error?.message || error?.toString() || "Failed to cancel purchase";
+        : (error instanceof Error ? error.message : String(error)) || "Failed to cancel purchase";
       toast({
         title: "Error",
         description: errorMessage,
