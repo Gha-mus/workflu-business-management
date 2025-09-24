@@ -39,6 +39,7 @@ warehouseRouter.post("/stock",
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = insertWarehouseStockSchema.parse(req.body);
       const stock = await storage.createWarehouseStock({
@@ -73,6 +74,7 @@ warehouseRouter.post("/filter",
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = warehouseFilterOperationSchema.parse(req.body);
       const result = await storage.filterWarehouseStock(validatedData);
@@ -104,6 +106,7 @@ warehouseRouter.post("/move-to-final",
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = warehouseMoveToFinalSchema.parse(req.body);
       const result = await storage.moveToFinalWarehouse(validatedData);
@@ -164,6 +167,7 @@ warehouseRouter.post("/validate-cost-redistribution",
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = warehouseCostValidationSchema.parse(req.body);
       const { orderId } = validatedData;
@@ -213,6 +217,7 @@ warehouseRouter.post("/auto-correct-cost-redistribution",
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = warehouseCostCorrectionSchema.parse(req.body);
       const { orderId } = validatedData;
