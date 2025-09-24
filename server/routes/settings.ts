@@ -30,15 +30,25 @@ settingsRouter.post("/",
       const setting = await storage.updateSetting(validatedData);
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "UPDATE",
-        entityType: "setting",
-        entityId: setting.key,
-        description: `Updated setting: ${setting.key} = ${setting.value}`,
-        previousState: null,
-        newState: setting
-      });
+      await auditService.logOperation(
+        {
+          userId: req.user!.id,
+          userName: 'System',
+          userRole: 'admin',
+          source: 'settings_api',
+          severity: 'info',
+          businessContext: `Updated setting: ${setting.key}`
+        },
+        {
+          entityType: 'settings',
+          entityId: setting.key,
+          action: 'update',
+          operationType: 'system_setting_change',
+          description: `Updated setting: ${setting.key} = ${setting.value}`,
+          oldValues: undefined,
+          newValues: setting
+        }
+      );
 
       // Clear configuration cache for this setting
       await configurationService.clearCache(setting.key);
@@ -114,7 +124,7 @@ settingsRouter.post("/exchange-rates/admin-update",
           userName: 'Admin',
           userRole: 'admin',
           source: 'admin_exchange_rate_update',
-          severity: 'high',
+          severity: 'critical',
           businessContext: `Admin direct exchange rate update to ${exchangeRate} (bypassed approval)`
         },
         {
@@ -170,15 +180,25 @@ settingsRouter.post("/exchange-rates/update",
       });
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "UPDATE",
-        entityType: "setting",
-        entityId: "USD_ETB_RATE",
-        description: `Updated USD/ETB exchange rate to ${rate}`,
-        previousState: null,
-        newState: { rate }
-      });
+      await auditService.logOperation(
+        {
+          userId: req.user!.id,
+          userName: 'System',
+          userRole: 'admin',
+          source: 'settings_api',
+          severity: 'info',
+          businessContext: `Updated USD/ETB exchange rate to ${rate}`
+        },
+        {
+          entityType: 'settings',
+          entityId: 'USD_ETB_RATE',
+          action: 'update',
+          operationType: 'system_setting_change',
+          description: `Updated USD/ETB exchange rate to ${rate}`,
+          oldValues: undefined,
+          newValues: { rate }
+        }
+      );
 
       // Clear configuration cache
       await configurationService.clearCache("USD_ETB_RATE");

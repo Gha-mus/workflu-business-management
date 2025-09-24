@@ -64,7 +64,7 @@ export const reinvestmentAllocationPolicyEnum = pgEnum('reinvestment_allocation_
   'aggregate', 'pro_rata', 'specified'
 ]);
 export const auditActionEnum = pgEnum('audit_action', [
-  'create', 'update', 'delete', 'view', 'approve', 'reject', 'login', 'logout', 'export', 'import'
+  'create', 'update', 'delete', 'view', 'approve', 'reject', 'login', 'logout', 'export', 'import', 'validate', 'auto_correct', 'password_reset_failed'
 ]);
 export const permissionScopeEnum = pgEnum('permission_scope', [
   'system', 'module', 'operation', 'record', 'field'

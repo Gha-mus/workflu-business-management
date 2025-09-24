@@ -23,20 +23,34 @@ exportRouter.post("/create", isAuthenticated, async (req, res) => {
   try {
     const validatedData = exportTypeSchema.parse(req.body);
     const exportRecord = await exportService.createExport({
-      ...validatedData,
-      userId: req.user!.id
+      userId: req.user!.id,
+      exportType: validatedData.type,
+      format: validatedData.format,
+      dateRange: (validatedData as any).dateRange,
+      filters: (validatedData as any).filters,
+      preferences: (validatedData as any).preferences
     });
 
     // Create audit log
-    await auditService.logAction({
-      userId: req.user!.id,
-      action: "CREATE",
-      entityType: "export_request",
-      entityId: exportRecord.id,
-      description: `Created export request: ${exportRecord.exportType}`,
-      previousState: null,
-      newState: exportRecord
-    });
+    await auditService.logOperation(
+      {
+        userId: req.user!.id,
+        userName: 'System',
+        userRole: 'admin',
+        source: 'export_api',
+        severity: 'info',
+        businessContext: `Created export request: ${exportRecord.exportType}`
+      },
+      {
+        entityType: 'export_history',
+        entityId: exportRecord.id,
+        action: 'create',
+        operationType: 'export_request_create',
+        description: `Created export request: ${exportRecord.exportType}`,
+        oldValues: undefined,
+        newValues: exportRecord
+      }
+    );
 
     res.status(201).json(exportRecord);
   } catch (error) {
@@ -61,7 +75,8 @@ exportRouter.get("/download/:id", isAuthenticated, async (req, res) => {
 exportRouter.get("/status/:id", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const status = await storage.getExportStatus(id);
+    const exportJob = await storage.getExportJob(id);
+    const status = { status: exportJob?.status || 'not_found', exportJob };
     res.json(status);
   } catch (error) {
     console.error("Error fetching export status:", error);
@@ -81,15 +96,25 @@ exportRouter.post("/schedule",
       });
 
       // Create audit log
-      await auditService.logAction({
-        userId: req.user!.id,
-        action: "CREATE",
-        entityType: "export_schedule",
-        entityId: job.id,
-        description: `Scheduled export: ${job.exportType}`,
-        previousState: null,
-        newState: job
-      });
+      await auditService.logOperation(
+        {
+          userId: req.user!.id,
+          userName: 'System',
+          userRole: 'admin',
+          source: 'export_api',
+          severity: 'info',
+          businessContext: `Scheduled export: ${job.exportType}`
+        },
+        {
+          entityType: 'export_jobs',
+          entityId: job.id,
+          action: 'create',
+          operationType: 'export_schedule_create',
+          description: `Scheduled export: ${job.exportType}`,
+          oldValues: undefined,
+          newValues: job
+        }
+      );
 
       res.status(201).json(job);
     } catch (error) {

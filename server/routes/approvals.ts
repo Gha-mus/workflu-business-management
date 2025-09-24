@@ -33,7 +33,7 @@ approvalsRouter.post("/requests",
       });
 
       // Create audit log
-      await auditService.logAction({
+      await auditService.logOperation({
         userId: authReq.user.id,
         action: "CREATE",
         entityType: "approval_request",
@@ -68,7 +68,7 @@ approvalsRouter.post("/requests/:id/decision",
       );
 
       // Create audit log
-      await auditService.logAction({
+      await auditService.logOperation({
         userId: authReq.user.id,
         action: "UPDATE",
         entityType: "approval_request",
@@ -107,7 +107,7 @@ approvalsRouter.get("/pending",
   async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     try {
-      const pending = await approvalWorkflowService.getPendingApprovalsForUser(authReq.user.id);
+      const pending = await approvalWorkflowService.getPendingApprovals(authReq.user.id);
       res.json(pending);
     } catch (error) {
       console.error("Error fetching pending approvals:", error);

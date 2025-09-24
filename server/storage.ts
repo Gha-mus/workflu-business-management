@@ -787,6 +787,7 @@ export interface IStorage {
 
   // Approval chain operations
   getApprovalChains(): Promise<ApprovalChain[]>;
+  getApprovalRequests(): Promise<ApprovalRequest[]>;
   createApprovalChain(chain: InsertApprovalChain, auditContext?: AuditContext): Promise<ApprovalChain>;
   updateApprovalChain(id: string, updates: Partial<InsertApprovalChain>, auditContext?: AuditContext): Promise<ApprovalChain>;
   
@@ -825,7 +826,9 @@ export interface IStorage {
   updateWarehouseStock(id: string, stock: Partial<InsertWarehouseStock>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
   updateWarehouseStockStatus(id: string, status: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
   executeFilterOperation(purchaseId: string, outputCleanKg: string, outputNonCleanKg: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<{ filterRecord: FilterRecord; updatedStock: WarehouseStock[] }>;
+  filterWarehouseStock(filterData: any): Promise<any>;
   moveStockToFinalWarehouse(stockId: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<WarehouseStock>;
+  moveToFinalWarehouse(moveData: any): Promise<any>;
   
   // Filter operations
   getFilterRecords(): Promise<FilterRecord[]>;
@@ -2051,6 +2054,57 @@ export class DatabaseStorage implements IStorage {
       console.error('Failed to get exchange rate from ConfigurationService:', error);
       throw new Error('Exchange rate not available. Please configure USD_ETB_RATE in settings.');
     }
+  }
+
+  // Approval operations
+  async getApprovalChains(): Promise<ApprovalChain[]> {
+    return await db.select().from(approvalChains).where(eq(approvalChains.isActive, true)).orderBy(desc(approvalChains.priority));
+  }
+
+  async getApprovalRequests(): Promise<ApprovalRequest[]> {
+    return await db.select().from(approvalRequests).orderBy(desc(approvalRequests.submittedAt));
+  }
+
+  async createApprovalChain(chain: InsertApprovalChain, auditContext?: AuditContext): Promise<ApprovalChain> {
+    const [result] = await db.insert(approvalChains).values(chain).returning();
+    
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'approval_chains',
+        result.id,
+        'create',
+        'approval_chain_create',
+        null,
+        result
+      );
+    }
+    
+    return result;
+  }
+
+  async updateApprovalChain(id: string, updates: Partial<InsertApprovalChain>, auditContext?: AuditContext): Promise<ApprovalChain> {
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(approvalChains, id);
+    
+    const [result] = await db
+      .update(approvalChains)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(approvalChains.id, id))
+      .returning();
+    
+    if (auditContext) {
+      await StorageApprovalGuard.auditOperation(
+        auditContext,
+        'approval_chains',
+        result.id,
+        'update',
+        'approval_chain_update',
+        beforeState,
+        result
+      );
+    }
+    
+    return result;
   }
 
   // Supplier operations
@@ -3761,6 +3815,33 @@ export class DatabaseStorage implements IStorage {
     }
     
     return result;
+  }
+
+  async filterWarehouseStock(filterData: any): Promise<any> {
+    // Implementation for filtering warehouse stock based on criteria
+    const conditions = [];
+    
+    if (filterData.warehouse) {
+      conditions.push(eq(warehouseStock.warehouse, filterData.warehouse));
+    }
+    if (filterData.status) {
+      conditions.push(eq(warehouseStock.status, filterData.status));
+    }
+    if (filterData.supplierId) {
+      conditions.push(eq(warehouseStock.supplierId, filterData.supplierId));
+    }
+    
+    return await db
+      .select()
+      .from(warehouseStock)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(warehouseStock.createdAt));
+  }
+
+  async moveToFinalWarehouse(moveData: any): Promise<any> {
+    // Alias for moveStockToFinalWarehouse with simplified interface
+    const { stockId, userId, auditContext, approvalContext } = moveData;
+    return await this.moveStockToFinalWarehouse(stockId, userId, auditContext, approvalContext);
   }
 
   // Filter operations

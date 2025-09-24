@@ -217,7 +217,7 @@ export class ConfigurationService {
           userName: 'ConfigurationService',
           userRole: 'admin', // Changed from 'system' to valid enum value
           source: 'configuration_service',
-          severity: 'normal',
+          severity: 'info',
           businessContext: `Setting ${key} updated from "${oldValue}" to "${value}"`
         },
         {
@@ -226,7 +226,7 @@ export class ConfigurationService {
           action: settingId ? 'update' : 'create',
           operationType: 'system_setting_change',
           description: `Setting ${key} ${settingId ? 'updated' : 'created'} in category ${options.category || 'general'}`,
-          oldValues: oldValue ? { value: oldValue } : null,
+          oldValues: oldValue ? { value: oldValue } : undefined,
           newValues: { 
             value: value,
             category: options.category || 'general',
@@ -435,6 +435,13 @@ export class ConfigurationService {
       this.cachedSettings.clear();
       this.cacheExpiry.clear();
     }
+  }
+
+  /**
+   * Public method to clear cache (for external use)
+   */
+  async clearCache(key?: string): Promise<void> {
+    this.clearSettingCache(key);
   }
 }
 
