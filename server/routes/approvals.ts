@@ -9,7 +9,8 @@ import { insertApprovalRequestSchema } from "@shared/schema";
 export const approvalsRouter = Router();
 
 // GET /api/approvals/requests
-approvalsRouter.get("/requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+approvalsRouter.get("/requests", isAuthenticated, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const requests = await storage.getApprovalRequests();
     res.json(requests);
@@ -22,17 +23,17 @@ approvalsRouter.get("/requests", isAuthenticated, async (req: AuthenticatedReque
 // POST /api/approvals/requests
 approvalsRouter.post("/requests",
   isAuthenticated,
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const validatedData = insertApprovalRequestSchema.parse(req.body);
       const request = await approvalWorkflowService.createApprovalRequest({
         ...validatedData,
-        requestedBy: req.user.id
+        requestedBy: authReq.user.id
       });
 
       // Create audit log
       await auditService.logAction({
-        userId: req.user.id,
+        userId: authReq.user.id,
         action: "CREATE",
         entityType: "approval_request",
         entityId: request.id,
@@ -53,20 +54,20 @@ approvalsRouter.post("/requests",
 approvalsRouter.post("/requests/:id/decision",
   isAuthenticated,
   requireRole(["admin", "finance", "manager"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const { id } = req.params;
       const { decision, comments } = req.body;
 
       const result = await approvalWorkflowService.processApprovalDecision(
         id,
-        req.user.id,
+        authReq.user.id,
         { decision, comments }
       );
 
       // Create audit log
       await auditService.logAction({
-        userId: req.user.id,
+        userId: authReq.user.id,
         action: "UPDATE",
         entityType: "approval_request",
         entityId: id,
@@ -87,7 +88,7 @@ approvalsRouter.post("/requests/:id/decision",
 approvalsRouter.get("/chains",
   isAuthenticated,
   requireRole(["admin"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const chains = await storage.getApprovalChains();
       res.json(chains);
@@ -101,9 +102,9 @@ approvalsRouter.get("/chains",
 // GET /api/approvals/pending
 approvalsRouter.get("/pending",
   isAuthenticated,
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
-      const pending = await approvalWorkflowService.getPendingApprovalsForUser(req.user.id);
+      const pending = await approvalWorkflowService.getPendingApprovalsForUser(authReq.user.id);
       res.json(pending);
     } catch (error) {
       console.error("Error fetching pending approvals:", error);

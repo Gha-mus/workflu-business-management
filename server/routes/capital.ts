@@ -12,7 +12,8 @@ import { configurationService } from "../configurationService";
 export const capitalRouter = Router();
 
 // GET /api/capital/entries
-capitalRouter.get("/entries", isAuthenticated, async (req: AuthenticatedRequest, res, next) => {
+capitalRouter.get("/entries", isAuthenticated, async (req, res, next) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const entries = await storage.getCapitalEntries();
     res.json(entries);
@@ -29,21 +30,20 @@ capitalRouter.post("/entries",
   requireRole(["admin", "finance"]),
   capitalEntryPeriodGuard,
   requireApproval("capital_entry"),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = insertCapitalEntrySchema.parse(req.body);
-      // Stage 1 Compliance: Enforce central FX only - strip any client-provided FX
-      const { exchangeRate: clientFx, ...sanitizedData } = validatedData;
       
       // Get central exchange rate from settings
       const centralExchangeRate = await configurationService.getCentralExchangeRate();
       
       // Stage 1 Compliance: Prevent Negative Balance check for CapitalOut transactions
-      if (sanitizedData.type === 'CapitalOut') {
+      if (validatedData.type === 'CapitalOut') {
         const isNegativeAllowed = await configurationService.isNegativeBalanceAllowed();
         if (!isNegativeAllowed) {
           const currentBalance = await storage.getCapitalBalance();
-          const outAmount = parseFloat(sanitizedData.amount);
+          const outAmount = parseFloat(validatedData.amount);
           if (currentBalance < outAmount) {
             return res.status(400).json({
               message: `Transaction blocked: Insufficient balance. Current: $${currentBalance.toFixed(2)}, Requested: $${outAmount.toFixed(2)}. Negative balance prevention is enabled.`
@@ -52,24 +52,16 @@ capitalRouter.post("/entries",
         }
       }
       
-      // Generate document number using Stage 1 numbering system
-      const documentNumber = await configurationService.generateEntityNumber('capital_entry', {
-        prefix: 'CAP',
-        suffix: new Date().getFullYear().toString().slice(-2)
-      });
-      
       const entry = await storage.createCapitalEntry({
-        ...sanitizedData,
-        entryId: documentNumber,
-        exchangeRate: centralExchangeRate.toString(),
-        createdBy: req.user.id
+        ...validatedData,
+        createdBy: authReq.user.id
       });
 
       // Create audit log using new interface
       await auditService.logOperation(
         {
-          userId: req.user.id,
-          userName: req.user.email || 'Capital Management',
+          userId: authReq.user.id,
+          userName: authReq.user.email || 'Capital Management',
           source: 'capital_management',
           severity: 'info',
         },
@@ -96,7 +88,8 @@ capitalRouter.post("/reverse-entry",
   isAuthenticated,
   requireRole(["admin", "finance"]),
   requireApproval("capital_entry"),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const { originalEntryId, reason } = req.body;
       
@@ -126,19 +119,17 @@ capitalRouter.post("/reverse-entry",
       // Create reversal entry
       const reversalEntry = await storage.createCapitalEntry({
         type: 'Reverse',
-        entryId: reversalNumber,
         amount: originalEntry.amount,
         description: `REVERSAL: ${originalEntry.description} | Reason: ${reason}`,
         reference: originalEntry.reference,
-        exchangeRate: centralExchangeRate.toString(),
-        createdBy: req.user.id
+        createdBy: authReq.user.id
       });
       
       // Create audit log
       await auditService.logOperation(
         {
-          userId: req.user.id,
-          userName: req.user.email || 'Capital Management',
+          userId: authReq.user.id,
+          userName: authReq.user.email || 'Capital Management',
           source: 'capital_management',
           severity: 'warning',
         },
@@ -169,7 +160,8 @@ capitalRouter.post("/opening-balance",
   isAuthenticated,
   requireRole(["admin"]),
   requireApproval("capital_entry"),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const { amount, date, description } = req.body;
       
@@ -193,19 +185,17 @@ capitalRouter.post("/opening-balance",
       // Create opening balance entry
       const openingEntry = await storage.createCapitalEntry({
         type: 'Opening',
-        entryId: openingNumber,
         amount: amount.toString(),
         date: new Date(date),
         description: description || 'Opening Balance',
-        exchangeRate: centralExchangeRate.toString(),
-        createdBy: req.user.id
+        createdBy: authReq.user.id
       });
       
       // Create audit log
       await auditService.logOperation(
         {
-          userId: req.user.id,
-          userName: req.user.email || 'Capital Management',
+          userId: authReq.user.id,
+          userName: authReq.user.email || 'Capital Management',
           source: 'capital_management',
           severity: 'info',
         },
@@ -231,11 +221,12 @@ capitalRouter.post("/opening-balance",
 capitalRouter.post("/multi-order-entry",
   isAuthenticated,
   requireRole(["admin", "finance"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const result = await capitalEnhancementService.createMultiOrderCapitalEntry(
         req.body,
-        req.user.id
+        authReq.user.id
       );
       res.status(201).json(result);
     } catch (error) {
@@ -249,7 +240,8 @@ capitalRouter.post("/multi-order-entry",
 capitalRouter.get("/balance-alerts",
   isAuthenticated,
   requireRole(["admin", "finance"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const alerts = await capitalEnhancementService.getCapitalBalanceSummary();
       res.json(alerts);

@@ -836,6 +836,8 @@ export interface IStorage {
   
   // Capital operations
   getCapitalEntries(): Promise<CapitalEntry[]>;
+  getCapitalEntryById(id: string): Promise<CapitalEntry | undefined>;
+  getCapitalEntriesByType(type: string): Promise<CapitalEntry[]>;
   getCapitalBalance(): Promise<number>;
   createCapitalEntry(entry: InsertCapitalEntry, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<CapitalEntry>;
   
@@ -2839,6 +2841,17 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(capitalEntries).orderBy(desc(capitalEntries.date));
   }
 
+  async getCapitalEntryById(id: string): Promise<CapitalEntry | undefined> {
+    const [entry] = await db.select().from(capitalEntries).where(eq(capitalEntries.id, id));
+    return entry;
+  }
+
+  async getCapitalEntriesByType(type: string): Promise<CapitalEntry[]> {
+    return await db.select().from(capitalEntries)
+      .where(eq(capitalEntries.type, type as any))
+      .orderBy(desc(capitalEntries.date));
+  }
+
   async getCapitalBalance(): Promise<number> {
     // STAGE 1 COMPLIANCE: Use proper business logic for all entry types
     const entries = await db.select().from(capitalEntries);
@@ -4821,6 +4834,15 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get capital entries summary
+    // Build proper date conditions for capital entries
+    const capitalDateConditions = [];
+    if (filters?.startDate) {
+      capitalDateConditions.push(gte(capitalEntries.date, new Date(filters.startDate)));
+    }
+    if (filters?.endDate) {
+      capitalDateConditions.push(lte(capitalEntries.date, new Date(filters.endDate)));
+    }
+    
     const capitalResult = await db
       .select({
         capitalIn: sum(
@@ -4831,10 +4853,7 @@ export class DatabaseStorage implements IStorage {
         ),
       })
       .from(capitalEntries)
-      .where(dateConditions.length > 0 ? and(...dateConditions.map(cond => 
-        // Map purchase date conditions to capital entry dates  
-        sql`${capitalEntries.date} ${cond.toString().includes('>=') ? '>=' : '<='} ${cond.toString().split("'")[1]}`
-      )) : sql`1 = 1`);
+      .where(capitalDateConditions.length > 0 ? and(...capitalDateConditions) : undefined);
 
     const capitalIn = new Decimal(capitalResult[0]?.capitalIn?.toString() || '0');
     const capitalOut = new Decimal(capitalResult[0]?.capitalOut?.toString() || '0');

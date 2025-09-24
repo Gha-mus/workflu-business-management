@@ -3788,6 +3788,15 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get capital entries summary
+    // Build proper date conditions for capital entries
+    const capitalDateConditions = [];
+    if (filters?.startDate) {
+      capitalDateConditions.push(gte(capitalEntries.date, new Date(filters.startDate)));
+    }
+    if (filters?.endDate) {
+      capitalDateConditions.push(lte(capitalEntries.date, new Date(filters.endDate)));
+    }
+    
     const capitalResult = await db
       .select({
         capitalIn: sum(
@@ -3798,12 +3807,7 @@ export class DatabaseStorage implements IStorage {
         ),
       })
       .from(capitalEntries)
-      .where(dateConditions.length > 0 ? and(...dateConditions.map(cond => 
-        // Map purchase date conditions to capital entry dates
-        cond.toString().includes('date') ? 
-          cond.toString().replace('purchases.date', 'capital_entries.date') 
-          : cond
-      )) : undefined);
+      .where(capitalDateConditions.length > 0 ? and(...capitalDateConditions) : undefined);
 
     const capitalIn = new Decimal(capitalResult[0]?.capitalIn?.toString() || '0');
     const capitalOut = new Decimal(capitalResult[0]?.capitalOut?.toString() || '0');

@@ -3,6 +3,7 @@ import { notificationService } from "./notificationService";
 import { auditService } from "./auditService";
 import type {
   AlertConfiguration,
+  InsertAlertConfiguration,
   CreateNotification,
   User,
 } from "@shared/schema";
@@ -219,14 +220,14 @@ class AlertMonitoringService {
       try {
         // Check if configuration already exists
         const existing = await storage.getAlertConfigurations({
-          alertType: config.alertType as any,
-          alertCategory: config.alertCategory as any,
+          alertType: config.alertType as 'threshold_alert' | 'business_alert' | 'system_alert' | 'compliance_alert' | 'financial_alert' | 'operational_alert' | 'security_alert' | 'workflow_alert',
+          alertCategory: config.alertCategory as 'capital_threshold' | 'inventory_level' | 'purchase_order' | 'sales_order' | 'document_expiry' | 'approval_workflow' | 'financial_health' | 'operational_delay' | 'compliance_issue' | 'market_timing' | 'system_health' | 'quality_issue' | 'supplier_issue' | 'shipping_delay' | 'payment_due' | 'currency_fluctuation',
         });
 
         const alreadyExists = existing.some(c => c.name === config.name);
         
         if (!alreadyExists) {
-          await storage.createAlertConfiguration(config as any);
+          await storage.createAlertConfiguration(config as InsertAlertConfiguration);
           console.log(`✅ Created default alert configuration: ${config.name}`);
         }
       } catch (error) {
@@ -435,9 +436,9 @@ class AlertMonitoringService {
           type: 'inventory',
           category: 'stock_level',
           currentValue: item.currentStock,
-          threshold: item.minStock,
+          threshold: item.minimumStock,
           unit: 'kg', // Default unit since property doesn't exist
-          trend: item.currentStock < item.minStock ? 'down' : 'stable',
+          trend: item.currentStock < item.minimumStock ? 'down' : 'stable',
           lastUpdated: new Date(),
           entityType: 'warehouse_stock',
           entityId: item.id,
@@ -676,10 +677,13 @@ class AlertMonitoringService {
       const currentValue = typeof metric.currentValue === 'string' ? parseFloat(metric.currentValue) : metric.currentValue;
       
       // Check thresholds in order of severity
-      const criticalThreshold = (thresholds as any)?.critical;
-      const highThreshold = (thresholds as any)?.high;
-      const mediumThreshold = (thresholds as any)?.medium;
-      const operator = (conditions as any)?.operator;
+      const thresholdValues = thresholds as { critical?: number; high?: number; medium?: number; low?: number };
+      const conditionValues = conditions as { operator?: string; field?: string; checkFrequency?: string };
+      
+      const criticalThreshold = thresholdValues?.critical;
+      const highThreshold = thresholdValues?.high;
+      const mediumThreshold = thresholdValues?.medium;
+      const operator = conditionValues?.operator;
       
       if (criticalThreshold !== undefined && this.checkThreshold(currentValue, criticalThreshold, operator)) {
         triggered = true;
@@ -714,7 +718,7 @@ class AlertMonitoringService {
         alertId: `${config.id}_${metric.entityId}_${Date.now()}`,
         triggered: true,
         currentValue: metric.currentValue,
-        threshold: metric.threshold || (thresholds as any)?.[severity],
+        threshold: metric.threshold || (thresholdValues as { [key: string]: number })?.[severity],
         severity,
         message,
         actionUrl,
