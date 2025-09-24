@@ -11405,6 +11405,7 @@ export class DatabaseStorage implements IStorage {
           id: documentCompliance.id,
           documentId: documentCompliance.documentId,
           documentTitle: documents.title,
+          requirementName: documentCompliance.requirementName,
           complianceType: documentCompliance.complianceType,
           status: documentCompliance.status,
           expiryDate: documentCompliance.expiryDate,
@@ -11423,7 +11424,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
         .where(and(
           lte(documentCompliance.expiryDate, expiryDate),
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ))
         .orderBy(documentCompliance.expiryDate);
 
@@ -11459,6 +11460,7 @@ export class DatabaseStorage implements IStorage {
           id: documentCompliance.id,
           documentId: documentCompliance.documentId,
           documentTitle: documents.title,
+          requirementName: documentCompliance.requirementName,
           complianceType: documentCompliance.complianceType,
           status: documentCompliance.status,
           expiryDate: documentCompliance.expiryDate,
@@ -11469,7 +11471,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
         .where(and(
           sql`${documentCompliance.expiryDate} < NOW()`,
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ))
         .orderBy(documentCompliance.expiryDate);
 
@@ -11565,7 +11567,7 @@ export class DatabaseStorage implements IStorage {
         .from(documentCompliance)
         .where(and(
           sql`${documentCompliance.expiryDate} < NOW()`,
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ));
 
       const [expiringSoonCompliance] = await db
@@ -11573,7 +11575,7 @@ export class DatabaseStorage implements IStorage {
         .from(documentCompliance)
         .where(and(
           sql`${documentCompliance.expiryDate} BETWEEN NOW() AND NOW() + INTERVAL '30 days'`,
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ));
 
       const [pendingReviewCompliance] = await db

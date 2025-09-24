@@ -237,7 +237,7 @@ class ApprovalWorkflowService {
 
       // Create the approval request
       const requestData: InsertApprovalRequest = {
-        requestNumber: this.generateApprovalRequestNumber(),
+        // requestNumber: this.generateApprovalRequestNumber(), // Remove if not in schema
         approvalChainId: chain.id,
         operationType: config.operationType as any,
         operationId: crypto.randomUUID(), // Will be set when operation is created

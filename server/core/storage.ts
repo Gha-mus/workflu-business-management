@@ -4832,11 +4832,9 @@ export class DatabaseStorage implements IStorage {
       })
       .from(capitalEntries)
       .where(dateConditions.length > 0 ? and(...dateConditions.map(cond => 
-        // Map purchase date conditions to capital entry dates
-        cond.toString().includes('date') ? 
-          cond.toString().replace('purchases.date', 'capital_entries.date') 
-          : cond
-      )) : undefined);
+        // Map purchase date conditions to capital entry dates  
+        sql`${capitalEntries.date} ${cond.toString().includes('>=') ? '>=' : '<='} ${cond.toString().split("'")[1]}`
+      )) : sql`1 = 1`);
 
     const capitalIn = new Decimal(capitalResult[0]?.capitalIn?.toString() || '0');
     const capitalOut = new Decimal(capitalResult[0]?.capitalOut?.toString() || '0');
@@ -5468,19 +5466,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLatestWorkflowValidation(userId?: string): Promise<WorkflowValidation | undefined> {
-    const query = db
-      .select()
-      .from(workflowValidations)
-      .where(eq(workflowValidations.isLatest, true))
-      .orderBy(desc(workflowValidations.createdAt))
-      .limit(1);
-
+    const conditions = [eq(workflowValidations.isLatest, true)];
+    
     if (userId) {
-      const [validation] = await query.where(eq(workflowValidations.userId, userId));
-      return validation;
+      conditions.push(eq(workflowValidations.userId, userId));
     }
     
-    const [validation] = await query;
+    const [validation] = await db
+      .select()
+      .from(workflowValidations)
+      .where(and(...conditions))
+      .orderBy(desc(workflowValidations.createdAt))
+      .limit(1);
+      
     return validation;
   }
 
@@ -5760,10 +5758,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExportHistory(userId?: string, limit: number = 50): Promise<ExportHistory[]> {
-    let query = db.select().from(exportHistory);
+    const conditions = [];
     
     if (userId) {
-      query = query.where(eq(exportHistory.userId, userId));
+      conditions.push(eq(exportHistory.userId, userId));
+    }
+    
+    const query = db.select().from(exportHistory);
+    
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(exportHistory.createdAt)).limit(limit);
     }
     
     return await query.orderBy(desc(exportHistory.createdAt)).limit(limit);
@@ -5807,16 +5811,17 @@ export class DatabaseStorage implements IStorage {
 
   // Export preferences operations
   async getUserExportPreferences(userId: string, reportType?: string): Promise<ExportPreferences[]> {
-    let query = db.select().from(exportPreferences).where(eq(exportPreferences.userId, userId));
+    const conditions = [eq(exportPreferences.userId, userId)];
     
     if (reportType) {
-      query = query.where(and(
-        eq(exportPreferences.userId, userId),
-        eq(exportPreferences.reportType, reportType)
-      ));
+      conditions.push(eq(exportPreferences.reportType, reportType));
     }
     
-    return await query.orderBy(desc(exportPreferences.updatedAt));
+    return await db
+      .select()
+      .from(exportPreferences)
+      .where(and(...conditions))
+      .orderBy(desc(exportPreferences.updatedAt));
   }
 
   async setExportPreference(preference: InsertExportPreferences): Promise<ExportPreferences> {
@@ -5852,10 +5857,16 @@ export class DatabaseStorage implements IStorage {
 
   // Scheduled export operations
   async getExportJobs(userId?: string): Promise<ExportJob[]> {
-    let query = db.select().from(exportJobs);
+    const conditions = [];
     
     if (userId) {
-      query = query.where(eq(exportJobs.userId, userId));
+      conditions.push(eq(exportJobs.userId, userId));
+    }
+    
+    const query = db.select().from(exportJobs);
+    
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(exportJobs.createdAt));
     }
     
     return await query.orderBy(desc(exportJobs.createdAt));
@@ -6042,18 +6053,24 @@ export class DatabaseStorage implements IStorage {
   
   // Carrier operations
   async getCarriers(filter?: CarrierFilter): Promise<Carrier[]> {
-    let query = db.select().from(carriers);
+    const conditions = [];
     
     if (filter?.isActive !== undefined) {
-      query = query.where(eq(carriers.isActive, filter.isActive));
+      conditions.push(eq(carriers.isActive, filter.isActive));
     }
     
     if (filter?.isPreferred !== undefined) {
-      query = query.where(eq(carriers.isPreferred, filter.isPreferred));
+      conditions.push(eq(carriers.isPreferred, filter.isPreferred));
     }
     
     if (filter?.serviceType) {
-      query = query.where(sql`${carriers.serviceTypes} @> ${[filter.serviceType]}`);
+      conditions.push(sql`${carriers.serviceTypes} @> ${[filter.serviceType]}`);
+    }
+    
+    const query = db.select().from(carriers);
+    
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(carriers.isPreferred), desc(carriers.rating), carriers.name);
     }
     
     return await query.orderBy(desc(carriers.isPreferred), desc(carriers.rating), carriers.name);
@@ -6237,7 +6254,6 @@ export class DatabaseStorage implements IStorage {
 
   // Shipment operations
   async getShipments(filter?: ShipmentFilter): Promise<Shipment[]> {
-    let query = db.select().from(shipments);
     const conditions = [];
 
     if (filter?.status) {
@@ -6264,8 +6280,10 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(shipments.createdAt, new Date(filter.endDate)));
     }
 
+    const query = db.select().from(shipments);
+    
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await query.where(and(...conditions)).orderBy(desc(shipments.createdAt));
     }
 
     return await query.orderBy(desc(shipments.createdAt));
@@ -7986,18 +8004,24 @@ export class DatabaseStorage implements IStorage {
 
   // Customer operations
   async getCustomers(filter?: { category?: string; isActive?: boolean; salesRepId?: string }): Promise<Customer[]> {
-    let query = db.select().from(customers);
+    const conditions = [];
     
     if (filter?.category) {
-      query = query.where(eq(customers.category, filter.category));
+      conditions.push(eq(customers.category, filter.category));
     }
     if (filter?.isActive !== undefined) {
-      query = query.where(eq(customers.isActive, filter.isActive));
+      conditions.push(eq(customers.isActive, filter.isActive));
     }
     if (filter?.salesRepId) {
-      query = query.where(eq(customers.salesRepId, filter.salesRepId));
+      conditions.push(eq(customers.salesRepId, filter.salesRepId));
     }
 
+    const query = db.select().from(customers);
+    
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(customers.createdAt));
+    }
+    
     return await query.orderBy(desc(customers.createdAt));
   }
 
@@ -8843,20 +8867,21 @@ export class DatabaseStorage implements IStorage {
 
   async getUpcomingFollowUps(userId?: string): Promise<CustomerCommunication[]> {
     const now = new Date();
-    let query = db
-      .select()
-      .from(customerCommunications)
-      .where(and(
-        sql`${customerCommunications.followUpDate} IS NOT NULL`,
-        gte(customerCommunications.followUpDate, now),
-        eq(customerCommunications.status, 'pending')
-      ));
+    const conditions = [
+      sql`${customerCommunications.followUpDate} IS NOT NULL`,
+      gte(customerCommunications.followUpDate, now),
+      eq(customerCommunications.status, 'pending')
+    ];
 
     if (userId) {
-      query = query.where(eq(customerCommunications.userId, userId));
+      conditions.push(eq(customerCommunications.userId, userId));
     }
 
-    return await query.orderBy(customerCommunications.followUpDate);
+    return await db
+      .select()
+      .from(customerCommunications)
+      .where(and(...conditions))
+      .orderBy(customerCommunications.followUpDate);
   }
 
   async markCommunicationComplete(id: string, userId: string): Promise<CustomerCommunication> {
@@ -12504,6 +12529,7 @@ export class DatabaseStorage implements IStorage {
           id: documentCompliance.id,
           documentId: documentCompliance.documentId,
           documentTitle: documents.title,
+          requirementName: documentCompliance.requirementName,
           complianceType: documentCompliance.complianceType,
           status: documentCompliance.status,
           expiryDate: documentCompliance.expiryDate,
@@ -12522,7 +12548,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
         .where(and(
           lte(documentCompliance.expiryDate, expiryDate),
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ))
         .orderBy(documentCompliance.expiryDate);
 
@@ -12558,6 +12584,7 @@ export class DatabaseStorage implements IStorage {
           id: documentCompliance.id,
           documentId: documentCompliance.documentId,
           documentTitle: documents.title,
+          requirementName: documentCompliance.requirementName,
           complianceType: documentCompliance.complianceType,
           status: documentCompliance.status,
           expiryDate: documentCompliance.expiryDate,
@@ -12568,7 +12595,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
         .where(and(
           sql`${documentCompliance.expiryDate} < NOW()`,
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ))
         .orderBy(documentCompliance.expiryDate);
 
@@ -12664,7 +12691,7 @@ export class DatabaseStorage implements IStorage {
         .from(documentCompliance)
         .where(and(
           sql`${documentCompliance.expiryDate} < NOW()`,
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ));
 
       const [expiringSoonCompliance] = await db
@@ -12672,7 +12699,7 @@ export class DatabaseStorage implements IStorage {
         .from(documentCompliance)
         .where(and(
           sql`${documentCompliance.expiryDate} BETWEEN NOW() AND NOW() + INTERVAL '30 days'`,
-          eq(documentCompliance.status, 'active')
+          eq(documentCompliance.status, 'compliant')
         ));
 
       const [pendingReviewCompliance] = await db

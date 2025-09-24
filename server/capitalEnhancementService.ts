@@ -124,7 +124,7 @@ class CapitalEnhancementService {
               amount: allocation.amount,
               allocationType: 'multi_order_split',
             },
-            businessContext: `Capital entry ${entryId} allocated across ${request.orderAllocations.length} orders`,
+            businessContext: `Capital entry ${capitalEntry.entryId} allocated across ${request.orderAllocations.length} orders`,
           }
         );
       }
@@ -289,8 +289,8 @@ class CapitalEnhancementService {
       }
 
       // For multi-order entries, validate that all allocations add up exactly
-      if (entry.references && Array.isArray(entry.references)) {
-        const totalAllocated = (entry.references as Array<{orderId: string, amount: number}>)
+      if (entry.reference && Array.isArray(entry.reference)) {
+        const totalAllocated = (entry.reference as Array<{orderId: string, amount: number}>)
           .reduce((sum, alloc) => sum + alloc.amount, 0);
         
         const entryAmount = parseFloat(entry.amount);
@@ -307,7 +307,7 @@ class CapitalEnhancementService {
         .update(capitalEntries)
         .set({
           isValidated: true,
-          validatedAt: new Date(),
+          // validatedAt: new Date(), // Remove if not in schema
         })
         .where(eq(capitalEntries.id, entry.id));
 
