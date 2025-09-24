@@ -20,7 +20,8 @@ import { requireApproval } from "../approvalMiddleware";
 export const warehouseRouter = Router();
 
 // GET /api/warehouse/stock
-warehouseRouter.get("/stock", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+warehouseRouter.get("/stock", isAuthenticated, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const stock = await storage.getWarehouseStock();
     res.json(stock);
@@ -37,17 +38,17 @@ warehouseRouter.post("/stock",
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const validatedData = insertWarehouseStockSchema.parse(req.body);
       const stock = await storage.createWarehouseStock({
         ...validatedData,
-        userId: req.user.id
+        userId: authReq.user.id
       });
 
       // Create audit log
       await auditService.logAction({
-        userId: req.user.id,
+        userId: authReq.user.id,
         action: "CREATE",
         entityType: "warehouse_stock",
         entityId: stock.id,
@@ -71,14 +72,14 @@ warehouseRouter.post("/filter",
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const validatedData = warehouseFilterOperationSchema.parse(req.body);
       const result = await storage.filterWarehouseStock(validatedData);
 
       // Create audit log
       await auditService.logAction({
-        userId: req.user.id,
+        userId: authReq.user.id,
         action: "UPDATE",
         entityType: "warehouse_stock",
         entityId: validatedData.stockId,
@@ -102,14 +103,14 @@ warehouseRouter.post("/move-to-final",
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const validatedData = warehouseMoveToFinalSchema.parse(req.body);
       const result = await storage.moveToFinalWarehouse(validatedData);
 
       // Create audit log
       await auditService.logAction({
-        userId: req.user.id,
+        userId: authReq.user.id,
         action: "UPDATE",
         entityType: "warehouse_stock",
         entityId: validatedData.stockId,
@@ -130,7 +131,7 @@ warehouseRouter.post("/move-to-final",
 warehouseRouter.get("/filtering-alerts",
   isAuthenticated,
   requireRole(["admin", "warehouse"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const alerts = await warehouseEnhancementService.checkFilteringAlerts();
       res.json(alerts);
@@ -145,7 +146,7 @@ warehouseRouter.get("/filtering-alerts",
 warehouseRouter.get("/supplier-reports",
   isAuthenticated,
   requireRole(["admin", "warehouse", "purchasing"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const reports = await warehouseEnhancementService.generateSupplierFilteringReports();
       res.json(reports);
@@ -162,7 +163,7 @@ warehouseRouter.post("/validate-cost-redistribution",
   requireRole(["admin", "warehouse", "finance"]),
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const validatedData = warehouseCostValidationSchema.parse(req.body);
       const { orderId } = validatedData;
@@ -172,8 +173,8 @@ warehouseRouter.post("/validate-cost-redistribution",
       // Create audit log for cost redistribution validation
       await auditService.logOperation(
         {
-          userId: req.user.id,
-          userName: req.user.email || 'Unknown',
+          userId: authReq.user.id,
+          userName: authReq.user.email || 'Unknown',
           source: 'warehouse_enhancement',
           severity: validation.isValid ? 'info' : 'warning',
         },
@@ -211,21 +212,21 @@ warehouseRouter.post("/auto-correct-cost-redistribution",
   warehousePeriodGuard,
   requireApproval("warehouse_operation"),
   requireWarehouseScope,
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
     try {
       const validatedData = warehouseCostCorrectionSchema.parse(req.body);
       const { orderId } = validatedData;
       
       const success = await warehouseEnhancementService.autoCorrectCostRedistribution(
         orderId,
-        req.user.id
+        authReq.user.id
       );
       
       // Create audit log for auto-correction attempt
       await auditService.logOperation(
         {
-          userId: req.user.id,
-          userName: req.user.email || 'Unknown',
+          userId: authReq.user.id,
+          userName: authReq.user.email || 'Unknown',
           source: 'warehouse_enhancement',
           severity: success ? 'info' : 'error',
         },

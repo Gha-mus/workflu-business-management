@@ -3862,7 +3862,7 @@ export const inventoryAnalyticsResponseSchema = z.object({
     id: z.string(),
     name: z.string(),
     currentStock: z.number(),
-    minStock: z.number(),
+    minimumStock: z.number(),
     status: z.string(),
   })),
 });

@@ -18,7 +18,8 @@ import { genericPeriodGuard } from "../core/middleware/periodGuard";
 export const salesRouter = Router();
 
 // GET /api/sales/orders
-salesRouter.get("/orders", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+salesRouter.get("/orders", isAuthenticated, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const orders = await storage.getSalesOrders();
     res.json(orders);
@@ -33,10 +34,11 @@ salesRouter.post("/orders",
   isAuthenticated,
   requireRole(["admin", "sales"]),
   requireApproval("sale_order"),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = insertSalesOrderSchema.parse(req.body);
-      const userId = req.user.id;
+      const userId = authReq.user.id;
       
       // Calculate order totals
       let orderAmount = new Decimal(0);
@@ -127,8 +129,8 @@ salesRouter.post("/orders",
       // Create audit log
       await auditService.logOperation(
         {
-          userId: (req.user as any).claims?.sub || 'unknown',
-          userName: (req.user as any).claims?.email || 'Unknown',
+          userId: (authReq.user as any).claims?.sub || 'unknown',
+          userName: (authReq.user as any).claims?.email || 'Unknown',
           source: 'sales',
           severity: 'info',
         },
@@ -151,7 +153,8 @@ salesRouter.post("/orders",
 );
 
 // GET /api/sales/customers
-salesRouter.get("/customers", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+salesRouter.get("/customers", isAuthenticated, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const customers = await storage.getCustomers();
     res.json(customers);
@@ -162,7 +165,8 @@ salesRouter.get("/customers", isAuthenticated, async (req: AuthenticatedRequest,
 });
 
 // GET /api/sales/analytics  
-salesRouter.get("/analytics", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+salesRouter.get("/analytics", isAuthenticated, async (req, res) => {
+  const authReq = req as AuthenticatedRequest;
   try {
     const orders = await storage.getSalesOrders();
     const totalRevenueUsd = orders?.reduce((sum: Decimal, order: SalesOrder) => {
@@ -180,19 +184,20 @@ salesRouter.get("/analytics", isAuthenticated, async (req: AuthenticatedRequest,
 salesRouter.post("/customers",
   isAuthenticated,
   requireRole(["admin", "sales", "worker"]),
-  async (req: AuthenticatedRequest, res) => {
+  async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = insertCustomerSchema.parse({
         ...req.body,
-        createdBy: req.user.id,
+        createdBy: authReq.user.id,
       });
       const customer = await storage.createCustomer(validatedData);
 
       // Create audit log
       await auditService.logOperation(
         {
-          userId: (req.user as any).claims?.sub || 'unknown',
-          userName: (req.user as any).claims?.email || 'Unknown',
+          userId: (authReq.user as any).claims?.sub || 'unknown',
+          userName: (authReq.user as any).claims?.email || 'Unknown',
           source: 'sales',
           severity: 'info',
         },
@@ -221,13 +226,13 @@ salesRouter.post("/return",
   validateSalesReturn,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await storage.processSalesReturn(req.body.id, req.user.id);
+      const result = await storage.processSalesReturn(req.body.id, authReq.user.id);
 
       // Create audit log
       await auditService.logOperation(
         {
-          userId: (req.user as any).claims?.sub || 'unknown',
-          userName: (req.user as any).claims?.email || 'Unknown',
+          userId: (authReq.user as any).claims?.sub || 'unknown',
+          userName: (authReq.user as any).claims?.email || 'Unknown',
           source: 'sales',
           severity: 'info',
         },
@@ -276,8 +281,8 @@ salesRouter.put("/customers/:id/credit-limit",
       // Create audit log
       await auditService.logOperation(
         {
-          userId: (req.user as any).claims?.sub || 'unknown',
-          userName: (req.user as any).claims?.email || 'Unknown',
+          userId: (authReq.user as any).claims?.sub || 'unknown',
+          userName: (authReq.user as any).claims?.email || 'Unknown',
           source: 'sales',
           severity: 'info',
         },
@@ -307,7 +312,7 @@ salesRouter.post("/orders/:id/fulfill",
   async (req: AuthenticatedRequest, res) => {
     try {
       const orderId = req.params.id;
-      const userId = req.user.id;
+      const userId = authReq.user.id;
       
       // Get order and items
       const order = await storage.getSalesOrder(orderId);
@@ -364,7 +369,7 @@ salesRouter.post("/orders/:id/fulfill",
       await auditService.logOperation(
         {
           userId,
-          userName: (req.user as any).claims?.email || 'Unknown',
+          userName: (authReq.user as any).claims?.email || 'Unknown',
           source: 'sales',
           severity: 'info',
         },
@@ -403,14 +408,14 @@ salesRouter.post("/multi-order-invoice",
   genericPeriodGuard,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const userId = req.user.id;
+      const userId = authReq.user.id;
       const invoiceId = await salesEnhancementService.createMultiOrderInvoice(req.body, userId);
 
       // Create audit log
       await auditService.logOperation(
         {
           userId,
-          userName: (req.user as any).claims?.email || 'Unknown',
+          userName: (authReq.user as any).claims?.email || 'Unknown',
           source: 'sales',
           severity: 'info',
         },
