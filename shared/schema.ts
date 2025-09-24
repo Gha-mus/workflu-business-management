@@ -519,7 +519,7 @@ export const arrivalCosts = pgTable("arrival_costs", {
 export const shipmentInspections = pgTable("shipment_inspections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
-  inspectionNumber: varchar("inspection_number").notNull().unique(),
+  inspectionNumber: varchar("inspection_number").notNull().unique().$defaultFn(() => `SHIP-INSP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   
   // Inspection results per workflow_reference.json line 635
   expectedWeightKg: decimal("expected_weight_kg", { precision: 10, scale: 2 }).notNull(), // Net weight expected
@@ -607,7 +607,7 @@ export const qualityStandards = pgTable("quality_standards", {
 // Warehouse batches table for lot tracking
 export const warehouseBatches = pgTable("warehouse_batches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  batchNumber: varchar("batch_number").notNull().unique(),
+  batchNumber: varchar("batch_number").notNull().unique().$defaultFn(() => `BATCH-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   purchaseId: varchar("purchase_id").notNull().references(() => purchases.id),
   orderId: varchar("order_id").notNull().references(() => orders.id),
   supplierId: varchar("supplier_id").notNull().references(() => suppliers.id),
@@ -630,7 +630,7 @@ export const warehouseBatches = pgTable("warehouse_batches", {
 // Quality inspections table
 export const qualityInspections = pgTable("quality_inspections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  inspectionNumber: varchar("inspection_number").notNull().unique(),
+  inspectionNumber: varchar("inspection_number").notNull().unique().$defaultFn(() => `INSP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   batchId: varchar("batch_id").references(() => warehouseBatches.id),
   purchaseId: varchar("purchase_id").references(() => purchases.id),
   warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
@@ -658,7 +658,7 @@ export const qualityInspections = pgTable("quality_inspections", {
 // Inventory consumption table for tracking stock usage
 export const inventoryConsumption = pgTable("inventory_consumption", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  consumptionNumber: varchar("consumption_number").notNull().unique(),
+  consumptionNumber: varchar("consumption_number").notNull().unique().$defaultFn(() => `CONS-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   warehouseStockId: varchar("warehouse_stock_id").notNull().references(() => warehouseStock.id),
   batchId: varchar("batch_id").references(() => warehouseBatches.id),
   orderId: varchar("order_id").references(() => orders.id),
@@ -678,7 +678,7 @@ export const inventoryConsumption = pgTable("inventory_consumption", {
 // Processing operations table
 export const processingOperations = pgTable("processing_operations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  operationNumber: varchar("operation_number").notNull().unique(),
+  operationNumber: varchar("operation_number").notNull().unique().$defaultFn(() => `OPR-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   operationType: varchar("operation_type").notNull(), // washing, drying, hulling, sorting, milling
   status: varchar("status").notNull().default('planned'), // planned, in_progress, completed, cancelled
   batchId: varchar("batch_id").notNull().references(() => warehouseBatches.id),
@@ -706,7 +706,7 @@ export const processingOperations = pgTable("processing_operations", {
 // Stock transfers table
 export const stockTransfers = pgTable("stock_transfers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  transferNumber: varchar("transfer_number").notNull().unique(),
+  transferNumber: varchar("transfer_number").notNull().unique().$defaultFn(() => `XFER-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   transferType: varchar("transfer_type").notNull(), // warehouse_to_warehouse, location_to_location, batch_split, batch_merge
   status: varchar("status").notNull().default('pending'), // pending, in_transit, completed, cancelled
   fromWarehouseStockId: varchar("from_warehouse_stock_id").references(() => warehouseStock.id),
@@ -725,7 +725,7 @@ export const stockTransfers = pgTable("stock_transfers", {
 // Inventory adjustments table
 export const inventoryAdjustments = pgTable("inventory_adjustments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  adjustmentNumber: varchar("adjustment_number").notNull().unique(),
+  adjustmentNumber: varchar("adjustment_number").notNull().unique().$defaultFn(() => `ADJ-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   adjustmentType: varchar("adjustment_type").notNull(), // cycle_count, reconciliation, correction, write_off
   status: varchar("status").notNull().default('pending'), // pending, approved, rejected
   warehouseStockId: varchar("warehouse_stock_id").notNull().references(() => warehouseStock.id),
@@ -1591,7 +1591,7 @@ export const approvalChains = pgTable("approval_chains", {
 // Approval requests table - tracks individual approval workflows
 export const approvalRequests = pgTable("approval_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  requestNumber: varchar("request_number").notNull().unique(),
+  requestNumber: varchar("request_number").notNull().unique().$defaultFn(() => `REQ-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   approvalChainId: varchar("approval_chain_id").notNull().references(() => approvalChains.id, { onDelete: 'restrict' }),
   
   // Request details
