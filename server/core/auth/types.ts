@@ -2,7 +2,7 @@
  * Shared Auth Types for Provider Abstraction
  */
 
-import { RequestHandler } from 'express';
+import { RequestHandler, Request, Express } from 'express';
 import { User } from '@shared/schema';
 
 // Normalized auth user interface
@@ -26,14 +26,14 @@ export interface AuthProvider {
   isAuthenticated: RequestHandler;
   requireRole: (allowedRoles: User['role'][]) => RequestHandler;
   requireWarehouseScope: (warehouseCode?: string) => RequestHandler;
-  requireWarehouseScopeForResource: (resourceExtractor: (req: any) => string) => RequestHandler;
+  requireWarehouseScopeForResource: (resourceExtractor: (req: AuthenticatedRequest) => string) => RequestHandler;
   hasWarehouseScope: (userId: string, warehouseCode: string) => Promise<boolean>;
   validateWarehouseSource: () => RequestHandler;
   validateSalesReturn: () => RequestHandler;
   requireApproval: (operationType: string) => RequestHandler;
   
   // Session setup
-  setupAuth: (app: any) => void;
+  setupAuth: (app: Express) => void;
   
   // Provider-specific info
   providerName: 'supabase';
@@ -46,4 +46,14 @@ declare global {
       user?: AuthUser;
     }
   }
+}
+
+// Authenticated request type for route handlers
+export interface AuthenticatedRequest extends Request {
+  user: AuthUser; // user is guaranteed to exist after authentication middleware
+}
+
+// Optional authenticated request type for routes that may or may not require auth
+export interface OptionalAuthRequest extends Request {
+  user?: AuthUser;
 }

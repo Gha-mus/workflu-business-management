@@ -222,10 +222,13 @@ export const supplierQualityAssessments = pgTable("supplier_quality_assessments"
 });
 
 // Orders table
-export const orders = pgTable("orders", {
+export const orders: any = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderNumber: varchar("order_number").notNull().unique(),
   status: varchar("status").notNull().default('draft'),
+  totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }),
+  currency: varchar("currency").default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -261,6 +264,7 @@ export const purchases = pgTable("purchases", {
   weight: decimal("weight", { precision: 10, scale: 2 }).notNull(),
   pricePerKg: decimal("price_per_kg", { precision: 10, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
   amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
   remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
@@ -293,6 +297,7 @@ export const purchasePayments = pgTable("purchase_payments", {
   fundingSource: varchar("funding_source").notNull(), // capital, external
   currency: varchar("currency").notNull().default('USD'),
   exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }),
   reference: varchar("reference"), // Reference number or note
   description: text("description"),
   paymentDate: timestamp("payment_date").notNull().defaultNow(),
@@ -369,7 +374,7 @@ export const carriers = pgTable("carriers", {
 });
 
 // Shipments table
-export const shipments = pgTable("shipments", {
+export const shipments: any = pgTable("shipments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   shipmentNumber: varchar("shipment_number").notNull().unique(),
   orderId: varchar("order_id").notNull().references(() => orders.id),
@@ -385,6 +390,9 @@ export const shipments = pgTable("shipments", {
   trackingNumber: varchar("tracking_number"),
   totalWeight: decimal("total_weight", { precision: 10, scale: 2 }).notNull(),
   totalVolume: decimal("total_volume", { precision: 10, scale: 2 }),
+  currency: varchar("currency").notNull().default('USD'),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
+  totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }),
   notes: text("notes"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -635,6 +643,7 @@ export const qualityInspections = pgTable("quality_inspections", {
   batchId: varchar("batch_id").references(() => warehouseBatches.id),
   purchaseId: varchar("purchase_id").references(() => purchases.id),
   warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
+  shipmentId: varchar("shipment_id").references(() => shipments.id),
   inspectionType: varchar("inspection_type").notNull(), // incoming, processing, outgoing, quality_control
   status: varchar("status").notNull().default('pending'), // pending, in_progress, completed, failed, approved, rejected
   qualityGrade: qualityGradeEnum("quality_grade"),
@@ -817,6 +826,7 @@ export const operatingExpenses = pgTable("operating_expenses", {
   // Payment tracking
   paymentMethod: varchar("payment_method").notNull(), // cash, bank_transfer, credit
   fundingSource: varchar("funding_source").notNull(), // capital, external
+  totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }),
   amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default('0'),
   remaining: decimal("remaining", { precision: 12, scale: 2 }).notNull(),
   
@@ -1264,6 +1274,7 @@ export const notificationTemplates = pgTable("notification_templates", {
   subject: varchar("subject"), // For email templates
   bodyTemplate: text("body_template").notNull(), // Template with placeholders like {{amount}}, {{threshold}}
   htmlTemplate: text("html_template"), // HTML version for email
+  smsTemplate: text("sms_template"), // SMS version for SMS channel
   
   // Template variables and formatting
   templateVariables: jsonb("template_variables").default('[]'), // Array of variable names used in template
@@ -1574,6 +1585,7 @@ export const approvalChains = pgTable("approval_chains", {
   requiredApprovals: integer("required_approvals").notNull().default(1),
   allowParallelApprovals: boolean("allow_parallel_approvals").notNull().default(false),
   escalationTimeoutHours: integer("escalation_timeout_hours").default(24),
+  estimatedTimeHours: decimal("estimated_time_hours", { precision: 5, scale: 2 }),
   
   // Auto-approval rules
   autoApproveBelow: decimal("auto_approve_below", { precision: 12, scale: 2 }),
@@ -1617,6 +1629,7 @@ export const approvalRequests = pgTable("approval_requests", {
   status: approvalStatusEnum("status").notNull().default('pending'),
   submittedAt: timestamp("submitted_at").notNull().defaultNow(),
   requiredBy: timestamp("required_by"), // Deadline for approval
+  estimatedTimeHours: decimal("estimated_time_hours", { precision: 5, scale: 2 }),
   completedAt: timestamp("completed_at"),
   escalatedAt: timestamp("escalated_at"),
   

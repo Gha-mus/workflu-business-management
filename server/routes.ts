@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, requireRole, requireWarehouseScope, requireWarehouseScopeForResource, validateWarehouseSource, validateSalesReturn } from "./core/auth";
+import type { AuthenticatedRequest } from "./core/auth/types";
 import { aiService } from "./services/openai/aiService";
 import { AIServiceError, AI_ERROR_CODES, checkAIFeature, openaiGateway } from "./services/openai/client";
 import { exportService } from "./exportService";
@@ -148,11 +149,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const user = await storage.getUser(userId);
       
@@ -169,7 +167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User management routes (admin only)
-  app.get('/api/users', requireRole(['admin']), async (req, res) => {
+  app.get('/api/users', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
@@ -179,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/users/:id/role', requireRole(['admin']), approvalMiddleware.userRoleChange, async (req, res) => {
+  app.patch('/api/users/:id/role', requireRole(['admin']), approvalMiddleware.userRoleChange, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const roleUpdateSchema = z.object({
@@ -201,11 +199,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================================
 
   // Get approval statistics for dashboard
-  app.get('/api/approvals/statistics', isAuthenticated, async (req, res) => {
+  app.get('/api/approvals/statistics', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       
       // Get pending approvals for user
@@ -237,11 +232,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get pending approval requests for current user (as approver)
-  app.get('/api/approvals/pending', isAuthenticated, async (req, res) => {
+  app.get('/api/approvals/pending', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { operationType, priority, limit = '50', offset = '0' } = req.query;
       
@@ -260,11 +252,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval requests submitted by current user
-  app.get('/api/approvals/my-requests', isAuthenticated, async (req, res) => {
+  app.get('/api/approvals/my-requests', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { status, operationType, limit = '50', offset = '0' } = req.query;
       
@@ -299,7 +288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval history/all approvals (admin/manager view)
-  app.get('/api/approvals/history', requireRole(['admin', 'finance', 'purchasing']), async (req, res) => {
+  app.get('/api/approvals/history', requireRole(['admin', 'finance', 'purchasing']), async (req: AuthenticatedRequest, res) => {
     try {
       const { status = 'all', operationType, userId, limit = '100', offset = '0' } = req.query;
       
@@ -335,12 +324,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Process approval decision (approve, reject, escalate, delegate)
-  app.post('/api/approvals/:id/decision', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/decision', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       
       const decisionSchema = z.object({
@@ -384,11 +370,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create approval request manually (for exceptional cases)
-  app.post('/api/approvals/requests', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/requests', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       
       const requestSchema = z.object({
@@ -424,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get specific approval request details
-  app.get('/api/approvals/requests/:id', isAuthenticated, async (req, res) => {
+  app.get('/api/approvals/requests/:id', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       
@@ -456,11 +439,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Check if operation requires approval
-  app.post('/api/approvals/check-requirement', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/check-requirement', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       
       const checkSchema = z.object({
@@ -506,7 +486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval chains configuration (admin only)
-  app.get('/api/approvals/chains', requireRole(['admin']), async (req, res) => {
+  app.get('/api/approvals/chains', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const chains = await storage.getApprovalChains();
       res.json(chains);
@@ -517,7 +497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // CRITICAL SECURITY ENDPOINT: Get approval chain coverage diagnostics (admin only)
-  app.get('/api/approvals/diagnostics', requireRole(['admin']), async (req, res) => {
+  app.get('/api/approvals/diagnostics', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       console.log("🔍 Admin requested approval chain diagnostics");
 
@@ -560,9 +540,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Log admin access for audit trail
       await auditService.logOperation({
-        userId: (req as any).user?.claims?.sub || 'unknown-admin',
-        userName: (req as any).user?.claims?.name || 'Unknown Admin',
-        userRole: 'admin',
+        userId: req.user.id,
+        userName: req.user.email || 'Unknown Admin',
+        userRole: req.user.role,
         source: 'approval_diagnostics_endpoint',
         severity: 'info'
       }, {
@@ -591,7 +571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create approval chain (admin only)
-  app.post('/api/approvals/chains', requireRole(['admin']), async (req, res) => {
+  app.post('/api/approvals/chains', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const chainSchema = z.object({
         name: z.string(),
@@ -628,7 +608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update approval chain (admin only)
-  app.patch('/api/approvals/chains/:id', requireRole(['admin']), async (req, res) => {
+  app.patch('/api/approvals/chains/:id', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const updateData = req.body;
@@ -655,12 +635,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================================
 
   // Direct approve endpoint
-  app.post('/api/approvals/:id/approve', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/approve', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { comments } = req.body;
       
@@ -687,12 +664,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Direct reject endpoint
-  app.post('/api/approvals/:id/reject', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/reject', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { comments } = req.body;
       
@@ -719,12 +693,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Direct escalate endpoint  
-  app.post('/api/approvals/:id/escalate', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/escalate', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { escalateTo, comments } = req.body;
       
@@ -755,12 +726,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Direct delegate endpoint
-  app.post('/api/approvals/:id/delegate', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/delegate', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { delegateTo, comments } = req.body;
       
@@ -791,12 +759,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Cancel approval request endpoint
-  app.post('/api/approvals/:id/cancel', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/cancel', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { comments } = req.body;
       
@@ -843,12 +808,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bulk approval actions endpoint
-  app.post('/api/approvals/bulk-actions', requireRole(['admin', 'finance']), async (req, res) => {
+  app.post('/api/approvals/bulk-actions', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { approvalIds, action, comments, targetUserId } = req.body;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       
       if (!approvalIds || !Array.isArray(approvalIds) || approvalIds.length === 0) {
@@ -912,12 +874,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add comments to approval request
-  app.post('/api/approvals/:id/comments', isAuthenticated, async (req, res) => {
+  app.post('/api/approvals/:id/comments', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
-      if (!req.user) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
       const userId = req.user.id;
       const { comment } = req.body;
       
@@ -956,7 +915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================================
 
   // Get audit logs with advanced filtering and search
-  app.get('/api/audit/logs', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/audit/logs', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const {
         entityType,
@@ -998,7 +957,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get audit statistics for dashboard
-  app.get('/api/audit/statistics', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/audit/statistics', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { days = '30' } = req.query;
       const daysParsed = parseInt(days as string);
@@ -1015,7 +974,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get audit activity timeline
-  app.get('/api/audit/timeline', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/audit/timeline', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { 
         entityType, 
@@ -1041,7 +1000,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get audit logs for specific entity
-  app.get('/api/audit/entity/:type/:id', isAuthenticated, async (req, res) => {
+  app.get('/api/audit/entity/:type/:id', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { type, id } = req.params;
       const { limit = '50', offset = '0' } = req.query;
@@ -1063,7 +1022,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get user activity audit logs
-  app.get('/api/audit/users/:userId/activity', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/audit/users/:userId/activity', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { userId } = req.params;
       const { 
@@ -1090,7 +1049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Search audit logs with advanced text search
-  app.post('/api/audit/search', requireRole(['admin', 'finance']), async (req, res) => {
+  app.post('/api/audit/search', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const searchSchema = z.object({
         query: z.string(),
@@ -1137,7 +1096,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Export audit logs
-  app.post('/api/audit/export', requireRole(['admin']), async (req, res) => {
+  app.post('/api/audit/export', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const exportSchema = z.object({
         format: z.enum(['csv', 'json', 'xlsx']),
@@ -1242,7 +1201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get operational audit insights (analytics)
-  app.get('/api/audit/insights', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/audit/insights', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { 
         timeframe = '30',
@@ -1266,7 +1225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get approval-related audit logs
-  app.get('/api/audit/approvals/:approvalId', isAuthenticated, async (req, res) => {
+  app.get('/api/audit/approvals/:approvalId', isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const { approvalId } = req.params;
 
@@ -1280,7 +1239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Real-time audit monitoring endpoint (for system monitoring)
-  app.get('/api/audit/monitoring/health', requireRole(['admin']), async (req, res) => {
+  app.get('/api/audit/monitoring/health', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const healthStatus = await auditService.getSystemHealthStatus();
       res.json(healthStatus);
@@ -1293,7 +1252,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== STAGE 10: ENHANCED CONFIGURATION MANAGEMENT =====
   
   // Get comprehensive settings with all categories
-  app.get('/api/settings', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req, res) => {
+  app.get('/api/settings', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const enhancedSettings = await configurationService.getEnhancedSettings();
       res.json(enhancedSettings);
@@ -1304,7 +1263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get legacy settings format for backward compatibility
-  app.get('/api/settings/legacy', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req, res) => {
+  app.get('/api/settings/legacy', requireRole(['admin', 'finance', 'purchasing', 'sales', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const exchangeRate = await configurationService.getCentralExchangeRate();
       const preventNegativeBalance = !(await configurationService.isNegativeBalanceAllowed());
@@ -1320,10 +1279,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update single setting with enhanced validation and approval workflow
-  app.post('/api/settings', requireRole(['admin']), async (req, res) => {
+  app.post('/api/settings', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const settingData = req.body;
-      const userId = req.user?.claims?.sub || 'unknown';
+      const userId = req.user.id;
       
       const result = await configurationService.updateSystemSetting(
         settingData.key,
@@ -1346,7 +1305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate entity number using configuration service
-  app.post('/api/settings/numbering/generate', requireRole(['admin', 'finance', 'purchasing', 'warehouse']), async (req, res) => {
+  app.post('/api/settings/numbering/generate', requireRole(['admin', 'finance', 'purchasing', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const { entityType, prefix, suffix } = req.body;
       
@@ -1363,7 +1322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Central FX conversion endpoint for all stages to use
-  app.post('/api/settings/fx/convert', requireRole(['admin', 'finance', 'purchasing', 'warehouse']), async (req, res) => {
+  app.post('/api/settings/fx/convert', requireRole(['admin', 'finance', 'purchasing', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const { amountETB } = req.body;
       
@@ -1380,10 +1339,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create configuration snapshot
-  app.post('/api/settings/snapshots', requireRole(['admin']), async (req, res) => {
+  app.post('/api/settings/snapshots', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const { name, description } = req.body;
-      const userId = req.user?.claims?.sub || 'unknown';
+      const userId = req.user.id;
       
       const snapshotId = await configurationService.createConfigurationSnapshot({
         name,
@@ -1401,7 +1360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Capital routes
-  app.get('/api/capital/entries', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/capital/entries', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const entries = await storage.getCapitalEntries();
       res.json(entries);
@@ -1411,7 +1370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/capital/balance', requireRole(['admin', 'finance']), async (req, res) => {
+  app.get('/api/capital/balance', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const balance = await storage.getCapitalBalance();
       res.json({ balance });
@@ -1421,7 +1380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/capital/entries', requireRole(['admin', 'finance']), approvalMiddleware.capitalEntry, capitalEntryPeriodGuard, async (req: any, res) => {
+  app.post('/api/capital/entries', requireRole(['admin', 'finance']), approvalMiddleware.capitalEntry, capitalEntryPeriodGuard, async (req: AuthenticatedRequest, res) => {
     try {
       const entryData = insertCapitalEntrySchema.parse({
         ...req.body,
@@ -1477,7 +1436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stage 1 Capital Enhancement Routes - Making features functional for users
-  app.post('/api/capital/multi-order-entry', requireRole(['admin', 'finance']), approvalMiddleware.capitalEntry, capitalEntryPeriodGuard, async (req: any, res) => {
+  app.post('/api/capital/multi-order-entry', requireRole(['admin', 'finance']), approvalMiddleware.capitalEntry, capitalEntryPeriodGuard, async (req: AuthenticatedRequest, res) => {
     try {
       const entryData = multiOrderCapitalEntrySchema.parse(req.body);
       const result = await capitalEnhancementService.createMultiOrderCapitalEntry(entryData, req.user.id);
@@ -1494,7 +1453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/capital/balance-alerts', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.get('/api/capital/balance-alerts', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const alerts = await capitalEnhancementService.checkBalanceAlerts();
       res.json(alerts);
@@ -1504,7 +1463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/capital/validate', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/capital/validate', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const entryData = multiOrderCapitalEntrySchema.parse(req.body);
       const validation = await capitalEnhancementService.validateMultiOrderEntry(entryData);
@@ -1522,7 +1481,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stage 2: Supplier Enhancement Routes - Making features functional for users
-  app.post('/api/suppliers/quality-assessment', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+  app.post('/api/suppliers/quality-assessment', requireRole(['admin', 'purchasing']), async (req: AuthenticatedRequest, res) => {
     try {
       const assessmentData = supplierQualityAssessmentSchema.parse(req.body);
       await supplierEnhancementService.assessSupplierQuality(assessmentData, req.user.id);
@@ -1536,7 +1495,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/suppliers/overdue-advances', requireRole(['admin', 'purchasing', 'finance']), async (req: any, res) => {
+  app.get('/api/suppliers/overdue-advances', requireRole(['admin', 'purchasing', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const alerts = await supplierEnhancementService.checkOverdueAdvances();
       res.json(alerts);
@@ -1546,7 +1505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/purchases/return', requireRole(['admin', 'purchasing', 'warehouse']), async (req: any, res) => {
+  app.post('/api/purchases/return', requireRole(['admin', 'purchasing', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const returnData = purchaseReturnSchema.parse(req.body);
       // Transaction wrapping for multi-entity operation
@@ -1564,7 +1523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stage 3: Warehouse Enhancement Routes - Making features functional for users
-  app.get('/api/warehouse/filtering-alerts', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.get('/api/warehouse/filtering-alerts', requireRole(['admin', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const alerts = await warehouseEnhancementService.checkFilteringAlerts();
       res.json(alerts);
@@ -1574,7 +1533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/warehouse/supplier-filtering-reports', requireRole(['admin', 'warehouse', 'purchasing']), async (req: any, res) => {
+  app.get('/api/warehouse/supplier-filtering-reports', requireRole(['admin', 'warehouse', 'purchasing']), async (req: AuthenticatedRequest, res) => {
     try {
       const reports = await warehouseEnhancementService.generateSupplierFilteringReports();
       res.json(reports);
@@ -1584,7 +1543,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/validate-cost-redistribution', requireRole(['admin', 'warehouse', 'finance']), async (req: any, res) => {
+  app.post('/api/warehouse/validate-cost-redistribution', requireRole(['admin', 'warehouse', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { orderId } = costRedistributionValidationSchema.parse(req.body);
       const result = await warehouseEnhancementService.validateCostRedistribution(orderId);
@@ -1598,7 +1557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/cost-redistribution/validate', requireRole(['admin', 'warehouse', 'purchasing']), async (req: any, res) => {
+  app.post('/api/warehouse/cost-redistribution/validate', requireRole(['admin', 'warehouse', 'purchasing']), async (req: AuthenticatedRequest, res) => {
     try {
       const { orderId } = costRedistributionValidationSchema.parse(req.body);
       const result = await warehouseEnhancementService.validateCostRedistribution(orderId);
@@ -1680,7 +1639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/purchases', requireRole(['admin', 'purchasing']), approvalMiddleware.purchase, purchasePeriodGuard, async (req: any, res) => {
+  app.post('/api/purchases', requireRole(['admin', 'purchasing']), approvalMiddleware.purchase, purchasePeriodGuard, async (req: AuthenticatedRequest, res) => {
     try {
       const purchaseData = insertPurchaseSchema.parse({
         ...req.body,
@@ -1745,7 +1704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // STAGE 2 COMPLIANCE: Purchase payment settlement route
-  app.post('/api/purchases/:id/settle', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/purchases/:id/settle', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       
@@ -1797,7 +1756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // STAGE 2 COMPLIANCE: Purchase advances settlement route (for weight/price adjustments)
-  app.post('/api/purchases/:id/settle-advance', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/purchases/:id/settle-advance', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       
@@ -1834,7 +1793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // STAGE 2 COMPLIANCE: Supplier return processing route
-  app.post('/api/purchases/:id/return', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+  app.post('/api/purchases/:id/return', requireRole(['admin', 'purchasing']), async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       
@@ -1893,7 +1852,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/supplies', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.post('/api/supplies', requireRole(['admin', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertSupplySchema.parse(req.body);
       const supply = await storage.createSupply(validatedData);
@@ -1905,7 +1864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/supplies/:id', requireRole(['admin', 'purchasing']), async (req: any, res) => {
+  app.put('/api/supplies/:id', requireRole(['admin', 'purchasing']), async (req: AuthenticatedRequest, res) => {
     try {
       const supplyData = req.body;
       
@@ -1959,7 +1918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/operating-expenses', requireRole(['admin', 'finance']), approvalMiddleware.operatingExpense, async (req: any, res) => {
+  app.post('/api/operating-expenses', requireRole(['admin', 'finance']), approvalMiddleware.operatingExpense, async (req: AuthenticatedRequest, res) => {
     try {
       const expenseData = insertOperatingExpenseSchema.parse({
         ...req.body,
@@ -2007,7 +1966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Supply consumption routes
-  app.post('/api/supply-consumption', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.post('/api/supply-consumption', requireRole(['admin', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const consumptionData = insertSupplyConsumptionSchema.parse({
         ...req.body,
@@ -2038,7 +1997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Supply purchases routes
-  app.post('/api/supply-purchases', requireRole(['admin', 'purchasing']), approvalMiddleware.supplyPurchase, async (req: any, res) => {
+  app.post('/api/supply-purchases', requireRole(['admin', 'purchasing']), approvalMiddleware.supplyPurchase, async (req: AuthenticatedRequest, res) => {
     try {
       const purchaseData = insertSupplyPurchaseSchema.parse({
         ...req.body,
@@ -2094,7 +2053,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Automatic packing cost deduction route - called during warehouse operations
-  app.post('/api/warehouse/record-packing-consumption', requireRole(['admin', 'warehouse']), async (req: any, res) => {
+  app.post('/api/warehouse/record-packing-consumption', requireRole(['admin', 'warehouse']), async (req: AuthenticatedRequest, res) => {
     try {
       const { orderId, cartonsProcessed } = req.body;
       
@@ -2145,7 +2104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/revenue/ledger', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/revenue/ledger', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const entryData = insertRevenueLedgerSchema.parse({
         ...req.body,
@@ -2176,7 +2135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Customer receipt/refund routes
-  app.post('/api/revenue/customer-receipt', requireRole(['admin', 'finance', 'sales']), async (req: any, res) => {
+  app.post('/api/revenue/customer-receipt', requireRole(['admin', 'finance', 'sales']), async (req: AuthenticatedRequest, res) => {
     try {
       const receiptData = customerReceiptSchema.parse(req.body);
 
@@ -2203,7 +2162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/revenue/customer-refund', requireRole(['admin', 'finance', 'sales']), async (req: any, res) => {
+  app.post('/api/revenue/customer-refund', requireRole(['admin', 'finance', 'sales']), async (req: AuthenticatedRequest, res) => {
     try {
       const refundData = customerRefundSchema.parse(req.body);
 
@@ -2255,7 +2214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/revenue/withdrawals', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.post('/api/revenue/withdrawals', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const withdrawalData = insertWithdrawalRecordSchema.parse({
         ...req.body,
@@ -2294,7 +2253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/revenue/withdrawals/:id/approve', requireRole(['admin', 'finance']), async (req: any, res) => {
+  app.patch('/api/revenue/withdrawals/:id/approve', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
       const approvalData = withdrawalApprovalSchema.parse(req.body);
       
@@ -2346,7 +2305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/revenue/reinvestments', requireRole(['admin']), async (req: any, res) => {
+  app.post('/api/revenue/reinvestments', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const reinvestmentData = insertReinvestmentSchema.parse({
         ...req.body,
@@ -2385,7 +2344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/revenue/reinvestments/:id/approve', requireRole(['admin']), async (req: any, res) => {
+  app.patch('/api/revenue/reinvestments/:id/approve', requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
     try {
       const approvalData = reinvestmentApprovalSchema.parse(req.body);
       
@@ -2523,7 +2482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/warehouse/stock/:id/status', requireRole(['admin', 'warehouse']), approvalMiddleware.warehouseOperation, warehousePeriodGuard, async (req: any, res) => {
+  app.patch('/api/warehouse/stock/:id/status', requireRole(['admin', 'warehouse']), approvalMiddleware.warehouseOperation, warehousePeriodGuard, async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       if (!id) {
@@ -2552,7 +2511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/filter', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+  app.post('/api/warehouse/filter', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: AuthenticatedRequest, res) => {
     try {
       const filterData = warehouseFilterOperationSchema.parse(req.body);
       
@@ -2582,7 +2541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/warehouse/move-to-final', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: any, res) => {
+  app.post('/api/warehouse/move-to-final', requireRole(['admin', 'warehouse']), warehousePeriodGuard, async (req: AuthenticatedRequest, res) => {
     try {
       const moveData = warehouseMoveToFinalSchema.parse(req.body);
       

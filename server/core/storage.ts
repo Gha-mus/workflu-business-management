@@ -11771,6 +11771,1823 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Document CRUD operations
+  async getDocument(id: string, userId?: string): Promise<Document | undefined> {
+    try {
+      const [document] = await db
+        .select()
+        .from(documents)
+        .where(eq(documents.id, id));
+      return document;
+    } catch (error) {
+      console.error('Error fetching document:', error);
+      return undefined;
+    }
+  }
+
+  async getDocumentWithMetadata(id: string, userId?: string): Promise<DocumentWithMetadata | undefined> {
+    try {
+      const document = await this.getDocument(id, userId);
+      if (!document) return undefined;
+
+      const metadata = await this.getDocumentMetadata(id);
+      const compliance = await this.getDocumentCompliance(id);
+
+      return {
+        ...document,
+        metadata,
+        compliance
+      };
+    } catch (error) {
+      console.error('Error fetching document with metadata:', error);
+      return undefined;
+    }
+  }
+
+  async createDocument(documentData: InsertDocument, auditContext?: AuditContext): Promise<Document> {
+    try {
+      const [newDocument] = await db
+        .insert(documents)
+        .values(documentData)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'documents',
+          newDocument.id,
+          'create',
+          'document_management',
+          null,
+          documentData
+        );
+      }
+
+      return newDocument;
+    } catch (error) {
+      console.error('Error creating document:', error);
+      throw new Error('Failed to create document');
+    }
+  }
+
+  async updateDocument(id: string, documentData: Partial<InsertDocument>, auditContext?: AuditContext): Promise<Document> {
+    try {
+      const [oldDocument] = await db
+        .select()
+        .from(documents)
+        .where(eq(documents.id, id));
+
+      if (!oldDocument) {
+        throw new Error('Document not found');
+      }
+
+      const [updatedDocument] = await db
+        .update(documents)
+        .set({ ...documentData, updatedAt: new Date() })
+        .where(eq(documents.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'documents',
+          id,
+          'update',
+          'document_management',
+          oldDocument,
+          documentData
+        );
+      }
+
+      return updatedDocument;
+    } catch (error) {
+      console.error('Error updating document:', error);
+      throw new Error('Failed to update document');
+    }
+  }
+
+  async deleteDocument(id: string, auditContext?: AuditContext): Promise<void> {
+    try {
+      const [document] = await db
+        .select()
+        .from(documents)
+        .where(eq(documents.id, id));
+
+      if (!document) {
+        throw new Error('Document not found');
+      }
+
+      await db
+        .delete(documents)
+        .where(eq(documents.id, id));
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'documents',
+          id,
+          'delete',
+          'document_management',
+          document,
+          null
+        );
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      throw new Error('Failed to delete document');
+    }
+  }
+
+  // Document search and filtering
+  async searchDocuments(searchRequest: DocumentSearchRequest, userId?: string): Promise<DocumentSearchResponse> {
+    try {
+      let query = db.select().from(documents);
+      const conditions = [];
+
+      if (searchRequest.query) {
+        conditions.push(
+          or(
+            ilike(documents.title, `%${searchRequest.query}%`),
+            ilike(documents.description, `%${searchRequest.query}%`),
+            ilike(documents.originalFileName, `%${searchRequest.query}%`)
+          )
+        );
+      }
+
+      if (searchRequest.category) {
+        conditions.push(eq(documents.category, searchRequest.category));
+      }
+
+      if (searchRequest.status) {
+        conditions.push(eq(documents.status, searchRequest.status));
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      const totalQuery = db
+        .select({ count: sql<number>`count(*)` })
+        .from(documents);
+
+      if (conditions.length > 0) {
+        totalQuery.where(and(...conditions));
+      }
+
+      const [totalResult] = await totalQuery;
+      const total = Number(totalResult.count);
+
+      if (searchRequest.limit) {
+        query = query.limit(searchRequest.limit);
+      }
+
+      if (searchRequest.offset) {
+        query = query.offset(searchRequest.offset);
+      }
+
+      const documents_result = await query.orderBy(desc(documents.createdAt));
+
+      return {
+        documents: documents_result,
+        total,
+        page: Math.floor((searchRequest.offset || 0) / (searchRequest.limit || 10)) + 1,
+        totalPages: Math.ceil(total / (searchRequest.limit || 10)),
+        hasMore: (searchRequest.offset || 0) + documents_result.length < total
+      };
+    } catch (error) {
+      console.error('Error searching documents:', error);
+      return {
+        documents: [],
+        total: 0,
+        page: 1,
+        totalPages: 0,
+        hasMore: false
+      };
+    }
+  }
+
+  async getDocumentsByCategory(category: string, limit?: number, offset?: number): Promise<Document[]> {
+    try {
+      let query = db
+        .select()
+        .from(documents)
+        .where(eq(documents.category, category))
+        .orderBy(desc(documents.createdAt));
+
+      if (limit) query = query.limit(limit);
+      if (offset) query = query.offset(offset);
+
+      return await query;
+    } catch (error) {
+      console.error('Error fetching documents by category:', error);
+      return [];
+    }
+  }
+
+  async getDocumentsByEntity(entityType: string, entityId: string): Promise<Document[]> {
+    try {
+      return await db
+        .select()
+        .from(documents)
+        .where(and(
+          eq(documents.entityType, entityType),
+          eq(documents.entityId, entityId)
+        ))
+        .orderBy(desc(documents.createdAt));
+    } catch (error) {
+      console.error('Error fetching documents by entity:', error);
+      return [];
+    }
+  }
+
+  async getDocumentsBySupplier(supplierId: string): Promise<Document[]> {
+    return this.getDocumentsByEntity('supplier', supplierId);
+  }
+
+  async getDocumentsByCustomer(customerId: string): Promise<Document[]> {
+    return this.getDocumentsByEntity('customer', customerId);
+  }
+
+  async getDocumentsByPurchase(purchaseId: string): Promise<Document[]> {
+    return this.getDocumentsByEntity('purchase', purchaseId);
+  }
+
+  async getDocumentsByOrder(orderId: string): Promise<Document[]> {
+    return this.getDocumentsByEntity('order', orderId);
+  }
+
+  async getDocumentsByShipment(shipmentId: string): Promise<Document[]> {
+    return this.getDocumentsByEntity('shipment', shipmentId);
+  }
+
+  async getDocumentsByTags(tags: string[]): Promise<Document[]> {
+    try {
+      return await db
+        .select()
+        .from(documents)
+        .where(sql`${documents.tags} && ${tags}`)
+        .orderBy(desc(documents.createdAt));
+    } catch (error) {
+      console.error('Error fetching documents by tags:', error);
+      return [];
+    }
+  }
+
+  // Document version control
+  async getDocumentVersions(documentId: string): Promise<DocumentVersion[]> {
+    try {
+      return await db
+        .select()
+        .from(documentVersions)
+        .where(eq(documentVersions.documentId, documentId))
+        .orderBy(desc(documentVersions.version));
+    } catch (error) {
+      console.error('Error fetching document versions:', error);
+      return [];
+    }
+  }
+
+  async getDocumentVersionHistory(documentId: string): Promise<DocumentVersionHistory> {
+    try {
+      const versions = await this.getDocumentVersions(documentId);
+      const document = await this.getDocument(documentId);
+
+      return {
+        document,
+        versions,
+        totalVersions: versions.length,
+        latestVersion: versions[0],
+        createdAt: document?.createdAt || new Date(),
+        lastModified: versions[0]?.createdAt || document?.updatedAt || new Date()
+      };
+    } catch (error) {
+      console.error('Error fetching document version history:', error);
+      throw new Error('Failed to fetch document version history');
+    }
+  }
+
+  async createDocumentVersion(version: InsertDocumentVersion, auditContext?: AuditContext): Promise<DocumentVersion> {
+    try {
+      const [newVersion] = await db
+        .insert(documentVersions)
+        .values(version)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_versions',
+          newVersion.id,
+          'create',
+          'document_management',
+          null,
+          version
+        );
+      }
+
+      return newVersion;
+    } catch (error) {
+      console.error('Error creating document version:', error);
+      throw new Error('Failed to create document version');
+    }
+  }
+
+  async getDocumentVersion(versionId: string): Promise<DocumentVersion | undefined> {
+    try {
+      const [version] = await db
+        .select()
+        .from(documentVersions)
+        .where(eq(documentVersions.id, versionId));
+      return version;
+    } catch (error) {
+      console.error('Error fetching document version:', error);
+      return undefined;
+    }
+  }
+
+  async approveDocumentVersion(versionId: string, userId: string, auditContext?: AuditContext): Promise<DocumentVersion> {
+    try {
+      const [updatedVersion] = await db
+        .update(documentVersions)
+        .set({
+          status: 'approved',
+          approvedBy: userId,
+          approvedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(documentVersions.id, versionId))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_versions',
+          versionId,
+          'update',
+          'document_management',
+          null,
+          { status: 'approved', approvedBy: userId }
+        );
+      }
+
+      return updatedVersion;
+    } catch (error) {
+      console.error('Error approving document version:', error);
+      throw new Error('Failed to approve document version');
+    }
+  }
+
+  async rollbackToVersion(documentId: string, versionId: string, userId: string, auditContext?: AuditContext): Promise<{
+    document: Document;
+    newVersion: DocumentVersion;
+  }> {
+    try {
+      const version = await this.getDocumentVersion(versionId);
+      if (!version) {
+        throw new Error('Version not found');
+      }
+
+      // Create new version from rollback
+      const newVersion = await this.createDocumentVersion({
+        documentId,
+        version: version.version + 1,
+        changeDescription: `Rollback to version ${version.version}`,
+        changeReason: 'rollback',
+        changeType: 'rollback',
+        fileName: version.fileName,
+        filePath: version.filePath,
+        fileSize: version.fileSize,
+        checksum: version.checksum,
+        createdBy: userId
+      }, auditContext);
+
+      // Update document
+      const document = await this.updateDocument(documentId, {
+        currentVersion: newVersion.version,
+        fileName: version.fileName,
+        filePath: version.filePath,
+        fileSize: version.fileSize,
+        checksum: version.checksum
+      }, auditContext);
+
+      return { document, newVersion };
+    } catch (error) {
+      console.error('Error rolling back to version:', error);
+      throw new Error('Failed to rollback to version');
+    }
+  }
+
+  async compareDocumentVersions(versionId1: string, versionId2: string): Promise<{
+    version1: DocumentVersion;
+    version2: DocumentVersion;
+    differences: Array<{
+      field: string;
+      version1Value: any;
+      version2Value: any;
+      type: 'added' | 'removed' | 'modified';
+    }>;
+  }> {
+    try {
+      const [version1, version2] = await Promise.all([
+        this.getDocumentVersion(versionId1),
+        this.getDocumentVersion(versionId2)
+      ]);
+
+      if (!version1 || !version2) {
+        throw new Error('One or both versions not found');
+      }
+
+      const differences = [];
+      const fields = ['fileName', 'filePath', 'fileSize', 'checksum', 'changeDescription'];
+
+      for (const field of fields) {
+        const val1 = (version1 as any)[field];
+        const val2 = (version2 as any)[field];
+
+        if (val1 !== val2) {
+          differences.push({
+            field,
+            version1Value: val1,
+            version2Value: val2,
+            type: 'modified' as const
+          });
+        }
+      }
+
+      return { version1, version2, differences };
+    } catch (error) {
+      console.error('Error comparing document versions:', error);
+      throw new Error('Failed to compare document versions');
+    }
+  }
+
+  // Document metadata management
+  async getDocumentMetadata(documentId: string): Promise<DocumentMetadata[]> {
+    try {
+      return await db
+        .select()
+        .from(documentMetadata)
+        .where(eq(documentMetadata.documentId, documentId))
+        .orderBy(desc(documentMetadata.createdAt));
+    } catch (error) {
+      console.error('Error fetching document metadata:', error);
+      return [];
+    }
+  }
+
+  async addDocumentMetadata(metadata: InsertDocumentMetadata, auditContext?: AuditContext): Promise<DocumentMetadata> {
+    try {
+      const [newMetadata] = await db
+        .insert(documentMetadata)
+        .values(metadata)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_metadata',
+          newMetadata.id,
+          'create',
+          'document_management',
+          null,
+          metadata
+        );
+      }
+
+      return newMetadata;
+    } catch (error) {
+      console.error('Error adding document metadata:', error);
+      throw new Error('Failed to add document metadata');
+    }
+  }
+
+  async updateDocumentMetadata(id: string, metadata: Partial<InsertDocumentMetadata>, auditContext?: AuditContext): Promise<DocumentMetadata> {
+    try {
+      const [oldMetadata] = await db
+        .select()
+        .from(documentMetadata)
+        .where(eq(documentMetadata.id, id));
+
+      const [updatedMetadata] = await db
+        .update(documentMetadata)
+        .set({ ...metadata, updatedAt: new Date() })
+        .where(eq(documentMetadata.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_metadata',
+          id,
+          'update',
+          'document_management',
+          oldMetadata,
+          metadata
+        );
+      }
+
+      return updatedMetadata;
+    } catch (error) {
+      console.error('Error updating document metadata:', error);
+      throw new Error('Failed to update document metadata');
+    }
+  }
+
+  async deleteDocumentMetadata(id: string, auditContext?: AuditContext): Promise<void> {
+    try {
+      const [metadata] = await db
+        .select()
+        .from(documentMetadata)
+        .where(eq(documentMetadata.id, id));
+
+      await db
+        .delete(documentMetadata)
+        .where(eq(documentMetadata.id, id));
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_metadata',
+          id,
+          'delete',
+          'document_management',
+          metadata,
+          null
+        );
+      }
+    } catch (error) {
+      console.error('Error deleting document metadata:', error);
+      throw new Error('Failed to delete document metadata');
+    }
+  }
+
+  async searchDocumentsByMetadata(key: string, value: string): Promise<Document[]> {
+    try {
+      const metadataRecords = await db
+        .select()
+        .from(documentMetadata)
+        .where(and(
+          eq(documentMetadata.key, key),
+          eq(documentMetadata.value, value)
+        ));
+
+      const documentIds = metadataRecords.map(m => m.documentId);
+      
+      if (documentIds.length === 0) return [];
+
+      return await db
+        .select()
+        .from(documents)
+        .where(sql`${documents.id} = ANY(${documentIds})`)
+        .orderBy(desc(documents.createdAt));
+    } catch (error) {
+      console.error('Error searching documents by metadata:', error);
+      return [];
+    }
+  }
+
+  // Document compliance tracking
+  async getDocumentCompliance(documentId: string): Promise<DocumentCompliance[]> {
+    try {
+      return await db
+        .select()
+        .from(documentCompliance)
+        .where(eq(documentCompliance.documentId, documentId))
+        .orderBy(desc(documentCompliance.createdAt));
+    } catch (error) {
+      console.error('Error fetching document compliance:', error);
+      return [];
+    }
+  }
+
+  async addDocumentCompliance(compliance: InsertDocumentCompliance, auditContext?: AuditContext): Promise<DocumentCompliance> {
+    try {
+      const [newCompliance] = await db
+        .insert(documentCompliance)
+        .values(compliance)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_compliance',
+          newCompliance.id,
+          'create',
+          'document_management',
+          null,
+          compliance
+        );
+      }
+
+      return newCompliance;
+    } catch (error) {
+      console.error('Error adding document compliance:', error);
+      throw new Error('Failed to add document compliance');
+    }
+  }
+
+  async updateDocumentCompliance(id: string, compliance: Partial<InsertDocumentCompliance>, auditContext?: AuditContext): Promise<DocumentCompliance> {
+    try {
+      const [oldCompliance] = await db
+        .select()
+        .from(documentCompliance)
+        .where(eq(documentCompliance.id, id));
+
+      const [updatedCompliance] = await db
+        .update(documentCompliance)
+        .set({ ...compliance, updatedAt: new Date() })
+        .where(eq(documentCompliance.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_compliance',
+          id,
+          'update',
+          'document_management',
+          oldCompliance,
+          compliance
+        );
+      }
+
+      return updatedCompliance;
+    } catch (error) {
+      console.error('Error updating document compliance:', error);
+      throw new Error('Failed to update document compliance');
+    }
+  }
+
+  async deleteDocumentCompliance(id: string, auditContext?: AuditContext): Promise<void> {
+    try {
+      const [compliance] = await db
+        .select()
+        .from(documentCompliance)
+        .where(eq(documentCompliance.id, id));
+
+      await db
+        .delete(documentCompliance)
+        .where(eq(documentCompliance.id, id));
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_compliance',
+          id,
+          'delete',
+          'document_management',
+          compliance,
+          null
+        );
+      }
+    } catch (error) {
+      console.error('Error deleting document compliance:', error);
+      throw new Error('Failed to delete document compliance');
+    }
+  }
+
+  async getExpiringCompliance(days: number): Promise<ComplianceAlert[]> {
+    try {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + days);
+
+      const expiringCompliance = await db
+        .select({
+          id: documentCompliance.id,
+          documentId: documentCompliance.documentId,
+          documentTitle: documents.title,
+          complianceType: documentCompliance.complianceType,
+          status: documentCompliance.status,
+          expiryDate: documentCompliance.expiryDate,
+          renewalRequired: documentCompliance.renewalRequired,
+          issuingAuthority: documentCompliance.issuingAuthority,
+          priority: sql<'low' | 'medium' | 'high' | 'critical'>`
+            CASE 
+              WHEN ${documentCompliance.expiryDate} < NOW() THEN 'critical'
+              WHEN ${documentCompliance.expiryDate} < NOW() + INTERVAL '7 days' THEN 'high'
+              WHEN ${documentCompliance.expiryDate} < NOW() + INTERVAL '30 days' THEN 'medium'
+              ELSE 'low'
+            END
+          `
+        })
+        .from(documentCompliance)
+        .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
+        .where(and(
+          lte(documentCompliance.expiryDate, expiryDate),
+          eq(documentCompliance.status, 'active')
+        ))
+        .orderBy(documentCompliance.expiryDate);
+
+      return expiringCompliance.map(item => ({
+        id: item.id,
+        documentId: item.documentId,
+        documentTitle: item.documentTitle,
+        alertType: 'compliance_expiring',
+        alertCategory: 'compliance',
+        priority: item.priority,
+        title: `${item.complianceType} Expiring`,
+        message: `${item.complianceType} for ${item.documentTitle} expires on ${item.expiryDate?.toLocaleDateString()}`,
+        complianceType: item.complianceType,
+        expiryDate: item.expiryDate,
+        status: item.status,
+        renewalRequired: item.renewalRequired,
+        issuingAuthority: item.issuingAuthority,
+        daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
+        actionRequired: item.renewalRequired ? 'Renewal required' : 'Review status',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+    } catch (error) {
+      console.error('Error fetching expiring compliance:', error);
+      return [];
+    }
+  }
+
+  async getExpiredCompliance(): Promise<ComplianceAlert[]> {
+    try {
+      const expiredCompliance = await db
+        .select({
+          id: documentCompliance.id,
+          documentId: documentCompliance.documentId,
+          documentTitle: documents.title,
+          complianceType: documentCompliance.complianceType,
+          status: documentCompliance.status,
+          expiryDate: documentCompliance.expiryDate,
+          renewalRequired: documentCompliance.renewalRequired,
+          issuingAuthority: documentCompliance.issuingAuthority
+        })
+        .from(documentCompliance)
+        .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
+        .where(and(
+          sql`${documentCompliance.expiryDate} < NOW()`,
+          eq(documentCompliance.status, 'active')
+        ))
+        .orderBy(documentCompliance.expiryDate);
+
+      return expiredCompliance.map(item => ({
+        id: item.id,
+        documentId: item.documentId,
+        documentTitle: item.documentTitle,
+        alertType: 'compliance_expired',
+        alertCategory: 'compliance',
+        priority: 'critical' as const,
+        title: `${item.complianceType} Expired`,
+        message: `${item.complianceType} for ${item.documentTitle} expired on ${item.expiryDate?.toLocaleDateString()}`,
+        complianceType: item.complianceType,
+        expiryDate: item.expiryDate,
+        status: item.status,
+        renewalRequired: item.renewalRequired,
+        issuingAuthority: item.issuingAuthority,
+        daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
+        actionRequired: 'Immediate action required',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+    } catch (error) {
+      console.error('Error fetching expired compliance:', error);
+      return [];
+    }
+  }
+
+  async getComplianceByStatus(status: string): Promise<DocumentCompliance[]> {
+    try {
+      return await db
+        .select()
+        .from(documentCompliance)
+        .where(eq(documentCompliance.status, status))
+        .orderBy(desc(documentCompliance.createdAt));
+    } catch (error) {
+      console.error('Error fetching compliance by status:', error);
+      return [];
+    }
+  }
+
+  async updateComplianceStatus(id: string, status: string, userId: string, auditContext?: AuditContext): Promise<DocumentCompliance> {
+    try {
+      const [oldCompliance] = await db
+        .select()
+        .from(documentCompliance)
+        .where(eq(documentCompliance.id, id));
+
+      const [updatedCompliance] = await db
+        .update(documentCompliance)
+        .set({
+          status,
+          lastReviewedBy: userId,
+          lastReviewedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(documentCompliance.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_compliance',
+          id,
+          'update',
+          'document_management',
+          oldCompliance,
+          { status, lastReviewedBy: userId }
+        );
+      }
+
+      return updatedCompliance;
+    } catch (error) {
+      console.error('Error updating compliance status:', error);
+      throw new Error('Failed to update compliance status');
+    }
+  }
+
+  // Compliance dashboard and monitoring
+  async getComplianceDashboard(userId?: string): Promise<ComplianceDashboard> {
+    try {
+      const [totalCompliance] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(documentCompliance);
+
+      const [activeCompliance] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(documentCompliance)
+        .where(eq(documentCompliance.status, 'active'));
+
+      const [expiredCompliance] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(documentCompliance)
+        .where(and(
+          sql`${documentCompliance.expiryDate} < NOW()`,
+          eq(documentCompliance.status, 'active')
+        ));
+
+      const [expiringSoonCompliance] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(documentCompliance)
+        .where(and(
+          sql`${documentCompliance.expiryDate} BETWEEN NOW() AND NOW() + INTERVAL '30 days'`,
+          eq(documentCompliance.status, 'active')
+        ));
+
+      const [pendingReviewCompliance] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(documentCompliance)
+        .where(eq(documentCompliance.status, 'pending_review'));
+
+      const expiringAlerts = await this.getExpiringCompliance(30);
+      const expiredAlerts = await this.getExpiredCompliance();
+
+      return {
+        summary: {
+          total: Number(totalCompliance.count),
+          active: Number(activeCompliance.count),
+          expired: Number(expiredCompliance.count),
+          expiringSoon: Number(expiringSoonCompliance.count),
+          pendingReview: Number(pendingReviewCompliance.count),
+          complianceRate: Number(totalCompliance.count) > 0 
+            ? Math.round((Number(activeCompliance.count) / Number(totalCompliance.count)) * 100)
+            : 100
+        },
+        alerts: [...expiredAlerts, ...expiringAlerts].slice(0, 10),
+        recentActivity: [], // Could be implemented later
+        upcomingRenewals: expiringAlerts.filter(alert => alert.renewalRequired).slice(0, 5),
+        criticalItems: [...expiredAlerts, ...expiringAlerts.filter(alert => alert.priority === 'critical')].slice(0, 5),
+        complianceByType: [], // Could be implemented later
+        lastUpdated: new Date()
+      };
+    } catch (error) {
+      console.error('Error fetching compliance dashboard:', error);
+      throw new Error('Failed to fetch compliance dashboard');
+    }
+  }
+
+  async getComplianceAlerts(priority?: 'low' | 'medium' | 'high' | 'critical', limit = 20): Promise<ComplianceAlert[]> {
+    try {
+      const alerts = await this.getExpiringCompliance(90);
+      const expired = await this.getExpiredCompliance();
+      
+      let allAlerts = [...expired, ...alerts];
+
+      if (priority) {
+        allAlerts = allAlerts.filter(alert => alert.priority === priority);
+      }
+
+      return allAlerts
+        .sort((a, b) => {
+          const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+          return priorityOrder[b.priority] - priorityOrder[a.priority];
+        })
+        .slice(0, limit);
+    } catch (error) {
+      console.error('Error fetching compliance alerts:', error);
+      return [];
+    }
+  }
+
+  async getUpcomingRenewals(days = 30): Promise<ComplianceAlert[]> {
+    try {
+      const alerts = await this.getExpiringCompliance(days);
+      return alerts.filter(alert => alert.renewalRequired);
+    } catch (error) {
+      console.error('Error fetching upcoming renewals:', error);
+      return [];
+    }
+  }
+
+  async getCriticalComplianceItems(): Promise<ComplianceAlert[]> {
+    try {
+      const expired = await this.getExpiredCompliance();
+      const criticalExpiring = await this.getExpiringCompliance(7);
+      
+      return [...expired, ...criticalExpiring.filter(alert => alert.priority === 'critical')];
+    } catch (error) {
+      console.error('Error fetching critical compliance items:', error);
+      return [];
+    }
+  }
+
+  async markComplianceReminderSent(complianceId: string): Promise<void> {
+    try {
+      await db
+        .update(documentCompliance)
+        .set({
+          lastReminderSent: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(documentCompliance.id, complianceId));
+    } catch (error) {
+      console.error('Error marking compliance reminder as sent:', error);
+      throw new Error('Failed to mark compliance reminder as sent');
+    }
+  }
+
+  async generateComplianceReport(filters?: ComplianceFilterRequest): Promise<{
+    summary: {
+      total: number;
+      compliant: number;
+      nonCompliant: number;
+      expiringSoon: number;
+      expired: number;
+      pendingReview: number;
+    };
+    details: DocumentCompliance[];
+    recommendations: string[];
+  }> {
+    try {
+      let query = db.select().from(documentCompliance);
+      const conditions = [];
+
+      if (filters?.status) {
+        conditions.push(eq(documentCompliance.status, filters.status));
+      }
+
+      if (filters?.complianceType) {
+        conditions.push(eq(documentCompliance.complianceType, filters.complianceType));
+      }
+
+      if (filters?.expiryDateFrom) {
+        conditions.push(gte(documentCompliance.expiryDate, new Date(filters.expiryDateFrom)));
+      }
+
+      if (filters?.expiryDateTo) {
+        conditions.push(lte(documentCompliance.expiryDate, new Date(filters.expiryDateTo)));
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      const details = await query.orderBy(desc(documentCompliance.createdAt));
+
+      const summary = {
+        total: details.length,
+        compliant: details.filter(d => d.status === 'active' && d.expiryDate && d.expiryDate > new Date()).length,
+        nonCompliant: details.filter(d => d.status === 'expired' || (d.expiryDate && d.expiryDate < new Date())).length,
+        expiringSoon: details.filter(d => {
+          if (!d.expiryDate) return false;
+          const daysUntilExpiry = Math.ceil((d.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          return daysUntilExpiry > 0 && daysUntilExpiry <= 30;
+        }).length,
+        expired: details.filter(d => d.expiryDate && d.expiryDate < new Date()).length,
+        pendingReview: details.filter(d => d.status === 'pending_review').length
+      };
+
+      const recommendations = [];
+      if (summary.expired > 0) {
+        recommendations.push(`${summary.expired} compliance items have expired and require immediate attention`);
+      }
+      if (summary.expiringSoon > 0) {
+        recommendations.push(`${summary.expiringSoon} compliance items are expiring soon and should be renewed`);
+      }
+      if (summary.pendingReview > 0) {
+        recommendations.push(`${summary.pendingReview} compliance items are pending review`);
+      }
+
+      return { summary, details, recommendations };
+    } catch (error) {
+      console.error('Error generating compliance report:', error);
+      throw new Error('Failed to generate compliance report');
+    }
+  }
+
+  // Document access logging and audit
+  async logDocumentAccess(accessLog: InsertDocumentAccessLog): Promise<DocumentAccessLog> {
+    try {
+      const [newAccessLog] = await db
+        .insert(documentAccessLogs)
+        .values(accessLog)
+        .returning();
+
+      return newAccessLog;
+    } catch (error) {
+      console.error('Error logging document access:', error);
+      throw new Error('Failed to log document access');
+    }
+  }
+
+  async getDocumentAccessLogs(documentId: string, limit = 50, offset = 0): Promise<DocumentAccessLog[]> {
+    try {
+      return await db
+        .select()
+        .from(documentAccessLogs)
+        .where(eq(documentAccessLogs.documentId, documentId))
+        .orderBy(desc(documentAccessLogs.accessedAt))
+        .limit(limit)
+        .offset(offset);
+    } catch (error) {
+      console.error('Error fetching document access logs:', error);
+      return [];
+    }
+  }
+
+  async getDocumentAccessHistory(documentId: string, userId?: string): Promise<DocumentAccessLog[]> {
+    try {
+      let query = db
+        .select()
+        .from(documentAccessLogs)
+        .where(eq(documentAccessLogs.documentId, documentId));
+
+      if (userId) {
+        query = query.where(and(
+          eq(documentAccessLogs.documentId, documentId),
+          eq(documentAccessLogs.userId, userId)
+        ));
+      }
+
+      return await query.orderBy(desc(documentAccessLogs.accessedAt));
+    } catch (error) {
+      console.error('Error fetching document access history:', error);
+      return [];
+    }
+  }
+
+  async getUserDocumentAccessHistory(userId: string, limit = 100, offset = 0): Promise<DocumentAccessLog[]> {
+    try {
+      return await db
+        .select()
+        .from(documentAccessLogs)
+        .where(eq(documentAccessLogs.userId, userId))
+        .orderBy(desc(documentAccessLogs.accessedAt))
+        .limit(limit)
+        .offset(offset);
+    } catch (error) {
+      console.error('Error fetching user document access history:', error);
+      return [];
+    }
+  }
+
+  async detectSuspiciousDocumentAccess(documentId?: string): Promise<Array<{
+    documentId: string;
+    documentTitle: string;
+    userId: string;
+    userName: string;
+    accessPattern: string;
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    details: string;
+  }>> {
+    try {
+      // Implement basic suspicious access detection
+      // This is a simplified implementation - could be enhanced with more sophisticated algorithms
+      
+      let query = db
+        .select({
+          documentId: documentAccessLogs.documentId,
+          userId: documentAccessLogs.userId,
+          userName: documentAccessLogs.userName,
+          accessCount: sql<number>`count(*)`,
+          distinctDays: sql<number>`count(distinct date(${documentAccessLogs.accessedAt}))`,
+          lastAccess: sql<Date>`max(${documentAccessLogs.accessedAt})`,
+          firstAccess: sql<Date>`min(${documentAccessLogs.accessedAt})`
+        })
+        .from(documentAccessLogs)
+        .where(gte(documentAccessLogs.accessedAt, sql`NOW() - INTERVAL '7 days'`))
+        .groupBy(documentAccessLogs.documentId, documentAccessLogs.userId, documentAccessLogs.userName);
+
+      if (documentId) {
+        query = query.where(eq(documentAccessLogs.documentId, documentId));
+      }
+
+      const accessPatterns = await query.having(sql`count(*) > 10`); // More than 10 accesses in 7 days
+
+      const suspiciousActivity = [];
+
+      for (const pattern of accessPatterns) {
+        const document = await this.getDocument(pattern.documentId);
+        
+        let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
+        let accessPattern = 'normal';
+        let details = '';
+
+        if (pattern.accessCount > 50) {
+          riskLevel = 'critical';
+          accessPattern = 'excessive_access';
+          details = `${pattern.accessCount} accesses in 7 days`;
+        } else if (pattern.accessCount > 30) {
+          riskLevel = 'high';
+          accessPattern = 'high_frequency';
+          details = `${pattern.accessCount} accesses in 7 days`;
+        } else if (pattern.accessCount > 20) {
+          riskLevel = 'medium';
+          accessPattern = 'frequent_access';
+          details = `${pattern.accessCount} accesses in 7 days`;
+        }
+
+        suspiciousActivity.push({
+          documentId: pattern.documentId,
+          documentTitle: document?.title || 'Unknown Document',
+          userId: pattern.userId,
+          userName: pattern.userName || 'Unknown User',
+          accessPattern,
+          riskLevel,
+          details
+        });
+      }
+
+      return suspiciousActivity;
+    } catch (error) {
+      console.error('Error detecting suspicious document access:', error);
+      return [];
+    }
+  }
+
+  // Document workflow integration
+  async getDocumentWorkflowStates(documentId: string): Promise<DocumentWorkflowState[]> {
+    try {
+      return await db
+        .select()
+        .from(documentWorkflowStates)
+        .where(eq(documentWorkflowStates.documentId, documentId))
+        .orderBy(desc(documentWorkflowStates.createdAt));
+    } catch (error) {
+      console.error('Error fetching document workflow states:', error);
+      return [];
+    }
+  }
+
+  async createDocumentWorkflowState(workflowState: InsertDocumentWorkflowState, auditContext?: AuditContext): Promise<DocumentWorkflowState> {
+    try {
+      const [newWorkflowState] = await db
+        .insert(documentWorkflowStates)
+        .values(workflowState)
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_workflow_states',
+          newWorkflowState.id,
+          'create',
+          'document_workflow',
+          null,
+          workflowState
+        );
+      }
+
+      return newWorkflowState;
+    } catch (error) {
+      console.error('Error creating document workflow state:', error);
+      throw new Error('Failed to create document workflow state');
+    }
+  }
+
+  async updateDocumentWorkflowState(id: string, workflowState: Partial<InsertDocumentWorkflowState>, auditContext?: AuditContext): Promise<DocumentWorkflowState> {
+    try {
+      const [oldWorkflowState] = await db
+        .select()
+        .from(documentWorkflowStates)
+        .where(eq(documentWorkflowStates.id, id));
+
+      const [updatedWorkflowState] = await db
+        .update(documentWorkflowStates)
+        .set({ ...workflowState, updatedAt: new Date() })
+        .where(eq(documentWorkflowStates.id, id))
+        .returning();
+
+      if (auditContext) {
+        await StorageApprovalGuard.auditOperation(
+          auditContext,
+          'document_workflow_states',
+          id,
+          'update',
+          'document_workflow',
+          oldWorkflowState,
+          workflowState
+        );
+      }
+
+      return updatedWorkflowState;
+    } catch (error) {
+      console.error('Error updating document workflow state:', error);
+      throw new Error('Failed to update document workflow state');
+    }
+  }
+
+  async completeDocumentWorkflowState(id: string, outcome: string, comments?: string, userId?: string): Promise<DocumentWorkflowState> {
+    try {
+      const [updatedWorkflowState] = await db
+        .update(documentWorkflowStates)
+        .set({
+          status: 'completed',
+          outcome,
+          comments,
+          completedBy: userId,
+          completedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(documentWorkflowStates.id, id))
+        .returning();
+
+      return updatedWorkflowState;
+    } catch (error) {
+      console.error('Error completing document workflow state:', error);
+      throw new Error('Failed to complete document workflow state');
+    }
+  }
+
+  // Document analytics and reporting
+  async getDocumentAnalytics(dateFrom?: Date, dateTo?: Date): Promise<DocumentAnalytics> {
+    try {
+      const conditions = [];
+      
+      if (dateFrom) {
+        conditions.push(gte(documents.createdAt, dateFrom));
+      }
+      
+      if (dateTo) {
+        conditions.push(lte(documents.createdAt, dateTo));
+      }
+
+      let query = db.select().from(documents);
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      const allDocuments = await query;
+
+      const totalDocuments = allDocuments.length;
+      const totalSizeBytes = allDocuments.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+
+      const documentsByCategory = allDocuments.reduce((acc, doc) => {
+        const category = doc.category || 'uncategorized';
+        acc[category] = (acc[category] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const documentsByStatus = allDocuments.reduce((acc, doc) => {
+        const status = doc.status || 'unknown';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const documentsByType = allDocuments.reduce((acc, doc) => {
+        const type = doc.contentType || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Get access analytics
+      const accessStats = await db
+        .select({
+          documentId: documentAccessLogs.documentId,
+          accessCount: sql<number>`count(*)`,
+          uniqueUsers: sql<number>`count(distinct ${documentAccessLogs.userId})`
+        })
+        .from(documentAccessLogs)
+        .groupBy(documentAccessLogs.documentId);
+
+      const mostAccessedDocuments = accessStats
+        .sort((a, b) => b.accessCount - a.accessCount)
+        .slice(0, 10)
+        .map(stat => ({
+          documentId: stat.documentId,
+          accessCount: stat.accessCount,
+          uniqueUsers: stat.uniqueUsers
+        }));
+
+      return {
+        summary: {
+          totalDocuments,
+          totalSizeBytes,
+          averageSizeBytes: totalDocuments > 0 ? Math.round(totalSizeBytes / totalDocuments) : 0,
+          documentsByCategory: Object.entries(documentsByCategory).map(([category, count]) => ({
+            category,
+            count,
+            percentage: Math.round((count / totalDocuments) * 100)
+          })),
+          documentsByStatus: Object.entries(documentsByStatus).map(([status, count]) => ({
+            status,
+            count,
+            percentage: Math.round((count / totalDocuments) * 100)
+          })),
+          documentsByType: Object.entries(documentsByType).map(([type, count]) => ({
+            type,
+            count,
+            percentage: Math.round((count / totalDocuments) * 100)
+          }))
+        },
+        usage: {
+          totalAccesses: accessStats.reduce((sum, stat) => sum + stat.accessCount, 0),
+          uniqueAccessors: accessStats.reduce((sum, stat) => sum + stat.uniqueUsers, 0),
+          mostAccessedDocuments,
+          averageAccessesPerDocument: accessStats.length > 0 
+            ? Math.round(accessStats.reduce((sum, stat) => sum + stat.accessCount, 0) / accessStats.length)
+            : 0
+        },
+        trends: {
+          documentsCreatedInPeriod: totalDocuments,
+          growthRate: 0, // Could be calculated with previous period data
+          popularCategories: Object.entries(documentsByCategory)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 5)
+            .map(([category, count]) => ({ category, count }))
+        },
+        compliance: {
+          totalComplianceItems: 0, // Will be filled by compliance analytics
+          activeCompliance: 0,
+          expiredCompliance: 0,
+          complianceRate: 0
+        },
+        storage: {
+          totalStorageUsed: totalSizeBytes,
+          storageByCategory: Object.entries(documentsByCategory).map(([category, count]) => {
+            const categoryDocs = allDocuments.filter(doc => (doc.category || 'uncategorized') === category);
+            const totalSize = categoryDocs.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+            return { category, sizeBytes: totalSize, documentCount: count };
+          }),
+          largestDocuments: allDocuments
+            .sort((a, b) => (b.fileSize || 0) - (a.fileSize || 0))
+            .slice(0, 10)
+            .map(doc => ({
+              documentId: doc.id,
+              title: doc.title || 'Untitled',
+              sizeBytes: doc.fileSize || 0,
+              category: doc.category || 'uncategorized'
+            }))
+        },
+        periodStart: dateFrom || new Date(0),
+        periodEnd: dateTo || new Date(),
+        generatedAt: new Date()
+      };
+    } catch (error) {
+      console.error('Error generating document analytics:', error);
+      throw new Error('Failed to generate document analytics');
+    }
+  }
+
+  async getDocumentStatistics(): Promise<{
+    totalDocuments: number;
+    documentsByCategory: Array<{ category: string; count: number; percentage: number }>;
+    documentsByStatus: Array<{ status: string; count: number; percentage: number }>;
+    documentsByAccessLevel: Array<{ accessLevel: string; count: number; percentage: number }>;
+    recentlyCreated: number;
+    recentlyModified: number;
+    averageFileSize: number;
+    totalStorageUsed: number;
+    mostActiveUsers: Array<{ userId: string; userName: string; activityCount: number }>;
+  }> {
+    try {
+      const allDocuments = await db.select().from(documents);
+      const totalDocuments = allDocuments.length;
+
+      const recentlyCreated = allDocuments.filter(doc => {
+        const daysSinceCreated = (Date.now() - doc.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+        return daysSinceCreated <= 7;
+      }).length;
+
+      const recentlyModified = allDocuments.filter(doc => {
+        if (!doc.updatedAt) return false;
+        const daysSinceModified = (Date.now() - doc.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+        return daysSinceModified <= 7;
+      }).length;
+
+      const totalStorageUsed = allDocuments.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+      const averageFileSize = totalDocuments > 0 ? Math.round(totalStorageUsed / totalDocuments) : 0;
+
+      const documentsByCategory = allDocuments.reduce((acc, doc) => {
+        const category = doc.category || 'uncategorized';
+        acc[category] = (acc[category] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const documentsByStatus = allDocuments.reduce((acc, doc) => {
+        const status = doc.status || 'unknown';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const documentsByAccessLevel = allDocuments.reduce((acc, doc) => {
+        const accessLevel = doc.accessLevel || 'public';
+        acc[accessLevel] = (acc[accessLevel] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Get most active users from document access logs
+      const userActivity = await db
+        .select({
+          userId: documentAccessLogs.userId,
+          userName: documentAccessLogs.userName,
+          activityCount: sql<number>`count(*)`
+        })
+        .from(documentAccessLogs)
+        .where(gte(documentAccessLogs.accessedAt, sql`NOW() - INTERVAL '30 days'`))
+        .groupBy(documentAccessLogs.userId, documentAccessLogs.userName)
+        .orderBy(sql`count(*) DESC`)
+        .limit(10);
+
+      return {
+        totalDocuments,
+        documentsByCategory: Object.entries(documentsByCategory).map(([category, count]) => ({
+          category,
+          count,
+          percentage: Math.round((count / totalDocuments) * 100)
+        })),
+        documentsByStatus: Object.entries(documentsByStatus).map(([status, count]) => ({
+          status,
+          count,
+          percentage: Math.round((count / totalDocuments) * 100)
+        })),
+        documentsByAccessLevel: Object.entries(documentsByAccessLevel).map(([accessLevel, count]) => ({
+          accessLevel,
+          count,
+          percentage: Math.round((count / totalDocuments) * 100)
+        })),
+        recentlyCreated,
+        recentlyModified,
+        averageFileSize,
+        totalStorageUsed,
+        mostActiveUsers: userActivity.map(activity => ({
+          userId: activity.userId,
+          userName: activity.userName || 'Unknown User',
+          activityCount: activity.activityCount
+        }))
+      };
+    } catch (error) {
+      console.error('Error fetching document statistics:', error);
+      throw new Error('Failed to fetch document statistics');
+    }
+  }
+
+  async getRecentDocumentActivity(limit = 20): Promise<Array<{
+    documentId: string;
+    documentTitle: string;
+    action: string;
+    userName: string;
+    userRole: string;
+    timestamp: Date;
+    details?: string;
+  }>> {
+    try {
+      const recentAccess = await db
+        .select({
+          documentId: documentAccessLogs.documentId,
+          action: documentAccessLogs.accessType,
+          userName: documentAccessLogs.userName,
+          userRole: documentAccessLogs.userRole,
+          timestamp: documentAccessLogs.accessedAt,
+          details: documentAccessLogs.businessContext
+        })
+        .from(documentAccessLogs)
+        .orderBy(desc(documentAccessLogs.accessedAt))
+        .limit(limit);
+
+      const activities = [];
+
+      for (const access of recentAccess) {
+        const document = await this.getDocument(access.documentId);
+        
+        activities.push({
+          documentId: access.documentId,
+          documentTitle: document?.title || 'Unknown Document',
+          action: access.action || 'access',
+          userName: access.userName || 'Unknown User',
+          userRole: access.userRole || 'user',
+          timestamp: access.timestamp || new Date(),
+          details: access.details
+        });
+      }
+
+      return activities;
+    } catch (error) {
+      console.error('Error fetching recent document activity:', error);
+      return [];
+    }
+  }
+
+  // Document file management
+  async generateDocumentNumber(category: string): Promise<string> {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      
+      const categoryPrefixes: Record<string, string> = {
+        'invoice': 'INV',
+        'contract': 'CON',
+        'compliance_record': 'COM',
+        'certificate': 'CER',
+        'receipt': 'REC',
+        'purchase_order': 'PO',
+        'shipping_document': 'SHP',
+        'quality_report': 'QUA',
+        'financial_statement': 'FIN',
+        'audit_document': 'AUD',
+        'insurance_policy': 'INS',
+        'license': 'LIC',
+        'permit': 'PER',
+        'regulation_document': 'REG'
+      };
+      
+      const prefix = categoryPrefixes[category] || 'DOC';
+      const random = Math.random().toString(36).substr(2, 6).toUpperCase();
+      
+      return `${prefix}-${year}${month}${day}-${random}`;
+    } catch (error) {
+      console.error('Error generating document number:', error);
+      throw new Error('Failed to generate document number');
+    }
+  }
+
+  async validateDocumentFile(filePath: string, contentType: string, fileSize: number): Promise<{
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  }> {
+    try {
+      const errors: string[] = [];
+      const warnings: string[] = [];
+
+      // Basic validation rules
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      const ALLOWED_TYPES = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+
+      if (fileSize > MAX_FILE_SIZE) {
+        errors.push(`File size ${fileSize} exceeds maximum allowed size of ${MAX_FILE_SIZE} bytes`);
+      }
+
+      if (fileSize === 0) {
+        errors.push('File is empty');
+      }
+
+      if (!ALLOWED_TYPES.includes(contentType)) {
+        errors.push(`File type ${contentType} is not allowed`);
+      }
+
+      if (fileSize > 5 * 1024 * 1024) { // 5MB
+        warnings.push('Large file size may affect performance');
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+        warnings
+      };
+    } catch (error) {
+      console.error('Error validating document file:', error);
+      return {
+        isValid: false,
+        errors: ['File validation failed'],
+        warnings: []
+      };
+    }
+  }
+
+  async calculateFileChecksum(filePath: string): Promise<string> {
+    try {
+      // This would normally read the file and calculate a hash
+      // For now, returning a placeholder since we don't have file system access in this context
+      return `checksum_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    } catch (error) {
+      console.error('Error calculating file checksum:', error);
+      throw new Error('Failed to calculate file checksum');
+    }
+  }
+
+  async getDocumentStorageInfo(): Promise<{
+    totalFiles: number;
+    totalSize: number;
+    averageSize: number;
+    sizeByCategory: Array<{ category: string; totalSize: number; fileCount: number }>;
+    oldestFile: Date;
+    newestFile: Date;
+  }> {
+    try {
+      const allDocuments = await db.select().from(documents);
+      
+      const totalFiles = allDocuments.length;
+      const totalSize = allDocuments.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+      const averageSize = totalFiles > 0 ? Math.round(totalSize / totalFiles) : 0;
+
+      const sizeByCategory = allDocuments.reduce((acc, doc) => {
+        const category = doc.category || 'uncategorized';
+        if (!acc[category]) {
+          acc[category] = { totalSize: 0, fileCount: 0 };
+        }
+        acc[category].totalSize += doc.fileSize || 0;
+        acc[category].fileCount += 1;
+        return acc;
+      }, {} as Record<string, { totalSize: number; fileCount: number }>);
+
+      const oldestFile = allDocuments.reduce((oldest, doc) => 
+        doc.createdAt < oldest ? doc.createdAt : oldest, 
+        allDocuments[0]?.createdAt || new Date()
+      );
+
+      const newestFile = allDocuments.reduce((newest, doc) => 
+        doc.createdAt > newest ? doc.createdAt : newest, 
+        allDocuments[0]?.createdAt || new Date()
+      );
+
+      return {
+        totalFiles,
+        totalSize,
+        averageSize,
+        sizeByCategory: Object.entries(sizeByCategory).map(([category, info]) => ({
+          category,
+          totalSize: info.totalSize,
+          fileCount: info.fileCount
+        })),
+        oldestFile,
+        newestFile
+      };
+    } catch (error) {
+      console.error('Error fetching document storage info:', error);
+      throw new Error('Failed to fetch document storage info');
+    }
+  }
+
+  // Document export and backup
+  async exportDocuments(filters?: DocumentSearchRequest): Promise<{
+    documents: DocumentWithMetadata[];
+    exportInfo: {
+      totalDocuments: number;
+      totalSize: number;
+      exportDate: Date;
+      exportedBy: string;
+    };
+  }> {
+    try {
+      let searchResults;
+      
+      if (filters) {
+        searchResults = await this.searchDocuments(filters);
+      } else {
+        const allDocs = await this.getDocuments();
+        searchResults = {
+          documents: allDocs,
+          total: allDocs.length,
+          page: 1,
+          totalPages: 1,
+          hasMore: false
+        };
+      }
+
+      const documentsWithMetadata: DocumentWithMetadata[] = [];
+      let totalSize = 0;
+
+      for (const doc of searchResults.documents) {
+        const metadata = await this.getDocumentMetadata(doc.id);
+        const compliance = await this.getDocumentCompliance(doc.id);
+        
+        documentsWithMetadata.push({
+          ...doc,
+          metadata,
+          compliance
+        });
+
+        totalSize += doc.fileSize || 0;
+      }
+
+      return {
+        documents: documentsWithMetadata,
+        exportInfo: {
+          totalDocuments: documentsWithMetadata.length,
+          totalSize,
+          exportDate: new Date(),
+          exportedBy: 'system' // Could be passed as parameter
+        }
+      };
+    } catch (error) {
+      console.error('Error exporting documents:', error);
+      throw new Error('Failed to export documents');
+    }
+  }
+
+  // Document bulk operations
+  async bulkUpdateDocuments(documentIds: string[], updates: Partial<InsertDocument>, userId: string): Promise<{
+    updated: number;
+    failed: Array<{ documentId: string; error: string }>;
+  }> {
+    try {
+      let updated = 0;
+      const failed: Array<{ documentId: string; error: string }> = [];
+
+      for (const documentId of documentIds) {
+        try {
+          await this.updateDocument(documentId, updates, {
+            userId,
+            userName: 'Bulk Update',
+            source: 'bulk_operation',
+            businessContext: 'Bulk document update operation'
+          });
+          updated++;
+        } catch (error) {
+          failed.push({
+            documentId,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      return { updated, failed };
+    } catch (error) {
+      console.error('Error bulk updating documents:', error);
+      throw new Error('Failed to bulk update documents');
+    }
+  }
+
+  async bulkDeleteDocuments(documentIds: string[], userId: string): Promise<{
+    deleted: number;
+    failed: Array<{ documentId: string; error: string }>;
+  }> {
+    try {
+      let deleted = 0;
+      const failed: Array<{ documentId: string; error: string }> = [];
+
+      for (const documentId of documentIds) {
+        try {
+          await this.deleteDocument(documentId, {
+            userId,
+            userName: 'Bulk Delete',
+            source: 'bulk_operation',
+            businessContext: 'Bulk document deletion operation'
+          });
+          deleted++;
+        } catch (error) {
+          failed.push({
+            documentId,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      return { deleted, failed };
+    } catch (error) {
+      console.error('Error bulk deleting documents:', error);
+      throw new Error('Failed to bulk delete documents');
+    }
+  }
+
+  async bulkUpdateDocumentStatus(documentIds: string[], status: string, userId: string): Promise<{
+    updated: number;
+    failed: Array<{ documentId: string; error: string }>;
+  }> {
+    try {
+      return await this.bulkUpdateDocuments(documentIds, { status }, userId);
+    } catch (error) {
+      console.error('Error bulk updating document status:', error);
+      throw new Error('Failed to bulk update document status');
+    }
+  }
+
+  // Helper method for time ago calculation
+  private calculateTimeAgo(date: Date | null): string {
+    if (!date) return 'Unknown';
+    
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return `${diffInSeconds} seconds ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return `${Math.floor(diffInSeconds / 86400)} days ago`;
+  }
+
   // ===== HELPER METHODS =====
 
   private getCurrentAccountingPeriod(): string {

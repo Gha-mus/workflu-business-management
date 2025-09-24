@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth";
+import type { AuthenticatedRequest } from "../core/auth/types";
 import { supabaseAdmin, supabaseClient } from "../core/auth/providers/supabaseProvider";
 import { auditService } from "../auditService";
 import { approvalWorkflowService } from "../approvalWorkflowService";
@@ -30,7 +31,7 @@ export const usersRouter = Router();
 usersRouter.get("/",
   isAuthenticated,
   requireRole(["admin"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const users = await storage.getUsers();
       // Filter out system user from the UI using centralized guard
@@ -44,7 +45,7 @@ usersRouter.get("/",
 );
 
 // GET /api/users/me
-usersRouter.get("/me", isAuthenticated, async (req, res) => {
+usersRouter.get("/me", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     res.json(req.user);
   } catch (error) {
@@ -57,7 +58,7 @@ usersRouter.get("/me", isAuthenticated, async (req, res) => {
 usersRouter.post("/",
   isAuthenticated,
   requireRole(["admin"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertUserSchema.parse(req.body);
       
@@ -160,7 +161,7 @@ usersRouter.put("/:id/role",
   isAuthenticated,
   requireRole(["admin"]),
   requireApproval("user_role_change"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const validatedData = userRoleUpdateSchema.parse(req.body);
@@ -192,7 +193,7 @@ usersRouter.put("/:id/role",
 usersRouter.get("/:id",
   isAuthenticated,
   requireRole(["admin"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const user = await storage.getUser(id);
@@ -208,7 +209,7 @@ usersRouter.get("/:id",
 usersRouter.put("/:id/status",
   isAuthenticated,
   requireRole(["admin"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const statusSchema = z.object({
@@ -252,7 +253,7 @@ usersRouter.post("/:id/reset-password",
   isAuthenticated,
   requireRole(["admin"]),
   passwordResetRateLimiter,
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       
@@ -268,7 +269,7 @@ usersRouter.post("/:id/reset-password",
           operationType: "security_operation",
           description: `Admin password reset failed for user ID ${id}: User not found`,
           oldValues: undefined,
-          newValues: { userId: id, error: "user_not_found", initiatedBy: req.user?.email }
+          newValues: { userId: id, error: "user_not_found", initiatedBy: req.user.email }
         });
         
         return res.status(404).json({ 
@@ -289,7 +290,7 @@ usersRouter.post("/:id/reset-password",
           operationType: "security_operation",
           description: `Admin password reset failed for user ${user.firstName} ${user.lastName}: No valid email address`,
           oldValues: undefined,
-          newValues: { userId: id, error: "email_missing", initiatedBy: req.user?.email }
+          newValues: { userId: id, error: "email_missing", initiatedBy: req.user.email }
         });
         
         return res.status(400).json({ 
@@ -310,7 +311,7 @@ usersRouter.post("/:id/reset-password",
           operationType: "security_operation",
           description: `Admin password reset failed for ${user.email}: Auth provider mismatch (${process.env.AUTH_PROVIDER})`,
           oldValues: undefined,
-          newValues: { userId: id, email: user.email, error: "auth_provider_mismatch", currentProvider: process.env.AUTH_PROVIDER, initiatedBy: req.user?.email }
+          newValues: { userId: id, email: user.email, error: "auth_provider_mismatch", currentProvider: process.env.AUTH_PROVIDER, initiatedBy: req.user.email }
         });
         
         return res.status(400).json({ 
@@ -350,7 +351,7 @@ usersRouter.post("/:id/reset-password",
             operationType: "security_operation",
             description: `Admin password reset failed for ${user.email}: ${error.message}`,
             oldValues: undefined,
-            newValues: { email: user.email, error: error.message, isRateLimit, initiatedBy: req.user?.email }
+            newValues: { email: user.email, error: error.message, isRateLimit, initiatedBy: req.user.email }
           });
           
           if (isRateLimit) {
@@ -385,7 +386,7 @@ usersRouter.post("/:id/reset-password",
             operationType: "security_operation",
             description: `Admin password reset failed for ${user.email}: No action link returned`,
             oldValues: undefined,
-            newValues: { email: user.email, error: "no_action_link", initiatedBy: req.user?.email }
+            newValues: { email: user.email, error: "no_action_link", initiatedBy: req.user.email }
           });
           
           return res.status(500).json({ 
@@ -414,7 +415,7 @@ usersRouter.post("/:id/reset-password",
             operationType: "security_operation",
             description: `Admin password reset SMTP failure for ${user.email}: ${smtpError.message}`,
             oldValues: undefined,
-            newValues: { email: user.email, error: smtpError.message, errorType: "smtp", initiatedBy: req.user?.email }
+            newValues: { email: user.email, error: smtpError.message, errorType: "smtp", initiatedBy: req.user.email }
           });
           
           return res.status(500).json({ 
@@ -448,7 +449,7 @@ usersRouter.post("/:id/reset-password",
           operationType: "security_operation",
           description: `Admin password reset exception for ${user.email}: ${supabaseError.message}`,
           oldValues: undefined,
-          newValues: { email: user.email, error: supabaseError.message, isRateLimit, initiatedBy: req.user?.email }
+          newValues: { email: user.email, error: supabaseError.message, isRateLimit, initiatedBy: req.user.email }
         });
         
         if (isRateLimit) {
@@ -481,7 +482,7 @@ usersRouter.post("/:id/reset-password",
         operationType: "security_operation",
         description: `Admin initiated password reset for user ${user.email} via admin link generation + SMTP`,
         oldValues: undefined,
-        newValues: { email: user.email, resetLinkGenerated: true, initiatedBy: req.user?.email }
+        newValues: { email: user.email, resetLinkGenerated: true, initiatedBy: req.user.email }
       });
 
       res.json({ 
@@ -507,7 +508,7 @@ usersRouter.post("/:id/reset-password",
 usersRouter.put("/:id/display-name",
   isAuthenticated,
   requireRole(["admin"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
       const displayNameSchema = z.object({
