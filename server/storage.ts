@@ -11185,13 +11185,17 @@ export class DatabaseStorage implements IStorage {
       const newVersion = await this.createDocumentVersion({
         documentId,
         version: version.version + 1,
+        versionLabel: `v${version.version + 1}.0`,
         changeDescription: `Rollback to version ${version.version}`,
         changeReason: 'rollback',
         changeType: 'rollback',
         fileName: version.fileName,
         filePath: version.filePath,
+        contentType: version.contentType,
         fileSize: version.fileSize,
         checksum: version.checksum,
+        approvalRequired: false,
+        isApproved: true,
         createdBy: userId
       }, auditContext);
 
@@ -11361,8 +11365,8 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(documentMetadata)
         .where(and(
-          eq(documentMetadata.key, key),
-          eq(documentMetadata.value, value)
+          eq(documentMetadata.metadataKey, key),
+          eq(documentMetadata.metadataValue, value)
         ));
 
       const documentIds = metadataRecords.map(m => m.documentId);
@@ -11491,10 +11495,10 @@ export class DatabaseStorage implements IStorage {
           documentId: documentCompliance.documentId,
           documentTitle: documents.title,
           requirementName: documentCompliance.requirementName,
-          complianceType: documentCompliance.complianceType,
+          complianceType: documentCompliance.requirementType,
           status: documentCompliance.status,
           expiryDate: documentCompliance.expiryDate,
-          renewalRequired: documentCompliance.renewalRequired,
+          renewalRequired: documentCompliance.correctionRequired,
           issuingAuthority: documentCompliance.issuingAuthority,
           priority: sql<'low' | 'medium' | 'high' | 'critical'>`
             CASE 
@@ -11546,10 +11550,10 @@ export class DatabaseStorage implements IStorage {
           documentId: documentCompliance.documentId,
           documentTitle: documents.title,
           requirementName: documentCompliance.requirementName,
-          complianceType: documentCompliance.complianceType,
+          complianceType: documentCompliance.requirementType,
           status: documentCompliance.status,
           expiryDate: documentCompliance.expiryDate,
-          renewalRequired: documentCompliance.renewalRequired,
+          renewalRequired: documentCompliance.correctionRequired,
           issuingAuthority: documentCompliance.issuingAuthority
         })
         .from(documentCompliance)
