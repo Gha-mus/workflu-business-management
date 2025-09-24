@@ -27,6 +27,7 @@ interface ChangeRecord {
   newValues?: Record<string, any>;
   changedFields?: string[];
   description: string;
+  businessContext?: string;
   financialImpact?: number;
   currency?: string;
   operationType?: string;

@@ -4496,8 +4496,8 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(warehouseStock).orderBy(desc(warehouseStock.createdAt));
   }
 
-  async getWarehouseStockByStatus(status: string): Promise<WarehouseStock[]> {
-    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, status as any));
+  async getWarehouseStockByStatus(status: 'AWAITING_DECISION' | 'FILTERING' | 'FILTERED' | 'PACKED' | 'RESERVED' | 'CONSUMED' | 'READY_TO_SHIP' | 'NON_CLEAN' | 'READY_FOR_SALE' | 'AWAITING_FILTER'): Promise<WarehouseStock[]> {
+    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, status));
   }
 
   async getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]> {
@@ -6666,30 +6666,74 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(shippingCosts, eq(shipments.id, shippingCosts.shipmentId))
       .where(whereClause);
 
+    // Method distribution
+    const methodResult = await db
+      .select({
+        method: shipments.method,
+        count: count(),
+      })
+      .from(shipments)
+      .where(whereClause)
+      .groupBy(shipments.method);
+
     const summary = summaryResult[0];
     const costs = costResult[0];
     const totalCostUsd = parseFloat(costs?.totalCostUsd || '0');
     const totalWeight = parseFloat(costs?.totalWeight || '0');
+    const totalShipments = Number(summary.totalShipments || 0);
+
+    // Calculate method distribution
+    const methodDistribution = methodResult.map(row => ({
+      method: row.method,
+      count: Number(row.count || 0),
+      percentage: totalShipments > 0 ? (Number(row.count || 0) / totalShipments) * 100 : 0,
+    }));
+
+    // Calculate on-time delivery rate
+    const onTimeResult = await db
+      .select({
+        onTimeDeliveries: sum(sql`CASE WHEN ${shipments.actualArrivalDate} <= ${shipments.estimatedArrivalDate} THEN 1 ELSE 0 END`),
+      })
+      .from(shipments)
+      .where(and(whereClause, sql`${shipments.actualArrivalDate} IS NOT NULL AND ${shipments.estimatedArrivalDate} IS NOT NULL`));
+
+    const onTimeDeliveries = Number(onTimeResult[0]?.onTimeDeliveries || 0);
+    const onTimeDeliveryRate = totalShipments > 0 ? (onTimeDeliveries / totalShipments) * 100 : 0;
 
     // Carrier performance
     const carrierPerformance = await this.getCarrierPerformanceData(whereClause);
     
     // Cost breakdown
-    const costBreakdown = await this.getShippingCostBreakdown(whereClause);
+    const costBreakdownDetailed = await this.getShippingCostBreakdown(whereClause);
     
     // Delivery time analysis
     const deliveryTimeAnalysis = await this.getDeliveryTimeAnalysis(whereClause);
 
+    // Create simplified cost breakdown for top-level access
+    const costBreakdown = {
+      legs: costBreakdownDetailed.find(c => c.costType === 'leg')?.totalUsd || 0,
+      arrival: costBreakdownDetailed.find(c => c.costType === 'arrival')?.totalUsd || 0,
+    };
+
     return {
+      // Top-level properties that frontend expects directly
+      totalShipments,
+      totalShippingCosts: totalCostUsd,
+      avgCostPerKg: totalWeight > 0 ? totalCostUsd / totalWeight : 0,
+      onTimeDeliveryRate,
+      methodDistribution,
+      costBreakdown,
+      
+      // Detailed nested data for advanced analytics
       summary: {
-        totalShipments: Number(summary.totalShipments || 0),
+        totalShipments,
         inTransit: Number(summary.inTransit || 0),
         delivered: Number(summary.delivered || 0),
         totalCostUsd,
         averageCostPerKg: totalWeight > 0 ? totalCostUsd / totalWeight : 0,
       },
       carrierPerformance,
-      costBreakdown,
+      costBreakdownDetailed,
       deliveryTimeAnalysis,
     };
   }

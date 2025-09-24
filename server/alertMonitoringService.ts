@@ -219,14 +219,14 @@ class AlertMonitoringService {
       try {
         // Check if configuration already exists
         const existing = await storage.getAlertConfigurations({
-          alertType: config.alertType as any,
-          alertCategory: config.alertCategory as any,
+          alertType: config.alertType,
+          alertCategory: config.alertCategory,
         });
 
         const alreadyExists = existing.some(c => c.name === config.name);
         
         if (!alreadyExists) {
-          await storage.createAlertConfiguration(config as any);
+          await storage.createAlertConfiguration(config);
           console.log(`✅ Created default alert configuration: ${config.name}`);
         }
       } catch (error) {
@@ -666,8 +666,8 @@ class AlertMonitoringService {
     context: MonitoringContext
   ): Promise<AlertTriggerResult | null> {
     try {
-      const thresholds = config.thresholds as any || {};
-      const conditions = config.conditions as any || {};
+      const thresholds = config.thresholds || {};
+      const conditions = config.conditions || {};
       
       // Determine if threshold is crossed
       let triggered = false;
@@ -811,8 +811,8 @@ class AlertMonitoringService {
         try {
           const notification: CreateNotification = {
             userId: user.id,
-            alertType: config.alertType as any,
-            alertCategory: config.alertCategory as any,
+            alertType: config.alertType,
+            alertCategory: config.alertCategory,
             priority: severity === 'critical' ? 'critical' : severity === 'high' ? 'high' : 'medium',
             channels: severity === 'critical' ? ['in_app', 'email', 'sms'] : ['in_app', 'email'],
             title: `${config.name} - ${severity.toUpperCase()}`,
