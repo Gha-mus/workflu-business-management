@@ -262,18 +262,18 @@ class CommissionCalculationService {
         };
       }
       
-      const totalBaseCost = legs.reduce((sum, leg) => 
+      const totalBaseCost = legs.reduce((sum: Decimal, leg: any) => 
         sum.add(new Decimal(leg.legBaseCost)), new Decimal('0'));
       
-      const totalCommission = legs.reduce((sum, leg) => 
+      const totalCommission = legs.reduce((sum: Decimal, leg: any) => 
         sum.add(new Decimal(leg.transferCommissionUsd || '0')), new Decimal('0'));
       
-      const totalLegCosts = legs.reduce((sum, leg) => 
+      const totalLegCosts = legs.reduce((sum: Decimal, leg: any) => 
         sum.add(new Decimal(leg.legTotalCost)), new Decimal('0'));
       
       const avgCommissionPercent = legs
         .filter(leg => parseFloat(leg.transferCommissionPercent || '0') > 0)
-        .reduce((sum, leg, _, array) => 
+        .reduce((sum: Decimal, leg: any, _: number, array: any[]) => 
           sum.add(new Decimal(leg.transferCommissionPercent || '0').div(array.length)), new Decimal('0'));
       
       return {

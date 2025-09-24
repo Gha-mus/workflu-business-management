@@ -480,9 +480,9 @@ class SupplyInventoryService {
         ));
 
       // Calculate totals
-      const totalValueUsd = consumptionData.reduce((sum, item) => sum + parseFloat(item.totalCostUsd), 0);
+      const totalValueUsd = consumptionData.reduce((sum: number, item: any) => sum + parseFloat(item.totalCostUsd), 0);
       const totalItems = consumptionData.length;
-      const totalCartons = consumptionData.reduce((sum, item) => sum + (item.cartonsProcessed || 0), 0);
+      const totalCartons = consumptionData.reduce((sum: number, item: any) => sum + (item.cartonsProcessed || 0), 0);
 
       // Group by item type
       const byItemType: Record<string, { quantity: number; value: number }> = {};

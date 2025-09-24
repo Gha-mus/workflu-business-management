@@ -2444,7 +2444,7 @@ export class DatabaseStorage implements IStorage {
             email: user.email!,
             action: 'soft_delete_anonymize',
             reason: `Has business records: ${businessCheck.details.join(', ')}`,
-            recordCount: Object.values(businessCheck.recordsSummary).reduce((a, b) => a + b, 0)
+            recordCount: Object.values(businessCheck.recordsSummary).reduce((a: number, b: number) => a + b, 0)
           });
           successful++;
         } else {
@@ -5202,7 +5202,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     const activeSuppliers = suppliers_.filter(s => s.metrics.totalPurchases > 0);
-    const topPerformer = activeSuppliers.reduce((best, current) => 
+    const topPerformer = activeSuppliers.reduce((best: any, current: any) => 
       current.metrics.totalValue > best.metrics.totalValue ? current : best,
       activeSuppliers[0]
     );
@@ -5227,7 +5227,7 @@ export class DatabaseStorage implements IStorage {
       .from(orders)
       .groupBy(orders.status);
 
-    const stats = orderStats.reduce((acc, stat) => {
+    const stats = orderStats.reduce((acc: {total: number, completed: number, pending: number, cancelled: number}, stat: any) => {
       const statusCount = Number(stat.count || 0);
       acc.total += statusCount;
       
@@ -6361,7 +6361,7 @@ export class DatabaseStorage implements IStorage {
       const shipmentNumber = await this.generateNextShipmentNumberInTransaction(tx);
       
       // Calculate total weight
-      const totalWeight = shipmentData.warehouseStockItems.reduce((sum, item) => 
+      const totalWeight = shipmentData.warehouseStockItems.reduce((sum: number, item: any) => 
         sum + parseFloat(item.quantity), 0
       );
 
@@ -6775,7 +6775,7 @@ export class DatabaseStorage implements IStorage {
       .where(whereClause)
       .groupBy(shippingCosts.costType);
 
-    const totalCost = result.reduce((sum, row) => sum + parseFloat(row.totalUsd || '0'), 0);
+    const totalCost = result.reduce((sum: number, row: any) => sum + parseFloat(row.totalUsd || '0'), 0);
 
     return result.map(row => ({
       costType: row.costType,
@@ -6794,7 +6794,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(whereClause, sql`${shipments.actualArrivalDate} IS NOT NULL AND ${shipments.actualDepartureDate} IS NOT NULL`))
       .groupBy(shipments.method);
 
-    const overallAverage = result.reduce((sum, row) => sum + Number(row.averageDays || 0), 0) / result.length || 0;
+    const overallAverage = result.reduce((sum: number, row: any) => sum + Number(row.averageDays || 0), 0) / result.length || 0;
 
     return {
       averageDeliveryDays: overallAverage,
@@ -7095,7 +7095,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Calculate total quantity
-      const totalQuantity = batches.reduce((sum, batch) => sum + parseFloat(batch.totalQuantityKg), 0);
+      const totalQuantity = batches.reduce((sum: number, batch: any) => sum + parseFloat(batch.totalQuantityKg), 0);
 
       // Create merged batch
       const [mergedBatch] = await tx
@@ -7951,7 +7951,7 @@ export class DatabaseStorage implements IStorage {
         END
       `);
 
-    const totalCount = priceDistribution.reduce((sum, item) => sum + Number(item.count || 0), 0);
+    const totalCount = priceDistribution.reduce((sum: number, item: any) => sum + Number(item.count || 0), 0);
 
     // Quality premium analysis (using Grade B as baseline)
     const averagePriceByGrade = gradeData.map(row => ({
@@ -8390,7 +8390,7 @@ export class DatabaseStorage implements IStorage {
   async calculateSalesOrderTotals(salesOrderId: string): Promise<SalesOrder> {
     const items = await this.getSalesOrderItems(salesOrderId);
     
-    const subtotalAmount = items.reduce((sum, item) => 
+    const subtotalAmount = items.reduce((sum: number, item: any) => 
       sum + parseFloat(item.lineTotal || '0'), 0);
     
     const totalAmount = subtotalAmount; // Can add taxes, shipping, etc. here
@@ -13091,21 +13091,21 @@ export class DatabaseStorage implements IStorage {
       const allDocuments = await query;
 
       const totalDocuments = allDocuments.length;
-      const totalSizeBytes = allDocuments.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+      const totalSizeBytes = allDocuments.reduce((sum: number, doc: any) => sum + (doc.fileSize || 0), 0);
 
-      const documentsByCategory = allDocuments.reduce((acc, doc) => {
+      const documentsByCategory = allDocuments.reduce((acc: Record<string, number>, doc: any) => {
         const category = doc.category || 'uncategorized';
         acc[category] = (acc[category] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      const documentsByStatus = allDocuments.reduce((acc, doc) => {
+      const documentsByStatus = allDocuments.reduce((acc: Record<string, number>, doc: any) => {
         const status = doc.status || 'unknown';
         acc[status] = (acc[status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      const documentsByType = allDocuments.reduce((acc, doc) => {
+      const documentsByType = allDocuments.reduce((acc: Record<string, number>, doc: any) => {
         const type = doc.contentType || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
@@ -13152,11 +13152,11 @@ export class DatabaseStorage implements IStorage {
           }))
         },
         usage: {
-          totalAccesses: accessStats.reduce((sum, stat) => sum + stat.accessCount, 0),
-          uniqueAccessors: accessStats.reduce((sum, stat) => sum + stat.uniqueUsers, 0),
+          totalAccesses: accessStats.reduce((sum: number, stat: any) => sum + stat.accessCount, 0),
+          uniqueAccessors: accessStats.reduce((sum: number, stat: any) => sum + stat.uniqueUsers, 0),
           mostAccessedDocuments,
           averageAccessesPerDocument: accessStats.length > 0 
-            ? Math.round(accessStats.reduce((sum, stat) => sum + stat.accessCount, 0) / accessStats.length)
+            ? Math.round(accessStats.reduce((sum: number, stat: any) => sum + stat.accessCount, 0) / accessStats.length)
             : 0
         },
         trends: {
@@ -13177,7 +13177,7 @@ export class DatabaseStorage implements IStorage {
           totalStorageUsed: totalSizeBytes,
           storageByCategory: Object.entries(documentsByCategory).map(([category, count]) => {
             const categoryDocs = allDocuments.filter(doc => (doc.category || 'uncategorized') === category);
-            const totalSize = categoryDocs.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+            const totalSize = categoryDocs.reduce((sum: number, doc: any) => sum + (doc.fileSize || 0), 0);
             return { category, sizeBytes: totalSize, documentCount: count };
           }),
           largestDocuments: allDocuments
@@ -13226,22 +13226,22 @@ export class DatabaseStorage implements IStorage {
         return daysSinceModified <= 7;
       }).length;
 
-      const totalStorageUsed = allDocuments.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+      const totalStorageUsed = allDocuments.reduce((sum: number, doc: any) => sum + (doc.fileSize || 0), 0);
       const averageFileSize = totalDocuments > 0 ? Math.round(totalStorageUsed / totalDocuments) : 0;
 
-      const documentsByCategory = allDocuments.reduce((acc, doc) => {
+      const documentsByCategory = allDocuments.reduce((acc: Record<string, number>, doc: any) => {
         const category = doc.category || 'uncategorized';
         acc[category] = (acc[category] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      const documentsByStatus = allDocuments.reduce((acc, doc) => {
+      const documentsByStatus = allDocuments.reduce((acc: Record<string, number>, doc: any) => {
         const status = doc.status || 'unknown';
         acc[status] = (acc[status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      const documentsByAccessLevel = allDocuments.reduce((acc, doc) => {
+      const documentsByAccessLevel = allDocuments.reduce((acc: Record<string, number>, doc: any) => {
         const accessLevel = doc.accessLevel || 'public';
         acc[accessLevel] = (acc[accessLevel] || 0) + 1;
         return acc;
@@ -13448,10 +13448,10 @@ export class DatabaseStorage implements IStorage {
       const allDocuments = await db.select().from(documents);
       
       const totalFiles = allDocuments.length;
-      const totalSize = allDocuments.reduce((sum, doc) => sum + (doc.fileSize || 0), 0);
+      const totalSize = allDocuments.reduce((sum: number, doc: any) => sum + (doc.fileSize || 0), 0);
       const averageSize = totalFiles > 0 ? Math.round(totalSize / totalFiles) : 0;
 
-      const sizeByCategory = allDocuments.reduce((acc, doc) => {
+      const sizeByCategory = allDocuments.reduce((acc: Record<string, { totalSize: number; fileCount: number }>, doc: any) => {
         const category = doc.category || 'uncategorized';
         if (!acc[category]) {
           acc[category] = { totalSize: 0, fileCount: 0 };
@@ -13461,12 +13461,12 @@ export class DatabaseStorage implements IStorage {
         return acc;
       }, {} as Record<string, { totalSize: number; fileCount: number }>);
 
-      const oldestFile = allDocuments.reduce((oldest, doc) => 
+      const oldestFile = allDocuments.reduce((oldest: Date, doc: any) => 
         doc.createdAt < oldest ? doc.createdAt : oldest, 
         allDocuments[0]?.createdAt || new Date()
       );
 
-      const newestFile = allDocuments.reduce((newest, doc) => 
+      const newestFile = allDocuments.reduce((newest: Date, doc: any) => 
         doc.createdAt > newest ? doc.createdAt : newest, 
         allDocuments[0]?.createdAt || new Date()
       );
