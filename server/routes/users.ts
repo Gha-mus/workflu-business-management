@@ -255,6 +255,7 @@ usersRouter.post("/:id/reset-password",
   requireRole(["admin"]),
   passwordResetRateLimiter,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const { id } = req.params;
       

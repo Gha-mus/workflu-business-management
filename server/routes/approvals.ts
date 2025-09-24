@@ -24,6 +24,7 @@ approvalsRouter.get("/requests", isAuthenticated, async (req, res) => {
 approvalsRouter.post("/requests",
   isAuthenticated,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const validatedData = insertApprovalRequestSchema.parse(req.body);
       const request = await approvalWorkflowService.createApprovalRequest({
@@ -55,6 +56,7 @@ approvalsRouter.post("/requests/:id/decision",
   isAuthenticated,
   requireRole(["admin", "finance", "manager"]),
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const { id } = req.params;
       const { decision, comments } = req.body;
@@ -103,6 +105,7 @@ approvalsRouter.get("/chains",
 approvalsRouter.get("/pending",
   isAuthenticated,
   async (req, res) => {
+    const authReq = req as AuthenticatedRequest;
     try {
       const pending = await approvalWorkflowService.getPendingApprovalsForUser(authReq.user.id);
       res.json(pending);
