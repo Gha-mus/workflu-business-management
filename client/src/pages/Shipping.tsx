@@ -98,7 +98,7 @@ type InspectionFormData = z.infer<typeof startInspectionSchema>;
 
 export default function Shipping() {
   const { toast } = useToast();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedShipment, setSelectedShipment] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("legs");
@@ -850,6 +850,14 @@ export default function Shipping() {
                   const netWeightKg = validateKgInput(data.netWeightKg);
                   const cartonWeightKg = validateKgInput(data.cartonWeightKg);
                   const grossWeightKg = validateKgInput(data.grossWeightKg);
+                  const chargeableWeightKg = validateKgInput(data.chargeableWeightKg);
+                  const ratePerKg = parseFloat(data.ratePerKg);
+                  
+                  // Calculate required cost fields
+                  const legBaseCost = (chargeableWeightKg * ratePerKg).toFixed(2);
+                  const transferCommissionPercent = parseFloat(data.transferCommissionPercent || '0');
+                  const commissionAmount = (parseFloat(legBaseCost) * transferCommissionPercent / 100).toFixed(2);
+                  const legTotalCost = (parseFloat(legBaseCost) + parseFloat(commissionAmount)).toFixed(2);
                   
                   // Round kg values for precision
                   const normalizedData = {
@@ -857,6 +865,9 @@ export default function Shipping() {
                     netWeightKg: roundKg(netWeightKg).toString(),
                     cartonWeightKg: roundKg(cartonWeightKg).toString(),
                     grossWeightKg: roundKg(grossWeightKg).toString(),
+                    chargeableWeightKg: roundKg(chargeableWeightKg).toString(),
+                    legBaseCost: legBaseCost,
+                    legTotalCost: legTotalCost,
                   };
                   
                   createLegMutation.mutate(normalizedData);
@@ -1320,7 +1331,21 @@ export default function Shipping() {
             <form
               onSubmit={arrivalCostForm.handleSubmit((data) => {
                 if (!selectedShipment) return;
-                createArrivalCostMutation.mutate(data);
+                
+                // Calculate required fields
+                const amount = parseFloat(data.amount);
+                const exchangeRate = parseFloat('1'); // Default to 1 for USD, could be dynamic
+                const amountUsd = data.currency === 'USD' ? amount : (amount * exchangeRate);
+                const amountPaid = 0; // Default to 0 for new arrival costs
+                const remaining = amount - amountPaid;
+                
+                const enrichedData = {
+                  ...data,
+                  amountUsd: amountUsd.toFixed(2),
+                  remaining: remaining.toFixed(2),
+                };
+                
+                createArrivalCostMutation.mutate(enrichedData);
               })}
               className="space-y-4"
             >
@@ -1480,8 +1505,15 @@ export default function Shipping() {
           <Form {...inspectionForm}>
             <form
               onSubmit={inspectionForm.handleSubmit((data) => {
-                if (!selectedShipment) return;
-                createInspectionMutation.mutate(data);
+                if (!selectedShipment || !user?.id) return;
+                
+                // Add required inspectedBy field
+                const enrichedData = {
+                  ...data,
+                  inspectedBy: user.id,
+                };
+                
+                createInspectionMutation.mutate(enrichedData);
               })}
               className="space-y-4"
             >
