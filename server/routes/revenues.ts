@@ -2,7 +2,7 @@ import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth";
 import { auditService } from "../auditService";
-import { insertRevenueTransactionSchema, reinvestments } from "@shared/schema";
+import { insertRevenueTransactionSchema, reinvestments, type RevenueTransaction, type WithdrawalRecord, type Reinvestment } from "@shared/schema";
 import { db } from "../db";
 import { requireApproval } from "../approvalMiddleware";
 
@@ -250,9 +250,9 @@ revenuesRouter.get("/analytics",
       const withdrawals = await storage.getWithdrawalRecords();
       const reinvestments = await storage.getReinvestments();
       
-      const totalRevenue = transactions.reduce((sum: number, t: any) => sum + parseFloat(t.amountUsd || '0'), 0);
-      const totalWithdrawals = withdrawals.reduce((sum: number, w: any) => sum + parseFloat(w.amountUsd || '0'), 0);
-      const totalReinvestments = reinvestments.reduce((sum: number, r: any) => sum + parseFloat(r.amountUsd || '0'), 0);
+      const totalRevenue = transactions.reduce((sum: number, t: RevenueTransaction) => sum + parseFloat(t.amountUsd || '0'), 0);
+      const totalWithdrawals = withdrawals.reduce((sum: number, w: WithdrawalRecord) => sum + parseFloat(w.amountUsd || '0'), 0);
+      const totalReinvestments = reinvestments.reduce((sum: number, r: Reinvestment) => sum + parseFloat(r.amountUsd || '0'), 0);
       
       const analytics = {
         totalRevenue,

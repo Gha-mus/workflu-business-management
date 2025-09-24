@@ -10,7 +10,7 @@
  */
 
 import { db } from "./db";
-import { shipmentLegs, capitalEntries } from "@shared/schema";
+import { shipmentLegs, capitalEntries, type ShipmentLeg } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { configurationService } from "./configurationService";
@@ -262,18 +262,18 @@ class CommissionCalculationService {
         };
       }
       
-      const totalBaseCost = legs.reduce((sum: Decimal, leg: any) => 
+      const totalBaseCost = legs.reduce((sum: Decimal, leg: ShipmentLeg) => 
         sum.add(new Decimal(leg.legBaseCost)), new Decimal('0'));
       
-      const totalCommission = legs.reduce((sum: Decimal, leg: any) => 
+      const totalCommission = legs.reduce((sum: Decimal, leg: ShipmentLeg) => 
         sum.add(new Decimal(leg.transferCommissionUsd || '0')), new Decimal('0'));
       
-      const totalLegCosts = legs.reduce((sum: Decimal, leg: any) => 
+      const totalLegCosts = legs.reduce((sum: Decimal, leg: ShipmentLeg) => 
         sum.add(new Decimal(leg.legTotalCost)), new Decimal('0'));
       
       const avgCommissionPercent = legs
-        .filter(leg => parseFloat(leg.transferCommissionPercent || '0') > 0)
-        .reduce((sum: Decimal, leg: any, _: number, array: any[]) => 
+        .filter((leg: ShipmentLeg) => parseFloat(leg.transferCommissionPercent || '0') > 0)
+        .reduce((sum: Decimal, leg: ShipmentLeg, _: number, array: ShipmentLeg[]) => 
           sum.add(new Decimal(leg.transferCommissionPercent || '0').div(array.length)), new Decimal('0'));
       
       return {

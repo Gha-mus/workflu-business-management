@@ -9,6 +9,8 @@ import {
   insertSalesOrderSchema,
   insertCustomerSchema,
   insertCustomerCreditLimitSchema,
+  type SalesOrder,
+  type SalesOrderItem
 } from "@shared/schema";
 import { requireApproval } from "../approvalMiddleware";
 import { genericPeriodGuard } from "../core/middleware/periodGuard";
@@ -39,7 +41,7 @@ salesRouter.post("/orders",
       // Calculate order totals
       let orderAmount = new Decimal(0);
       if (validatedData.items && validatedData.items.length > 0) {
-        orderAmount = validatedData.items.reduce((sum: Decimal, item: any) => {
+        orderAmount = validatedData.items.reduce((sum: Decimal, item: Partial<SalesOrderItem>) => {
           const itemTotal = new Decimal(item.unitPriceUsd || 0).mul(item.quantityKg || 0);
           return sum.add(itemTotal);
         }, new Decimal(0));
@@ -163,7 +165,7 @@ salesRouter.get("/customers", isAuthenticated, async (req: AuthenticatedRequest,
 salesRouter.get("/analytics", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     const orders = await storage.getSalesOrders();
-    const totalRevenueUsd = orders?.reduce((sum: Decimal, order: any) => {
+    const totalRevenueUsd = orders?.reduce((sum: Decimal, order: SalesOrder) => {
       return sum.add(new Decimal(order.totalAmountUsd?.toString() || '0'));
     }, new Decimal(0)).toNumber();
     
