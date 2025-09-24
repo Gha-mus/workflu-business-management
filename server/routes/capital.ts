@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole } from "../core/auth";
+import type { AuthenticatedRequest } from "../core/auth/types";
 import { auditService } from "../auditService";
 import { capitalEnhancementService } from "../capitalEnhancementService";
 import { insertCapitalEntrySchema } from "@shared/schema";
@@ -11,7 +12,7 @@ import { configurationService } from "../configurationService";
 export const capitalRouter = Router();
 
 // GET /api/capital/entries
-capitalRouter.get("/entries", isAuthenticated, async (req, res, next) => {
+capitalRouter.get("/entries", isAuthenticated, async (req: AuthenticatedRequest, res, next) => {
   try {
     const entries = await storage.getCapitalEntries();
     res.json(entries);
@@ -28,7 +29,7 @@ capitalRouter.post("/entries",
   requireRole(["admin", "finance"]),
   capitalEntryPeriodGuard,
   requireApproval("capital_entry"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertCapitalEntrySchema.parse(req.body);
       // Stage 1 Compliance: Enforce central FX only - strip any client-provided FX
@@ -61,14 +62,14 @@ capitalRouter.post("/entries",
         ...sanitizedData,
         entryId: documentNumber,
         exchangeRate: centralExchangeRate.toString(),
-        createdBy: (req.user as any)?.claims?.sub || 'unknown'
+        createdBy: req.user.id
       });
 
       // Create audit log using new interface
       await auditService.logOperation(
         {
-          userId: (req.user as any)?.claims?.sub || 'unknown',
-          userName: 'Capital Management',
+          userId: req.user.id,
+          userName: req.user.email || 'Capital Management',
           source: 'capital_management',
           severity: 'info',
         },
@@ -95,7 +96,7 @@ capitalRouter.post("/reverse-entry",
   isAuthenticated,
   requireRole(["admin", "finance"]),
   requireApproval("capital_entry"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { originalEntryId, reason } = req.body;
       
@@ -130,14 +131,14 @@ capitalRouter.post("/reverse-entry",
         description: `REVERSAL: ${originalEntry.description} | Reason: ${reason}`,
         reference: originalEntry.reference,
         exchangeRate: centralExchangeRate.toString(),
-        createdBy: (req.user as any)?.claims?.sub || 'unknown'
+        createdBy: req.user.id
       });
       
       // Create audit log
       await auditService.logOperation(
         {
-          userId: (req.user as any)?.claims?.sub || 'unknown',
-          userName: 'Capital Management',
+          userId: req.user.id,
+          userName: req.user.email || 'Capital Management',
           source: 'capital_management',
           severity: 'warning',
         },
@@ -168,7 +169,7 @@ capitalRouter.post("/opening-balance",
   isAuthenticated,
   requireRole(["admin"]),
   requireApproval("capital_entry"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { amount, date, description } = req.body;
       
@@ -197,14 +198,14 @@ capitalRouter.post("/opening-balance",
         date: new Date(date),
         description: description || 'Opening Balance',
         exchangeRate: centralExchangeRate.toString(),
-        createdBy: (req.user as any)?.claims?.sub || 'unknown'
+        createdBy: req.user.id
       });
       
       // Create audit log
       await auditService.logOperation(
         {
-          userId: (req.user as any)?.claims?.sub || 'unknown',
-          userName: 'Capital Management',
+          userId: req.user.id,
+          userName: req.user.email || 'Capital Management',
           source: 'capital_management',
           severity: 'info',
         },
@@ -230,11 +231,11 @@ capitalRouter.post("/opening-balance",
 capitalRouter.post("/multi-order-entry",
   isAuthenticated,
   requireRole(["admin", "finance"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const result = await capitalEnhancementService.createMultiOrderCapitalEntry(
         req.body,
-        (req.user as any)?.claims?.sub || 'unknown'
+        req.user.id
       );
       res.status(201).json(result);
     } catch (error) {
@@ -248,7 +249,7 @@ capitalRouter.post("/multi-order-entry",
 capitalRouter.get("/balance-alerts",
   isAuthenticated,
   requireRole(["admin", "finance"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const alerts = await capitalEnhancementService.getCapitalBalanceSummary();
       res.json(alerts);

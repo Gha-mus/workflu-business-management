@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../core/storage";
 import { isAuthenticated, requireRole, validateSalesReturn } from "../core/auth";
+import type { AuthenticatedRequest } from "../core/auth/types";
 import { auditService } from "../auditService";
 import { salesEnhancementService } from "../salesEnhancementService";
 import Decimal from "decimal.js";
@@ -15,7 +16,7 @@ import { genericPeriodGuard } from "../core/middleware/periodGuard";
 export const salesRouter = Router();
 
 // GET /api/sales/orders
-salesRouter.get("/orders", isAuthenticated, async (req, res) => {
+salesRouter.get("/orders", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     const orders = await storage.getSalesOrders();
     res.json(orders);
@@ -30,10 +31,10 @@ salesRouter.post("/orders",
   isAuthenticated,
   requireRole(["admin", "sales"]),
   requireApproval("sale_order"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertSalesOrderSchema.parse(req.body);
-      const userId = (req.user as any).claims?.sub || 'unknown';
+      const userId = req.user.id;
       
       // CREDIT LIMIT ENFORCEMENT - Check customer credit before creating order
       if (validatedData.customerId && validatedData.items && validatedData.items.length > 0) {
@@ -132,7 +133,7 @@ salesRouter.post("/orders",
 );
 
 // GET /api/sales/customers
-salesRouter.get("/customers", isAuthenticated, async (req, res) => {
+salesRouter.get("/customers", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     const customers = await storage.getCustomers();
     res.json(customers);
@@ -143,7 +144,7 @@ salesRouter.get("/customers", isAuthenticated, async (req, res) => {
 });
 
 // GET /api/sales/analytics  
-salesRouter.get("/analytics", isAuthenticated, async (req, res) => {
+salesRouter.get("/analytics", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     const orders = await storage.getSalesOrders();
     const totalRevenueUsd = orders?.reduce((sum, order) => {
@@ -161,11 +162,11 @@ salesRouter.get("/analytics", isAuthenticated, async (req, res) => {
 salesRouter.post("/customers",
   isAuthenticated,
   requireRole(["admin", "sales", "worker"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertCustomerSchema.parse({
         ...req.body,
-        createdBy: (req.user as any).claims?.sub || 'unknown',
+        createdBy: req.user.id,
       });
       const customer = await storage.createCustomer(validatedData);
 
@@ -200,9 +201,9 @@ salesRouter.post("/return",
   isAuthenticated,
   requireRole(["admin", "sales"]),
   validateSalesReturn,
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await storage.processSalesReturn(req.body.id, (req.user as any).claims?.sub || 'unknown');
+      const result = await storage.processSalesReturn(req.body.id, req.user.id);
 
       // Create audit log
       await auditService.logOperation(
@@ -231,7 +232,7 @@ salesRouter.post("/return",
 );
 
 // GET /api/sales/customers/:id/credit-limit
-salesRouter.get("/customers/:id/credit-limit", isAuthenticated, async (req, res) => {
+salesRouter.get("/customers/:id/credit-limit", isAuthenticated, async (req: AuthenticatedRequest, res) => {
   try {
     const creditLimit = await storage.getCurrentCustomerCreditLimit(req.params.id);
     if (!creditLimit) {
@@ -249,7 +250,7 @@ salesRouter.put("/customers/:id/credit-limit",
   isAuthenticated,
   requireRole(["admin", "finance"]),
   requireApproval("financial_adjustment"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertCustomerCreditLimitSchema.parse(req.body);
       const updatedLimit = await storage.updateCustomerCreditLimit(req.params.id, validatedData);
@@ -285,10 +286,10 @@ salesRouter.post("/orders/:id/fulfill",
   isAuthenticated,
   requireRole(["admin", "warehouse"]),
   requireApproval("warehouse_operation"),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const orderId = req.params.id;
-      const userId = (req.user as any).claims?.sub || 'unknown';
+      const userId = req.user.id;
       
       // Get order and items
       const order = await storage.getSalesOrder(orderId);
@@ -382,9 +383,9 @@ salesRouter.post("/multi-order-invoice",
   requireRole(["admin", "sales"]),
   requireApproval("sale_order"),
   genericPeriodGuard,
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
-      const userId = (req.user as any).claims?.sub || 'unknown';
+      const userId = req.user.id;
       const invoiceId = await salesEnhancementService.createMultiOrderInvoice(req.body, userId);
 
       // Create audit log
@@ -417,7 +418,7 @@ salesRouter.post("/multi-order-invoice",
 salesRouter.get("/overdue-receivables",
   isAuthenticated,
   requireRole(["admin", "sales", "finance"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const overdueReceivables = await salesEnhancementService.checkOverdueReceivables();
       res.json(overdueReceivables);
@@ -432,7 +433,7 @@ salesRouter.get("/overdue-receivables",
 salesRouter.post("/warehouse-source-validation",
   isAuthenticated,
   requireRole(["admin", "sales", "warehouse"]),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
     try {
       const { warehouseStockId, requestedWarehouse } = req.body;
       const validation = await salesEnhancementService.validateWarehouseSource(warehouseStockId, requestedWarehouse);
