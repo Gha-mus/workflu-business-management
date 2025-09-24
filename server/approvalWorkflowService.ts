@@ -570,25 +570,23 @@ class ApprovalWorkflowService {
     } = {}
   ): Promise<ApprovalRequest[]> {
     try {
-      let query = db
-        .select()
-        .from(approvalRequests)
-        .where(
-          and(
-            eq(approvalRequests.status, 'pending'),
-            eq(approvalRequests.currentApprover, userId)
-          )
-        );
-
+      let conditions = [
+        eq(approvalRequests.status, 'pending'),
+        eq(approvalRequests.currentApprover, userId)
+      ];
+      
       if (options.operationType) {
-        query = query.where(eq(approvalRequests.operationType, options.operationType as any));
+        conditions.push(eq(approvalRequests.operationType, options.operationType as any));
       }
 
       if (options.priority) {
-        query = query.where(eq(approvalRequests.priority, options.priority));
+        conditions.push(eq(approvalRequests.priority, options.priority as any));
       }
 
-      const results = await query
+      const results = await db
+        .select()
+        .from(approvalRequests)
+        .where(and(...conditions))
         .orderBy(desc(approvalRequests.submittedAt))
         .limit(options.limit || 50)
         .offset(options.offset || 0);
@@ -613,13 +611,10 @@ class ApprovalWorkflowService {
     } = {}
   ): Promise<ApprovalRequest[]> {
     try {
-      let query = db
-        .select()
-        .from(approvalRequests)
-        .where(eq(approvalRequests.status, status as any));
+      let conditions = [eq(approvalRequests.status, status as any)];
 
       if (options.userId) {
-        query = query.where(
+        conditions.push(
           or(
             eq(approvalRequests.requestedBy, options.userId),
             eq(approvalRequests.currentApprover, options.userId),
@@ -629,10 +624,13 @@ class ApprovalWorkflowService {
       }
 
       if (options.operationType) {
-        query = query.where(eq(approvalRequests.operationType, options.operationType as any));
+        conditions.push(eq(approvalRequests.operationType, options.operationType as any));
       }
 
-      const results = await query
+      const results = await db
+        .select()
+        .from(approvalRequests)
+        .where(and(...conditions))
         .orderBy(desc(approvalRequests.submittedAt))
         .limit(options.limit || 50)
         .offset(options.offset || 0);
@@ -1032,8 +1030,7 @@ class ApprovalWorkflowService {
           timestamp: eventData.timestamp.toISOString()
         },
         financialImpact: eventData.amount,
-        currency: eventData.currency,
-        severity: 'critical'
+        currency: eventData.currency
       });
 
     } catch (logError) {

@@ -98,7 +98,7 @@ class AuditService {
         
         oldValues: change.oldValues || null,
         newValues: change.newValues || null,
-        changedFields: change.changedFields || null,
+        changedFields: change.changedFields || undefined,
         
         description: change.description,
         businessContext: context.businessContext || null,
@@ -187,7 +187,7 @@ class AuditService {
       operationType: 'capital_entry',
       oldValues: oldData || null,
       newValues: entryData,
-      changedFields: oldData ? Object.keys(entryData).filter(key => entryData[key] !== oldData[key]) : null,
+      changedFields: oldData ? Object.keys(entryData).filter(key => entryData[key] !== oldData[key]) : undefined,
       financialImpact: financialImpact * impactDirection,
       currency: entryData.paymentCurrency || 'USD'
     });
@@ -214,7 +214,7 @@ class AuditService {
       operationType: 'purchase',
       oldValues: oldData || null,
       newValues: purchaseData,
-      changedFields: oldData ? Object.keys(purchaseData).filter(key => purchaseData[key] !== oldData[key]) : null,
+      changedFields: oldData ? Object.keys(purchaseData).filter(key => purchaseData[key] !== oldData[key]) : undefined,
       financialImpact: -financialImpact, // Negative impact for purchases (outflow)
       currency: purchaseData.currency || 'USD'
     });
@@ -239,7 +239,7 @@ class AuditService {
       operationType: 'warehouse_operation',
       oldValues: oldData || null,
       newValues: stockData,
-      changedFields: oldData ? Object.keys(stockData).filter(key => stockData[key] !== oldData[key]) : null
+      changedFields: oldData ? Object.keys(stockData).filter(key => stockData[key] !== oldData[key]) : undefined
     });
   }
 
@@ -264,7 +264,7 @@ class AuditService {
       operationType: 'sale_order',
       oldValues: oldData || null,
       newValues: salesData,
-      changedFields: oldData ? Object.keys(salesData).filter(key => salesData[key] !== oldData[key]) : null,
+      changedFields: oldData ? Object.keys(salesData).filter(key => salesData[key] !== oldData[key]) : undefined,
       financialImpact: financialImpact, // Positive impact for sales (inflow)
       currency: salesData.currency || 'USD'
     });
@@ -289,7 +289,7 @@ class AuditService {
       operationType: 'shipping_operation',
       oldValues: oldData || null,
       newValues: shipmentData,
-      changedFields: oldData ? Object.keys(shipmentData).filter(key => shipmentData[key] !== oldData[key]) : null
+      changedFields: oldData ? Object.keys(shipmentData).filter(key => shipmentData[key] !== oldData[key]) : undefined
     });
   }
 
@@ -343,7 +343,7 @@ class AuditService {
       operationType: changeType,
       oldValues,
       newValues,
-      changedFields: oldValues && newValues ? Object.keys(newValues).filter(key => newValues[key] !== oldValues[key]) : null
+      changedFields: oldValues && newValues ? Object.keys(newValues).filter(key => newValues[key] !== oldValues[key]) : undefined
     });
   }
 

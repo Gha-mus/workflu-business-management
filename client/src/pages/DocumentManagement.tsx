@@ -423,7 +423,7 @@ export default function DocumentManagement() {
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
     },
     onError: (error: any) => {
-      toast({ title: 'Failed to upload document', description: error.message, variant: 'destructive' });
+      toast({ title: 'Failed to upload document', description: error instanceof Error ? error.message : 'Upload failed', variant: 'destructive' });
     }
   });
 
@@ -442,7 +442,7 @@ export default function DocumentManagement() {
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
     },
     onError: (error: any) => {
-      toast({ title: 'Failed to update document', description: error.message, variant: 'destructive' });
+      toast({ title: 'Failed to update document', description: error instanceof Error ? error.message : 'Update failed', variant: 'destructive' });
     }
   });
 
@@ -456,7 +456,7 @@ export default function DocumentManagement() {
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
     },
     onError: (error: any) => {
-      toast({ title: 'Failed to delete document', description: error.message, variant: 'destructive' });
+      toast({ title: 'Failed to delete document', description: error instanceof Error ? error.message : 'Delete failed', variant: 'destructive' });
     }
   });
 
@@ -474,7 +474,7 @@ export default function DocumentManagement() {
       queryClient.invalidateQueries({ queryKey: ['/api/documents'] });
     },
     onError: (error: any) => {
-      toast({ title: 'Failed to update compliance', description: error.message, variant: 'destructive' });
+      toast({ title: 'Failed to update compliance', description: error instanceof Error ? error.message : 'Compliance update failed', variant: 'destructive' });
     }
   });
 

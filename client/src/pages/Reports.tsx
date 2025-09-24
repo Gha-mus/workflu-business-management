@@ -190,7 +190,7 @@ export default function Reports() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Validation failed');
+        throw new Error(error?.message || 'Validation failed');
       }
 
       const result = await response.json();
@@ -216,7 +216,7 @@ export default function Reports() {
           description: "Validation was run recently. Please wait before running again.",
           variant: "destructive",
         });
-      } else if (error.message.includes('OpenAI API key')) {
+      } else if (errorMessage.includes('OpenAI API key')) {
         toast({
           title: "AI Service Error",
           description: "AI service not configured. Please contact administrator.",
@@ -225,7 +225,7 @@ export default function Reports() {
       } else {
         toast({
           title: "Validation Failed",
-          description: error.message || "Failed to validate workflow",
+          description: errorMessage || "Failed to validate workflow",
           variant: "destructive",
         });
       }
