@@ -592,7 +592,7 @@ export default function Reports() {
                           <div>
                             <p className="text-sm text-muted-foreground">{kpi.title}</p>
                             <p className="text-2xl font-bold text-foreground" data-testid={`kpi-${index}`}>
-                              {financialSummary?.loading ? (
+                              {!financialSummary ? (
                                 <div className="animate-pulse bg-muted h-8 w-24 rounded" />
                               ) : (
                                 kpi.value
@@ -1125,25 +1125,25 @@ export default function Reports() {
                         <h3 className="text-lg font-semibold">Profitability</h3>
                       </CardHeader>
                       <CardContent>
-                        {tradingActivity?.profitability ? (
+                        {tradingActivity?.volumeAnalysis ? (
                           <div className="space-y-3">
                             <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Inventory Value</span>
-                              <span className="font-medium">${(tradingActivity.profitability.totalInventoryValue || 0).toLocaleString()}</span>
+                              <span className="text-sm text-muted-foreground">Total Volume</span>
+                              <span className="font-medium">{(tradingActivity.volumeAnalysis.totalVolume || 0).toLocaleString()} kg</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Purchase Cost</span>
-                              <span className="font-medium">${(tradingActivity.profitability.totalPurchaseCost || 0).toLocaleString()}</span>
+                              <span className="text-sm text-muted-foreground">Average Order Size</span>
+                              <span className="font-medium">{(tradingActivity.volumeAnalysis.averageOrderSize || 0).toLocaleString()} kg</span>
                             </div>
                             <div className="border-t pt-3">
                               <div className="flex justify-between">
-                                <span className="text-sm font-medium">Est. Margin</span>
-                                <span className="font-bold text-lg">{(tradingActivity.profitability.estimatedMargin || 0).toFixed(1)}%</span>
+                                <span className="text-sm font-medium">Largest Order</span>
+                                <span className="font-bold text-lg">{(tradingActivity.volumeAnalysis.largestOrder || 0).toLocaleString()} kg</span>
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">No profitability data available</p>
+                          <p className="text-sm text-muted-foreground">No volume data available</p>
                         )}
                       </CardContent>
                     </Card>
@@ -1156,7 +1156,7 @@ export default function Reports() {
                     <CardContent>
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={tradingActivity.volumeTrends}>
+                          <BarChart data={tradingActivity?.timeAnalysis ? Object.entries(tradingActivity.timeAnalysis).map(([month, data]) => ({ month, volume: (data as any)?.volume || 0, count: (data as any)?.count || 0 })) : []}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="month" />
                             <YAxis />
@@ -1186,7 +1186,7 @@ export default function Reports() {
                     <div className="h-80">
                       {cashFlow ? (
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={cashFlow.periods}>
+                          <LineChart data={Array.isArray(cashFlow) ? cashFlow : []}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="date" />
                             <YAxis />
@@ -1262,8 +1262,8 @@ export default function Reports() {
                     </div>
                     <div className="text-center p-4 border rounded-lg">
                       <p className="text-2xl font-bold text-green-600">
-                        {supplierPerformance?.suppliers ? 
-                          (supplierPerformance.suppliers.reduce((sum: number, s: any) => sum + s.performance.paymentRate, 0) / supplierPerformance.suppliers.length).toFixed(1)
+                        {Array.isArray(supplierPerformance) && supplierPerformance.length ? 
+                          (supplierPerformance.reduce((sum: number, s: any) => sum + (s.performance?.paymentRate || 0), 0) / supplierPerformance.length).toFixed(1)
                           : 0}%
                       </p>
                       <p className="text-sm text-muted-foreground">Avg Payment Rate</p>
@@ -1344,18 +1344,10 @@ export default function Reports() {
                         <h3 className="text-lg font-semibold">Latest Validation Results</h3>
                         <div className="flex items-center gap-2">
                           <div 
-                            className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-                              latestValidation.overallStatus === 'matched' 
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                : latestValidation.overallStatus === 'partial' 
-                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                            }`}
+                            className="flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
                           >
-                            {latestValidation.overallStatus === 'matched' && <CheckCircle className="h-4 w-4" />}
-                            {latestValidation.overallStatus === 'partial' && <AlertTriangle className="h-4 w-4" />}
-                            {latestValidation.overallStatus === 'missing' && <XCircle className="h-4 w-4" />}
-                            {latestValidation.overallStatus.charAt(0).toUpperCase() + latestValidation.overallStatus.slice(1)}
+                            <AlertTriangle className="h-4 w-4" />
+                            Pending
                           </div>
                           <Button
                             size="sm"
