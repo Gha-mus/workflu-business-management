@@ -347,7 +347,7 @@ class CapitalEnhancementService {
         .from(capitalEntries)
         .where(eq(capitalEntries.isValidated, false));
 
-      const unvalidatedEntries = unvalidatedResult[0]?.count || 0;
+      const unvalidatedEntries = Number(unvalidatedResult[0]?.count || 0);
 
       // Get recent alerts
       const recentAlerts = await this.checkBalanceAlerts();

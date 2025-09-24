@@ -43,7 +43,7 @@ aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
     const validatedData = aiSupplierRecommendationRequestSchema.parse(req.body);
     const recommendation = await aiService.getSupplierRecommendations(
       validatedData.suppliers || [],
-      (validatedData.supplierPerformance || {
+      validatedData.supplierPerformance || {
         suppliers: [],
         summary: {
           totalSuppliers: 0,
@@ -51,12 +51,12 @@ aiRouter.post("/supplier-recommendation", isAuthenticated, async (req, res) => {
           topPerformers: [],
           riskFactors: []
         }
-      }) as any,
-      (validatedData.currentNeeds || {
+      },
+      validatedData.currentNeeds || {
         quantity: validatedData.quantity || 0,
         quality: validatedData.quality || '',
         budget: validatedData.budget || 0
-      }) as any
+      }
     );
     res.json(recommendation);
   } catch (error) {
@@ -84,7 +84,7 @@ aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
     const validatedData = aiCapitalOptimizationRequestSchema.parse(req.body);
     const optimization = await aiService.getCapitalOptimizationSuggestions(
       validatedData.capitalEntries || [],
-      (validatedData.financialSummary || {
+      validatedData.financialSummary || {
         exchangeRate: 1,
         summary: {
           totalPurchases: 0,
@@ -100,7 +100,7 @@ aiRouter.post("/capital-optimization", isAuthenticated, async (req, res) => {
           usd: { amount: 0, count: 0 },
           etb: { amount: 0, count: 0 }
         }
-      }) as any,
+      },
       validatedData.upcomingPayments || []
     );
     res.json(optimization);
@@ -191,7 +191,10 @@ aiRouter.get("/executive-summary", isAuthenticated, async (req, res) => {
           totalPaid: 0,
           totalOutstanding: 0,
           totalInventoryValue: 0,
-          netPosition: 0
+          netPosition: 0,
+          totalRevenue: 0, // Add missing required property
+          totalCapitalIn: 0, // Add missing required property
+          totalPurchasePayments: 0, // Add missing required property
         },
         currencyBreakdown: {
           usd: { amount: 0, count: 0 },

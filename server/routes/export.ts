@@ -26,9 +26,9 @@ exportRouter.post("/create", isAuthenticated, async (req, res) => {
       userId: req.user!.id,
       exportType: validatedData.type,
       format: validatedData.format,
-      dateRange: (validatedData as any).dateRange,
-      filters: (validatedData as any).filters,
-      preferences: (validatedData as any).preferences
+      dateRange: undefined, // dateRange not in exportTypeSchema, so use undefined
+      filters: undefined, // filters not in exportTypeSchema, so use undefined  
+      preferences: undefined // preferences not in exportTypeSchema, so use undefined
     });
 
     // Create audit log
@@ -87,7 +87,7 @@ exportRouter.get("/status/:id", isAuthenticated, async (req, res) => {
 // POST /api/export/schedule
 exportRouter.post("/schedule",
   isAuthenticated,
-  requireRole(["admin", "manager"]),
+  requireRole(["admin"]),
   async (req, res) => {
     try {
       const job = await exportService.scheduleExport({

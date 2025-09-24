@@ -5900,10 +5900,10 @@ export const configurationSnapshotCreateSchema = z.object({
 // STAGE 4 SHIPPING LOGISTICS VALIDATION SCHEMAS
 export const commissionCalculationSchema = z.object({
   shipmentLegId: z.string().min(1),
-  chargeableWeightKg: z.coerce.number().positive(),
-  ratePerKg: z.coerce.number().positive(),
-  baseCost: z.coerce.number().positive(),
-  commissionPercent: z.coerce.number().min(0).max(100).optional().default(0),
+  chargeableWeightKg: z.number().positive("Chargeable weight must be a positive number"),
+  ratePerKg: z.number().positive("Rate per kg must be a positive number"),
+  baseCost: z.number().positive("Base cost must be a positive number"),
+  commissionPercent: z.number().min(0).max(100).optional().default(0),
   fundingSource: z.enum(['capital', 'operational', 'supplier']).default('capital'),
   notes: z.string().optional()
 });
@@ -5913,7 +5913,7 @@ export const landedCostCalculationSchema = z.object({
   includeShippingCosts: z.boolean().default(true),
   includeArrivalCosts: z.boolean().default(true),
   currency: z.string().default('USD'),
-  exchangeRate: z.coerce.number().positive().optional()
+  exchangeRate: z.number().positive("Exchange rate must be a positive number").optional()
 });
 
 export const inspectionSettlementSchema = z.discriminatedUnion('settlementType', [
@@ -5927,7 +5927,7 @@ export const inspectionSettlementSchema = z.discriminatedUnion('settlementType',
     settlementType: z.literal('claim'),
     settlementReason: z.string().min(1),
     claimDetails: z.object({
-      claimAmount: z.coerce.number().positive(),
+      claimAmount: z.number().positive("Claim amount must be a positive number"),
       claimReason: z.string().min(1),
       supportingDocuments: z.array(z.string()).optional()
     }),
@@ -5938,7 +5938,7 @@ export const inspectionSettlementSchema = z.discriminatedUnion('settlementType',
     settlementType: z.literal('return'),
     settlementReason: z.string().min(1),
     returnDetails: z.object({
-      returnCost: z.coerce.number().positive(),
+      returnCost: z.number().positive("Return cost must be a positive number"),
       returnMethod: z.string().min(1),
       returnSchedule: z.string().datetime().transform((s) => new Date(s))
     }),
@@ -5948,8 +5948,8 @@ export const inspectionSettlementSchema = z.discriminatedUnion('settlementType',
   z.object({
     settlementType: z.literal('discount'),
     settlementReason: z.string().min(1),
-    discountPercent: z.coerce.number().min(0).max(100),
-    negotiatedAmount: z.coerce.number().positive().optional(),
+    discountPercent: z.number().min(0).max(100),
+    negotiatedAmount: z.number().positive("Negotiated amount must be a positive number").optional(),
     approvedBy: z.string().min(1),
     settlementDate: z.string().datetime().optional().transform((s) => s ? new Date(s) : new Date())
   })

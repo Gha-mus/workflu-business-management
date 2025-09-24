@@ -217,7 +217,7 @@ class ShippingEnhancementService {
         .update(shipmentInspections)
         .set({
           status: 'settled',
-          settlementType: settlement.settlementType,
+          settlementNotes: settlement.settlementType,
           settlementReason: settlement.settlementReason,
           settlementAmount: settlement.negotiatedAmount?.toString(),
           settlementApprovedBy: settlement.approvedBy,
