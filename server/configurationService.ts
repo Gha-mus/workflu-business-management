@@ -75,20 +75,6 @@ export class ConfigurationService {
   }
 
   /**
-   * Get boolean setting with caching and validation
-   */
-  async getBooleanSetting(key: string, defaultValue: boolean = false): Promise<boolean> {
-    try {
-      const value = await this.getSystemSetting(key);
-      if (value === null) return defaultValue;
-      return value.toLowerCase() === 'true' || value === '1';
-    } catch (error) {
-      console.error(`Failed to get boolean setting ${key}:`, error);
-      return defaultValue;
-    }
-  }
-
-  /**
    * Get system setting with caching and validation
    */
   async getSystemSetting(key: string, category?: string): Promise<string | null> {
@@ -435,14 +421,6 @@ export class ConfigurationService {
   async getApprovalThreshold(): Promise<number> {
     const setting = await this.getSystemSetting('APPROVAL_THRESHOLD', 'financial');
     return new Decimal(setting || '5000').toNumber();
-  }
-
-  /**
-   * Get numeric system setting with default value
-   */
-  async getNumericSetting(key: string, defaultValue: number): Promise<number> {
-    const setting = await this.getSystemSetting(key);
-    return new Decimal(setting || defaultValue.toString()).toNumber();
   }
 
   /**

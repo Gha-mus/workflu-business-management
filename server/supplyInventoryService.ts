@@ -13,7 +13,6 @@ import {
   supplyPurchases,
   supplyConsumption,
   operatingExpenses,
-  operatingExpenseCategories,
   capitalEntries,
   orders
 } from "@shared/schema";
@@ -151,7 +150,6 @@ class SupplyInventoryService {
             purchaseNumber,
             supplierId: request.supplierId,
             supplyInventoryId: supplyItem.id,
-            supplyId: supplyItem.id, // Required field - reference to supplies table
             quantity: item.quantity.toString(),
             unitPrice: item.unitCost.toString(),
             totalAmount: itemTotalCost.toString(),
@@ -180,7 +178,7 @@ class SupplyInventoryService {
             totalValue: newValue.toString(),
             unitCost: newUnitCost.toString(),
             lastPurchaseDate: new Date(),
-
+            updatedAt: new Date(),
           })
           .where(eq(supplyInventory.id, supplyItem.id));
 
@@ -198,52 +196,33 @@ class SupplyInventoryService {
         await db
           .insert(capitalEntries)
           .values({
+            entryId: `SUP-${nanoid(8)}`,
             amount: totalAmount.toString(),
             type: 'CapitalOut',
             reference: `supply_purchase_${purchaseResults[0]?.purchaseId}`,
             description: `Supply purchase: ${request.items.length} items`,
             paymentCurrency: request.currency,
             exchangeRate: exchangeRate.toString(),
+            fundingSource: 'external',
             isValidated: true,
+            validatedBy: userId,
+            validatedAt: new Date(),
             createdBy: userId,
           });
       }
 
-      // Create operating expense record - need to get/create supplies category first
-      let suppliesCategoryId;
-      const [existingCategory] = await db
-        .select()
-        .from(operatingExpenseCategories)
-        .where(eq(operatingExpenseCategories.categoryName, 'supplies'))
-        .limit(1);
-      
-      if (existingCategory) {
-        suppliesCategoryId = existingCategory.id;
-      } else {
-        const [newCategory] = await db
-          .insert(operatingExpenseCategories)
-          .values({
-            categoryName: 'supplies',
-            category: 'supplies',
-            description: 'Supply inventory purchases',
-          })
-          .returning();
-        suppliesCategoryId = newCategory.id;
-      }
-
+      // Create operating expense record
       await db
         .insert(operatingExpenses)
         .values({
           expenseNumber: `EXP-SUP-${nanoid(8)}`,
-          categoryId: suppliesCategoryId,
-          description: `Supply inventory purchase: ${request.items.length} items`,
+          expenseType: 'supplies',
           amount: totalAmount.toString(),
           currency: request.currency,
           exchangeRate: exchangeRate.toString(),
           amountUsd: totalAmount.toString(),
-          paymentMethod: 'bank_transfer',
+          description: `Supply inventory purchase: ${request.items.length} items`,
           fundingSource: request.fundingSource,
-          remaining: '0',
           expenseDate: new Date(),
           createdBy: userId,
         });
@@ -343,7 +322,7 @@ class SupplyInventoryService {
             currentStock: newStock.toString(),
             totalValue: newValue.toString(),
             lastUsageDate: new Date(),
-
+            updatedAt: new Date(),
           })
           .where(eq(supplyInventory.id, supply.supplyInventoryId));
 

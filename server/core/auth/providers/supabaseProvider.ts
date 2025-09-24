@@ -189,7 +189,7 @@ const isAuthenticated: RequestHandler = async (req, res, next) => {
 };
 
 // Supabase requireRole middleware
-const requireRole = (allowedRoles: Array<'admin' | 'finance' | 'purchasing' | 'warehouse' | 'sales' | 'worker'>): RequestHandler => {
+const requireRole = (allowedRoles: User['role'][]): RequestHandler => {
   return (req, res, next) => {
     isAuthenticated(req, res, async () => {
       if (res.headersSent) return;

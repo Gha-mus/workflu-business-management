@@ -232,11 +232,11 @@ export function requireApproval(operationType: string) {
       const approvalRequest = await approvalWorkflowService.createApprovalRequest({
         operationType,
         amount: operationContext.amount,
-        currency: operationContext.currency || 'USD',
+        currency: operationContext.currency,
         requestedBy: auditContext.userId || 'unknown',
         operationData: operationContext.operationData,
         businessContext: operationContext.businessContext,
-        priority: operationContext.priority || 'normal'
+        priority: operationContext.priority
       }, auditContext);
 
       // Return approval required response
@@ -492,8 +492,8 @@ export function validateApprovalExecution() {
       }
       
       // CRITICAL SECURITY: Amount validation for financial operations
-      if (currentOperation.amount && approval.operationData?.amount) {
-        const approvedAmount = parseFloat(approval.operationData.amount.toString());
+      if (currentOperation.amount && approval.amount) {
+        const approvedAmount = parseFloat(approval.amount.toString());
         const requestedAmount = currentOperation.amount;
         
         // Allow small tolerance for rounding (0.01)
