@@ -590,7 +590,7 @@ class StorageApprovalGuard {
         entityId: `violation_${violation.violation}_${Date.now()}`,
         action: 'create',
         description: `CRITICAL SECURITY VIOLATION: ${violation.violation}`,
-        operationType: violation.operationType as any,
+        operationType: violation.operationType,
         newValues: {
           violationType: violation.violation,
           operationType: violation.operationType,
@@ -663,7 +663,7 @@ class StorageApprovalGuard {
         action,
         description: `${action.charAt(0).toUpperCase() + action.slice(1)}d ${entityType}`,
         businessContext: auditContext.businessContext || `Storage operation: ${operationType}`,
-        operationType: operationType as any,
+        operationType: operationType,
         oldValues: oldData,
         newValues: newData,
         changedFields: oldData && newData ? Object.keys(newData).filter(key => newData[key] !== oldData[key]) : undefined,
@@ -692,7 +692,7 @@ class StorageApprovalGuard {
       }
       
       const [entity] = await db.select().from(table).where(eq(table.id, entityId));
-      return entity || null;
+      return (entity as T) || null;
     } catch (error) {
       console.error(`Error capturing before state for ${entityId}:`, error);
       return null;
@@ -2148,7 +2148,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateSupplier(id: string, supplier: Partial<InsertSupplier>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supplier> {
     // CRITICAL SECURITY: Capture before state for audit logging
-    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(suppliers, id);
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState<Supplier>(suppliers, id);
     
     // CRITICAL SECURITY: Enforce approval requirement at storage level
     if (approvalContext) {
@@ -2199,7 +2199,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'order_create',
         operationData: order,
-        businessContext: `Create order: ${order.orderNumber}`
+        businessContext: `Create order: ${(order as any).orderNumber || 'new order'}`
       });
     }
 
@@ -2223,7 +2223,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateOrder(id: string, order: Partial<InsertOrder>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Order> {
     // CRITICAL SECURITY: Capture before state for audit logging
-    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(orders, id);
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState<Order>(orders, id);
     
     // CRITICAL SECURITY: Enforce approval requirement at storage level
     if (approvalContext) {
@@ -2558,27 +2558,28 @@ export class DatabaseStorage implements IStorage {
         purchaseNumber,
       }).returning();
 
+      // STAGE 2 SECURITY: Get central exchange rate (never trust client)
+      let centralRate = new Decimal('1');
+      if (purchaseData.currency === 'ETB') {
+        // Use central exchange rate from system configuration
+        const configService = ConfigurationService.getInstance();
+        centralRate = new Decimal(await configService.getCentralExchangeRate() || '1');
+      }
+
       // If funded from capital and amount paid > 0, create capital entry
       if (purchaseData.fundingSource === 'capital' && parseFloat(purchaseData.amountPaid || '0') > 0) {
         const amountPaid = new Decimal(purchaseData.amountPaid || '0');
         
-        // STAGE 2 SECURITY: Convert amount to USD using central exchange rate (never trust client)
-        let amountInUsd = amountPaid;
-        if (purchaseData.currency === 'ETB') {
-          // Use central exchange rate - purchaseData.exchangeRate is already set by routes validation
-          const centralRate = new Decimal(purchaseData.exchangeRate as string);
-          amountInUsd = amountPaid.div(centralRate);
-        }
+        // Convert amount to USD using central exchange rate
+        const amountInUsd = purchaseData.currency === 'ETB' ? amountPaid.div(centralRate) : amountPaid;
         
         // Create capital entry with atomic balance checking
         await this.createCapitalEntryInTransaction(tx, {
-          entryId: `PUR-${purchase.id}`,
           amount: amountInUsd.toFixed(2),
           type: 'CapitalOut',
           reference: purchase.id,
-          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${purchaseData.exchangeRate})` : ''}`,
+          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${centralRate.toString()})` : ''}`,
           paymentCurrency: purchaseData.currency,
-          exchangeRate: purchaseData.exchangeRate || undefined,
           createdBy: userId,
         });
       }
@@ -2587,7 +2588,7 @@ export class DatabaseStorage implements IStorage {
       const pricePerKg = new Decimal(purchaseData.pricePerKg);
       const unitCostCleanUsd = purchaseData.currency === 'USD' 
         ? purchaseData.pricePerKg 
-        : pricePerKg.div(new Decimal(purchaseData.exchangeRate as string)).toFixed(4);
+        : pricePerKg.div(centralRate).toFixed(4);
 
       await tx.insert(warehouseStock).values({
         purchaseId: purchase.id,
@@ -2743,7 +2744,7 @@ export class DatabaseStorage implements IStorage {
       .from(warehouseStock)
       .where(eq(warehouseStock.purchaseId, id));
     
-    const hasWarehouseLinkage = linkedWarehouseOperations[0]?.count > 0;
+    const hasWarehouseLinkage = Number(linkedWarehouseOperations[0]?.count || 0) > 0;
 
     // STAGE 2 CRITICAL: Prevent modification of price/weight after warehouse linkage
     if (hasWarehouseLinkage) {
@@ -2831,7 +2832,7 @@ export class DatabaseStorage implements IStorage {
         .returning();
 
       // STAGE 2 SECURITY: Enforce central FX rate for currency conversion
-      const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+      const centralRate = new Decimal(await ConfigurationService.getInstance().getCentralExchangeRate() || '1');
       
       // If there's a balance difference and purchase is capital-funded, create adjustment entry
       if (purchase.fundingSource === 'capital' && !balanceDiff.isZero()) {
@@ -2845,13 +2846,11 @@ export class DatabaseStorage implements IStorage {
           : `Advance settlement - credit refund (${purchase.purchaseNumber})`;
 
         await this.createCapitalEntryInTransaction(tx, {
-          entryId: `ADV-${purchase.id}-${Date.now()}`,
           amount: balanceImpactUSD.toFixed(2),
           type: entryType,
           reference: purchase.id,
           description,
           paymentCurrency: 'USD', // Normalized to USD
-          exchangeRate: '1.00', // USD base currency
           createdBy: auditContext?.userId || 'system',
         });
       }
@@ -2865,7 +2864,7 @@ export class DatabaseStorage implements IStorage {
         auditContext,
         'purchases',
         result.id,
-        'settle_advance',
+        'update',
         'purchase_advance_settlement',
         {
           originalTotal: new Decimal(result.total).add(new Decimal(settlementData.settledAmount)).sub(new Decimal(result.amountPaid)).toFixed(2),
@@ -2929,19 +2928,17 @@ export class DatabaseStorage implements IStorage {
       let capitalAdjustment;
       if (!refundAmount.isZero() && purchase.fundingSource === 'capital') {
         // STAGE 2 SECURITY: Enforce central FX rate for refund conversion
-        const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+        const centralRate = new Decimal(await ConfigurationService.getInstance().getCentralExchangeRate() || '1');
         let refundUsd = purchase.currency === 'ETB' 
           ? refundAmount.div(centralRate)
           : refundAmount;
 
         capitalAdjustment = await this.createCapitalEntryInTransaction(tx, {
-          entryId: `RET-${purchase.id}-${Date.now()}`,
           amount: refundUsd.toFixed(2),
           type: 'CapitalIn',
           reference: purchase.id,
           description: `Supplier return refund - ${returnedWeight}kg returned (${returnData.returnReason})`,
           paymentCurrency: 'USD', // Normalized to USD
-          exchangeRate: '1.00', // USD base currency
           createdBy: auditContext?.userId || 'system',
         });
       }
@@ -2955,7 +2952,7 @@ export class DatabaseStorage implements IStorage {
         auditContext,
         'purchases',
         result.purchase.id,
-        'supplier_return',
+        'update',
         'purchase_return',
         null,
         result.purchase,
@@ -2993,8 +2990,10 @@ export class DatabaseStorage implements IStorage {
     // Generate next supply number
     const supplyNumber = await this.generateNextSupplyNumber();
     
-    // Calculate total value
-    const totalValue = new Decimal(supply.quantityOnHand || '0').mul(new Decimal(supply.unitCostUsd));
+    // Calculate total value (use defaults for new supplies)
+    const quantity = new Decimal((supply as any).quantityOnHand || '0');
+    const unitCost = new Decimal((supply as any).unitCostUsd || '0');
+    const totalValue = quantity.mul(unitCost);
 
     const [result] = await db.insert(supplies).values({
       ...supply,
@@ -3020,7 +3019,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateSupply(id: string, supply: Partial<InsertSupply>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supply> {
     // CRITICAL SECURITY: Capture before state for audit logging
-    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(supplies, id);
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState<Supply>(supplies, id);
     
     // CRITICAL SECURITY: Enforce approval requirement at storage level
     if (approvalContext) {
@@ -3033,12 +3032,12 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Recalculate total value if quantity or cost changed
-    let updateData = { ...supply, updatedAt: new Date() };
-    if (supply.quantityOnHand !== undefined || supply.unitCostUsd !== undefined) {
+    let updateData: any = { ...supply, updatedAt: new Date() };
+    if ((supply as any).quantityOnHand !== undefined || (supply as any).unitCostUsd !== undefined) {
       const currentSupply = beforeState || await this.getSupply(id);
       if (currentSupply) {
-        const quantity = new Decimal(supply.quantityOnHand ?? currentSupply.quantityOnHand);
-        const unitCost = new Decimal(supply.unitCostUsd ?? currentSupply.unitCostUsd);
+        const quantity = new Decimal((supply as any).quantityOnHand ?? currentSupply.quantityOnHand);
+        const unitCost = new Decimal((supply as any).unitCostUsd ?? currentSupply.unitCostUsd);
         updateData.totalValueUsd = quantity.mul(unitCost).toFixed(2);
       }
     }
@@ -3194,8 +3193,8 @@ export class DatabaseStorage implements IStorage {
     
     // Convert amount to USD for normalization
     let amountUsd = new Decimal(expense.amount);
-    if (expense.currency === 'ETB' && expense.exchangeRate) {
-      amountUsd = amountUsd.div(new Decimal(expense.exchangeRate));
+    if (expense.currency === 'ETB' && (expense as any).exchangeRate) {
+      amountUsd = amountUsd.div(new Decimal((expense as any).exchangeRate));
     }
     
     // Calculate remaining amount
@@ -3216,19 +3215,17 @@ export class DatabaseStorage implements IStorage {
       
       // Convert amount to USD for capital tracking normalization
       let paidInUsd = paidAmount;
-      if (expense.currency === 'ETB' && expense.exchangeRate) {
-        paidInUsd = paidAmount.div(new Decimal(expense.exchangeRate));
+      if (expense.currency === 'ETB' && (expense as any).exchangeRate) {
+        paidInUsd = paidAmount.div(new Decimal((expense as any).exchangeRate));
       }
       
       // Create capital entry with atomic balance checking
       await this.createCapitalEntryInTransaction(tx, {
-        entryId: `EXP-${result.id}`,
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
-        description: `Operating expense - ${expense.description} ${expense.currency === 'ETB' ? `(${expense.amountPaid} ETB @ ${expense.exchangeRate})` : ''}`,
+        description: `Operating expense - ${expense.description}`,
         paymentCurrency: expense.currency,
-        exchangeRate: expense.exchangeRate || undefined,
         createdBy: userId,
       });
     }
@@ -3287,7 +3284,7 @@ export class DatabaseStorage implements IStorage {
         'supply_consumption',
         null,
         result,
-        -parseFloat(consumption.totalCostUsd), // Negative impact for consumption (cost)
+        -parseFloat(result.totalCostUsd), // Negative impact for consumption (cost)
         'USD'
       );
     }
@@ -3360,11 +3357,12 @@ export class DatabaseStorage implements IStorage {
   async createSupplyPurchase(purchase: InsertSupplyPurchase, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SupplyPurchase> {
     // CRITICAL SECURITY: Enforce approval requirement at storage level
     if (approvalContext) {
+      const totalAmount = new Decimal(purchase.quantity).mul(new Decimal(purchase.unitPrice)).toFixed(2);
       await StorageApprovalGuard.enforceApprovalRequirement({
         ...approvalContext,
         operationType: 'supply_purchase',
         operationData: purchase,
-        amount: parseFloat(purchase.totalAmount),
+        amount: parseFloat(totalAmount),
         currency: purchase.currency,
         businessContext: `Supply purchase from supplier`
       });
@@ -3377,6 +3375,7 @@ export class DatabaseStorage implements IStorage {
     
     // CRITICAL SECURITY: Audit logging for supply purchases
     if (auditContext) {
+      const totalAmount = new Decimal(purchase.quantity).mul(new Decimal(purchase.unitPrice)).toFixed(2);
       await StorageApprovalGuard.auditOperation(
         auditContext,
         'supply_purchases',
@@ -3385,7 +3384,7 @@ export class DatabaseStorage implements IStorage {
         'supply_purchase',
         null,
         result,
-        -parseFloat(purchase.totalAmount), // Negative impact for purchases (outflow)
+        -parseFloat(totalAmount), // Negative impact for purchases (outflow)
         purchase.currency
       );
     }
@@ -3397,15 +3396,18 @@ export class DatabaseStorage implements IStorage {
     // Generate next purchase number
     const purchaseNumber = await this.generateNextSupplyPurchaseNumberInTransaction(tx);
     
+    // Calculate total amount from quantity * unit price
+    const totalAmount = new Decimal(purchase.quantity).mul(new Decimal(purchase.unitPrice));
+    
     // Convert amount to USD for normalization
-    let amountUsd = new Decimal(purchase.totalAmount);
-    if (purchase.currency === 'ETB' && purchase.exchangeRate) {
-      amountUsd = amountUsd.div(new Decimal(purchase.exchangeRate));
+    let amountUsd = totalAmount;
+    if (purchase.currency === 'ETB' && (purchase as any).exchangeRate) {
+      amountUsd = amountUsd.div(new Decimal((purchase as any).exchangeRate));
     }
     
     // Calculate remaining amount
     const amountPaid = new Decimal(purchase.amountPaid || '0');
-    const remaining = new Decimal(purchase.totalAmount).sub(amountPaid);
+    const remaining = totalAmount.sub(amountPaid);
 
     // Create the supply purchase
     const [result] = await tx.insert(supplyPurchases).values({
@@ -3434,19 +3436,17 @@ export class DatabaseStorage implements IStorage {
       
       // Convert amount to USD for capital tracking normalization
       let paidInUsd = paidAmount;
-      if (purchase.currency === 'ETB' && purchase.exchangeRate) {
-        paidInUsd = paidAmount.div(new Decimal(purchase.exchangeRate));
+      if (purchase.currency === 'ETB' && (purchase as any).exchangeRate) {
+        paidInUsd = paidAmount.div(new Decimal((purchase as any).exchangeRate));
       }
       
       // Create capital entry with atomic balance checking
       await this.createCapitalEntryInTransaction(tx, {
-        entryId: `SPU-${result.id}`,
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
-        description: `Supply purchase ${purchase.currency === 'ETB' ? `(${purchase.amountPaid} ETB @ ${purchase.exchangeRate})` : ''}`,
+        description: `Supply purchase`,
         paymentCurrency: purchase.currency,
-        exchangeRate: purchase.exchangeRate || undefined,
         createdBy: userId,
       });
     }
@@ -4822,7 +4822,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateExportStatus(exportId: string, status: string, filePath?: string, fileSize?: number): Promise<ExportHistory> {
-    const updateData: any = { status };
+    const updateData: any = { status, updatedAt: new Date() };
     
     if (filePath) updateData.filePath = filePath;
     if (fileSize) updateData.fileSize = fileSize;
@@ -5513,7 +5513,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateShipmentStatus(id: string, status: string, userId: string, actualDate?: Date): Promise<Shipment> {
-    const updateData: any = { status, updatedAt: new Date() };
+    const updateData: Partial<InsertShipment> = { status, updatedAt: new Date() };
     
     if (status === 'in_transit' && actualDate) {
       updateData.actualDepartureDate = actualDate;
@@ -5597,7 +5597,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const remaining = costData.amountPaid ? 
-      amount.sub(new Decimal(costData.amountPaid)).toString() : 
+      amount.minus(new Decimal(costData.amountPaid)).toString() : 
       amount.toString();
 
     const [result] = await db.insert(shippingCosts).values({
@@ -5911,7 +5911,7 @@ export class DatabaseStorage implements IStorage {
       const items = await tx.select().from(shipmentItems).where(eq(shipmentItems.shipmentId, shipmentId));
       
       for (const item of items) {
-        const [stock] = await tx.select().from(warehouseStock).where(eq(warehouseStock.id, item.warehouseStockId));
+        const [stock] = await tx.select().from(warehouseStock).where(eq(warehouseStock.id, item.warehouseStockId!));
         
         if (stock && stock.warehouse === 'FIRST') {
           // Create new stock entry in FINAL warehouse
@@ -5939,7 +5939,7 @@ export class DatabaseStorage implements IStorage {
               qtyKgClean: Math.max(0, newCleanQty).toString(),
               qtyKgReserved: Math.max(0, newReservedQty).toString(),
             })
-            .where(eq(warehouseStock.id, item.warehouseStockId));
+            .where(eq(warehouseStock.id, item.warehouseStockId!));
         }
       }
     });
@@ -6207,7 +6207,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
+        approvedBy: userId,
         updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
@@ -6222,7 +6222,7 @@ export class DatabaseStorage implements IStorage {
         status: 'rejected',
         rejectionReason,
         rejectedAt: new Date(),
-        rejectedById: userId,
+        rejectedBy: userId,
         updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
@@ -6308,21 +6308,21 @@ export class DatabaseStorage implements IStorage {
     const consumptions = await db
       .select()
       .from(inventoryConsumption)
-      .where(eq(inventoryConsumption.warehouseStockId, stockId))
+      .where(eq(inventoryConsumption.warehouseStockId, stockId!))
       .orderBy(desc(inventoryConsumption.createdAt));
 
     // Get transfer records
     const transfers = await db
       .select()
       .from(stockTransfers)
-      .where(eq(stockTransfers.warehouseStockId, stockId))
+      .where(eq(stockTransfers.warehouseStockId, stockId!))
       .orderBy(desc(stockTransfers.createdAt));
 
     // Get adjustment records
     const adjustments = await db
       .select()
       .from(inventoryAdjustments)
-      .where(eq(inventoryAdjustments.warehouseStockId, stockId))
+      .where(eq(inventoryAdjustments.warehouseStockId, stockId!))
       .orderBy(desc(inventoryAdjustments.createdAt));
 
     return {
@@ -6375,7 +6375,7 @@ export class DatabaseStorage implements IStorage {
       const stockConsumptions = await db
         .select()
         .from(inventoryConsumption)
-        .where(eq(inventoryConsumption.warehouseStockId, stockId))
+        .where(eq(inventoryConsumption.warehouseStockId, stockId!))
         .orderBy(desc(inventoryConsumption.createdAt));
       consumptions.push(...stockConsumptions);
     }
@@ -6636,7 +6636,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
+        approvedBy: userId,
         updatedAt: new Date(),
       })
       .where(eq(inventoryAdjustments.id, id))
@@ -6649,9 +6649,9 @@ export class DatabaseStorage implements IStorage {
       .update(inventoryAdjustments)
       .set({
         status: 'rejected',
-        rejectionReason: reason,
+        // Note: rejectionReason property not available in schema
         rejectedAt: new Date(),
-        rejectedById: userId,
+        rejectedBy: userId,
         updatedAt: new Date(),
       })
       .where(eq(inventoryAdjustments.id, id))
@@ -7149,7 +7149,7 @@ export class DatabaseStorage implements IStorage {
           const [stock] = await db
             .select()
             .from(warehouseStock)
-            .where(eq(warehouseStock.id, item.warehouseStockId));
+            .where(eq(warehouseStock.id, item.warehouseStockId!));
           warehouseStock = stock;
         }
         return { ...item, warehouseStock };
@@ -7224,7 +7224,7 @@ export class DatabaseStorage implements IStorage {
 
     // CRITICAL: Enforce approval requirement for significant sales order changes
     const orderAmount = parseFloat(salesOrder.totalAmount || beforeState.totalAmount || '0');
-    const isSignificantChange = this.isSignificantSalesOrderChange(beforeState, salesOrder);
+    const isSignificantChange = StorageApprovalGuard.isSignificantSalesOrderChange(beforeState, salesOrder);
     
     if (isSignificantChange) {
       const approvalGuardContext: ApprovalGuardContext = {
@@ -7486,7 +7486,7 @@ export class DatabaseStorage implements IStorage {
         .set({
           qtyKgReserved: sql`${warehouseStock.qtyKgReserved} + ${quantityToReserve}`,
         })
-        .where(eq(warehouseStock.id, item.warehouseStockId));
+        .where(eq(warehouseStock.id, item.warehouseStockId!));
 
       // Update sales order item
       const [updatedItem] = await tx
@@ -11024,8 +11024,8 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(documents)
         .where(and(
-          eq(documents.entityType, entityType),
-          eq(documents.entityId, entityId)
+          eq(documents.relatedEntityType, entityType),
+          eq(documents.relatedEntityId, entityId)
         ))
         .orderBy(desc(documents.createdAt));
     } catch (error) {
@@ -11092,7 +11092,7 @@ export class DatabaseStorage implements IStorage {
         totalVersions: versions.length,
         latestVersion: versions[0],
         createdAt: document?.createdAt || new Date(),
-        lastModified: versions[0]?.createdAt || document?.updatedAt || new Date()
+        lastModified: versions[0]?.createdAt || document?.createdAt || new Date()
       };
     } catch (error) {
       console.error('Error fetching document version history:', error);
@@ -11144,10 +11144,9 @@ export class DatabaseStorage implements IStorage {
       const [updatedVersion] = await db
         .update(documentVersions)
         .set({
-          status: 'approved',
+          isApproved: true,
           approvedBy: userId,
-          approvedAt: new Date(),
-          updatedAt: new Date()
+          approvedAt: new Date()
         })
         .where(eq(documentVersions.id, versionId))
         .returning();
@@ -11518,23 +11517,14 @@ export class DatabaseStorage implements IStorage {
         .orderBy(documentCompliance.expiryDate);
 
       return expiringCompliance.map(item => ({
-        id: item.id,
         documentId: item.documentId,
         documentTitle: item.documentTitle,
-        alertType: 'compliance_expiring',
-        alertCategory: 'compliance',
-        priority: item.priority,
-        title: `${item.complianceType} Expiring`,
-        message: `${item.complianceType} for ${item.documentTitle} expires on ${item.expiryDate?.toLocaleDateString()}`,
-        complianceType: item.complianceType,
-        expiryDate: item.expiryDate,
+        requirementName: item.requirementName,
         status: item.status,
-        renewalRequired: item.renewalRequired,
-        issuingAuthority: item.issuingAuthority,
+        expiryDate: item.expiryDate?.toISOString(),
+        renewalDate: item.expiryDate?.toISOString(),
         daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
-        actionRequired: item.renewalRequired ? 'Renewal required' : 'Review status',
-        createdAt: new Date(),
-        updatedAt: new Date()
+        priority: item.priority
       }));
     } catch (error) {
       console.error('Error fetching expiring compliance:', error);
@@ -11565,23 +11555,14 @@ export class DatabaseStorage implements IStorage {
         .orderBy(documentCompliance.expiryDate);
 
       return expiredCompliance.map(item => ({
-        id: item.id,
         documentId: item.documentId,
         documentTitle: item.documentTitle,
-        alertType: 'compliance_expired',
-        alertCategory: 'compliance',
-        priority: 'critical' as const,
-        title: `${item.complianceType} Expired`,
-        message: `${item.complianceType} for ${item.documentTitle} expired on ${item.expiryDate?.toLocaleDateString()}`,
-        complianceType: item.complianceType,
-        expiryDate: item.expiryDate,
+        requirementName: item.requirementName,
         status: item.status,
-        renewalRequired: item.renewalRequired,
-        issuingAuthority: item.issuingAuthority,
+        expiryDate: item.expiryDate?.toISOString(),
+        renewalDate: item.expiryDate?.toISOString(),
         daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
-        actionRequired: 'Immediate action required',
-        createdAt: new Date(),
-        updatedAt: new Date()
+        priority: 'critical' as const
       }));
     } catch (error) {
       console.error('Error fetching expired compliance:', error);

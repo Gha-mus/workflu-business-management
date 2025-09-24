@@ -2848,7 +2848,7 @@ export class DatabaseStorage implements IStorage {
 
   async getCapitalEntriesByType(type: string): Promise<CapitalEntry[]> {
     return await db.select().from(capitalEntries)
-      .where(eq(capitalEntries.type, type))
+      .where(eq(capitalEntries.type, type as any))
       .orderBy(desc(capitalEntries.date));
   }
 
@@ -2960,7 +2960,7 @@ export class DatabaseStorage implements IStorage {
       if (balanceImpact < 0) {
         const currentBalance = await this.getCapitalBalanceInTransaction(tx);
         const impactAmount = new Decimal(Math.abs(balanceImpact));
-        const newBalance = new Decimal(currentBalance).sub(impactAmount);
+        const newBalance = new Decimal(currentBalance).minus(impactAmount);
         
         if (newBalance.lt(0)) {
           throw new Error(`Cannot create ${entry.type} entry. Would result in negative balance: ${newBalance.toFixed(2)} USD`);
@@ -3070,7 +3070,7 @@ export class DatabaseStorage implements IStorage {
       
       // Allow 1% tolerance for rounding differences
       const tolerance = expectedAmount.mul(0.01);
-      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      const difference = entryAmountUSD.minus(expectedAmount).abs();
       
       if (difference.gt(tolerance)) {
         throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked purchase payment ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
@@ -3085,7 +3085,7 @@ export class DatabaseStorage implements IStorage {
       
       // Allow 1% tolerance for rounding differences
       const tolerance = expectedAmount.mul(0.01);
-      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      const difference = entryAmountUSD.minus(expectedAmount).abs();
       
       if (difference.gt(tolerance)) {
         throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked expense amount ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
@@ -3114,7 +3114,7 @@ export class DatabaseStorage implements IStorage {
       
       // Allow 1% tolerance for rounding differences
       const tolerance = expectedAmount.mul(0.01);
-      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      const difference = entryAmountUSD.minus(expectedAmount).abs();
       
       if (difference.gt(tolerance)) {
         throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked shipping leg cost ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
@@ -3144,7 +3144,7 @@ export class DatabaseStorage implements IStorage {
       
       // Allow 1% tolerance for rounding differences
       const tolerance = expectedAmount.mul(0.01);
-      const difference = entryAmountUSD.sub(expectedAmount).abs();
+      const difference = entryAmountUSD.minus(expectedAmount).abs();
       
       if (difference.gt(tolerance)) {
         throw new Error(`Capital entry amount ${entryAmountUSD} USD does not match linked sales order amount paid ${expectedAmount} USD (tolerance: ±${tolerance} USD)`);
@@ -3672,8 +3672,8 @@ export class DatabaseStorage implements IStorage {
       const previousAmountPaid = new Decimal(purchase.amountPaid);
       
       const newTotal = actualWeight.mul(actualPricePerKg);
-      const balanceDiff = settledAmount.sub(previousAmountPaid);
-      const newRemaining = newTotal.sub(settledAmount);
+      const balanceDiff = settledAmount.minus(previousAmountPaid);
+      const newRemaining = newTotal.minus(settledAmount);
 
       // Update purchase with settled values
       const [updatedPurchase] = await tx
@@ -3726,7 +3726,7 @@ export class DatabaseStorage implements IStorage {
         'update' as const,
         'purchase_advance_settlement',
         {
-          originalTotal: new Decimal(result.total).add(new Decimal(settlementData.settledAmount)).sub(new Decimal(result.amountPaid)).toFixed(2),
+          originalTotal: new Decimal(result.total).add(new Decimal(settlementData.settledAmount)).minus(new Decimal(result.amountPaid)).toFixed(2),
           originalWeight: result.weight,
           originalPricePerKg: result.pricePerKg
         },
@@ -3797,7 +3797,7 @@ export class DatabaseStorage implements IStorage {
       // Calculate new balances in purchase currency
       const currentAmountPaid = new Decimal(purchase.amountPaid);
       const newAmountPaid = currentAmountPaid.add(settleAmountInPurchaseCurrency);
-      const newRemaining = remainingBalance.sub(settleAmountInPurchaseCurrency);
+      const newRemaining = remainingBalance.minus(settleAmountInPurchaseCurrency);
 
       // CRITICAL: Determine status using rounded remaining (same as persisted value)
       const roundedRemaining = newRemaining.toDecimalPlaces(2);
@@ -3847,7 +3847,7 @@ export class DatabaseStorage implements IStorage {
         'purchase_payment_settlement',
         {
           settlementAmount: settlementData.amount,
-          previousAmountPaid: new Decimal(result.amountPaid).sub(settlementData.amount).toFixed(2),
+          previousAmountPaid: new Decimal(result.amountPaid).minus(settlementData.amount).toFixed(2),
           previousRemaining: new Decimal(result.remaining).add(settlementData.amount).toFixed(2)
         },
         result,
@@ -3888,9 +3888,9 @@ export class DatabaseStorage implements IStorage {
       }
 
       // Update purchase with return adjustments
-      const newWeight = currentWeight.sub(returnedWeight);
+      const newWeight = currentWeight.minus(returnedWeight);
       const newTotal = newWeight.mul(new Decimal(purchase.pricePerKg));
-      const newRemaining = newTotal.sub(new Decimal(purchase.amountPaid));
+      const newRemaining = newTotal.minus(new Decimal(purchase.amountPaid));
 
       const [updatedPurchase] = await tx
         .update(purchases)
@@ -3996,7 +3996,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateSupply(id: string, supply: Partial<InsertSupply>, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<Supply> {
     // CRITICAL SECURITY: Capture before state for audit logging
-    const beforeState = await StorageApprovalGuard.getCaptureBeforeState(supplies, id);
+    const beforeState = await StorageApprovalGuard.getCaptureBeforeState<Supply>(supplies, id);
     
     // CRITICAL SECURITY: Enforce approval requirement at storage level
     if (approvalContext) {
@@ -4009,14 +4009,14 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Recalculate total value if quantity or cost changed
-    let updateData = { ...supply, updatedAt: new Date() };
-    if (supply.quantityOnHand !== undefined || supply.unitCostUsd !== undefined) {
+    let updateData: any = { ...supply, updatedAt: new Date() };
+    if ((supply as any).quantityOnHand !== undefined || (supply as any).unitCostUsd !== undefined) {
       const currentSupply = beforeState || await this.getSupply(id);
       if (currentSupply) {
         const currentSupplyTyped = safeAccessBeforeState(currentSupply, ['quantityOnHand', 'unitCostUsd']);
-        const quantity = new Decimal(supply.quantityOnHand ?? (currentSupplyTyped?.quantityOnHand || '0'));
-        const unitCost = new Decimal(supply.unitCostUsd ?? (currentSupplyTyped?.unitCostUsd || '0'));
-        updateData = { ...updateData, totalValueUsd: quantity.mul(unitCost).toFixed(2) };
+        const quantity = new Decimal((supply as any).quantityOnHand ?? (currentSupplyTyped?.quantityOnHand || '0'));
+        const unitCost = new Decimal((supply as any).unitCostUsd ?? (currentSupplyTyped?.unitCostUsd || '0'));
+        updateData.totalValueUsd = quantity.mul(unitCost).toFixed(2);
       }
     }
 
@@ -4177,7 +4177,7 @@ export class DatabaseStorage implements IStorage {
     
     // Calculate remaining amount
     const amountPaid = new Decimal(expense.amountPaid || '0');
-    const remaining = new Decimal(expense.amount).sub(amountPaid);
+    const remaining = new Decimal(expense.amount).minus(amountPaid);
 
     // Create the operating expense
     const [result] = await tx.insert(operatingExpenses).values({
@@ -4391,7 +4391,7 @@ export class DatabaseStorage implements IStorage {
     
     // Calculate remaining amount
     const amountPaid = new Decimal(purchase.amountPaid || '0');
-    const remaining = totalAmount.sub(amountPaid);
+    const remaining = totalAmount.minus(amountPaid);
 
     // Create the supply purchase
     const [result] = await tx.insert(supplyPurchases).values({
@@ -4510,7 +4510,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWarehouseStockByStatus(status: 'AWAITING_DECISION' | 'FILTERING' | 'FILTERED' | 'PACKED' | 'RESERVED' | 'CONSUMED' | 'READY_TO_SHIP' | 'NON_CLEAN' | 'READY_FOR_SALE' | 'AWAITING_FILTER'): Promise<WarehouseStock[]> {
-    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, status));
+    return await db.select().from(warehouseStock).where(eq(warehouseStock.status as any, status));
   }
 
   async getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]> {
@@ -4606,7 +4606,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(warehouseStock)
         .set({ 
-          status: status as any, 
+          status, 
           statusChangedAt: new Date()
         })
         .where(eq(warehouseStock.id, id))
@@ -4654,7 +4654,7 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(warehouseStock.purchaseId, purchaseId),
           eq(warehouseStock.warehouse, 'FIRST'),
-          eq(warehouseStock.status, 'FILTERING')
+          eq(warehouseStock.status as any, 'FILTERING')
         ));
 
       if (!stockEntry) {
@@ -4764,7 +4764,7 @@ export class DatabaseStorage implements IStorage {
         .where(and(
           eq(warehouseStock.id, stockId),
           eq(warehouseStock.warehouse, 'FIRST'),
-          eq(warehouseStock.status, 'READY_TO_SHIP')
+          eq(warehouseStock.status as any, 'READY_TO_SHIP')
         ));
 
       if (!stockEntry) {
@@ -4857,7 +4857,7 @@ export class DatabaseStorage implements IStorage {
 
     const capitalIn = new Decimal(capitalResult[0]?.capitalIn?.toString() || '0');
     const capitalOut = new Decimal(capitalResult[0]?.capitalOut?.toString() || '0');
-    const currentBalance = capitalIn.sub(capitalOut);
+    const currentBalance = capitalIn.minus(capitalOut);
 
     // Get purchase totals with USD normalization
     const purchaseQuery = db
@@ -4879,7 +4879,7 @@ export class DatabaseStorage implements IStorage {
     
     const totalPurchases = new Decimal(purchaseResult[0]?.totalPurchases?.toString() || '0');
     const totalPaid = new Decimal(purchaseResult[0]?.totalPaid?.toString() || '0');
-    const totalOutstanding = totalPurchases.sub(totalPaid);
+    const totalOutstanding = totalPurchases.minus(totalPaid);
 
     // Calculate inventory value with USD normalization
     const inventoryResult = await db
@@ -4890,7 +4890,7 @@ export class DatabaseStorage implements IStorage {
       .where(sql`${warehouseStock.qtyKgClean} > 0`);
 
     const totalInventoryValue = new Decimal(inventoryResult[0]?.totalValue?.toString() || '0');
-    const netPosition = currentBalance.add(totalInventoryValue).sub(totalOutstanding);
+    const netPosition = currentBalance.add(totalInventoryValue).minus(totalOutstanding);
 
     return {
       summary: {
@@ -4902,6 +4902,9 @@ export class DatabaseStorage implements IStorage {
         totalOutstanding: totalOutstanding.toNumber(),
         totalInventoryValue: totalInventoryValue.toNumber(),
         netPosition: netPosition.toNumber(),
+        totalRevenue: 0, // TODO: Calculate from sales data
+        totalCapitalIn: capitalIn.toNumber(),
+        totalPurchasePayments: totalPaid.toNumber(),
       },
       currencyBreakdown: {
         usd: {
@@ -4984,7 +4987,7 @@ export class DatabaseStorage implements IStorage {
         capitalIn: capitalIn.toNumber(),
         capitalOut: capitalOut.toNumber(),
         purchasePayments: 0,
-        netFlow: capitalIn.sub(capitalOut).toNumber(),
+        netFlow: capitalIn.minus(capitalOut).toNumber(),
       });
     });
 
@@ -5040,7 +5043,7 @@ export class DatabaseStorage implements IStorage {
     // Get status breakdown
     const statusBreakdown = await db
       .select({
-        status: warehouseStock.status,
+        status: warehouseStock.status as any,
         count: count(),
         totalKg: sum(warehouseStock.qtyKgClean),
         valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
@@ -5088,7 +5091,7 @@ export class DatabaseStorage implements IStorage {
         },
       },
       statusBreakdown: statusBreakdown.map(status => ({
-        status: status.status,
+        status: status.status as any,
         count: Number(status.count || 0),
         totalKg: new Decimal(status.totalKg?.toString() || '0').toNumber(),
         valueUsd: new Decimal(status.valueUsd?.toString() || '0').toNumber(),
@@ -5105,6 +5108,7 @@ export class DatabaseStorage implements IStorage {
         totalKg: new Decimal(product.totalKg?.toString() || '0').toNumber(),
         valueUsd: new Decimal(product.valueUsd?.toString() || '0').toNumber(),
       })),
+      lowStockItems: [], // TODO: Implement low stock detection
     };
   }
 
@@ -5189,13 +5193,13 @@ export class DatabaseStorage implements IStorage {
         const recentPrice = new Decimal(recent.avgPrice?.toString() || '0');
         const previousPrice = new Decimal(previous.avgPrice?.toString() || '0');
         if (previousPrice.gt(0)) {
-          priceChange = recentPrice.sub(previousPrice).div(previousPrice).mul(100).toNumber();
+          priceChange = recentPrice.minus(previousPrice).div(previousPrice).mul(100).toNumber();
         }
 
         const recentVolume = new Decimal(recent.totalWeight?.toString() || '0');
         const previousVolume = new Decimal(previous.totalWeight?.toString() || '0');
         if (previousVolume.gt(0)) {
-          volumeChange = recentVolume.sub(previousVolume).div(previousVolume).mul(100).toNumber();
+          volumeChange = recentVolume.minus(previousVolume).div(previousVolume).mul(100).toNumber();
         }
       }
 
@@ -5238,7 +5242,7 @@ export class DatabaseStorage implements IStorage {
     // Get order fulfillment stats
     const orderStats = await db
       .select({
-        status: orders.status,
+        status: orders.status as any,
         count: count(),
       })
       .from(orders)
@@ -5281,7 +5285,7 @@ export class DatabaseStorage implements IStorage {
         updatedAt: orders.updatedAt,
       })
       .from(orders)
-      .where(eq(orders.status, 'completed'));
+      .where(eq(orders.status as any, 'completed'));
 
     let totalProcessingDays = 0;
     let processedOrdersCount = 0;
@@ -5713,7 +5717,7 @@ export class DatabaseStorage implements IStorage {
         description: `Period reopened: ${reason}`,
         metadata: { 
           reason,
-          previousStatus: period.status,
+          previousStatus: period.status as any,
           previousClosedBy: period.closedBy,
           previousClosedAt: period.closedAt?.toISOString(),
           reopenTimestamp: new Date().toISOString(),
@@ -5793,7 +5797,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateExportStatus(exportId: string, status: string, filePath?: string, fileSize?: number): Promise<ExportHistory> {
-    const updateData: any = { status };
+    const updateData: any = { status, updatedAt: new Date() };
     
     if (filePath) updateData.filePath = filePath;
     if (fileSize) updateData.fileSize = fileSize;
@@ -6045,7 +6049,7 @@ export class DatabaseStorage implements IStorage {
     const nodemailer = await import('nodemailer');
     
     // Configure transporter (you may need to configure this based on your email service)
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_PORT || '587'),
       secure: false,
@@ -6276,7 +6280,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
 
     if (filter?.status) {
-      conditions.push(eq(shipments.status, filter.status));
+      conditions.push(eq(shipments.status as any, filter.status));
     }
 
     if (filter?.method) {
@@ -6582,7 +6586,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const remaining = costData.amountPaid ? 
-      amount.sub(new Decimal(costData.amountPaid)).toString() : 
+      amount.minus(new Decimal(costData.amountPaid)).toString() : 
       amount.toString();
 
     const [result] = await db.insert(shippingCosts).values({
@@ -6608,7 +6612,6 @@ export class DatabaseStorage implements IStorage {
         reference: result.shipmentId,
         description: `Shipping cost - ${costData.costType} ${costData.currency === 'ETB' ? `(${costData.amountPaid} ETB @ ${costData.exchangeRate})` : ''}`,
         paymentCurrency: costData.currency,
-        exchangeRate: costData.exchangeRate,
         createdBy: userId,
       });
     }
@@ -6639,7 +6642,7 @@ export class DatabaseStorage implements IStorage {
   async addDeliveryTracking(trackingData: AddDeliveryTracking, userId: string): Promise<DeliveryTracking> {
     const [result] = await db.insert(deliveryTracking).values({
       shipmentId: trackingData.shipmentId,
-      status: trackingData.status,
+      status: trackingData.status as any,
       location: trackingData.location,
       description: trackingData.description,
       isCustomerNotified: trackingData.isCustomerNotified,
@@ -6744,7 +6747,7 @@ export class DatabaseStorage implements IStorage {
     const costBreakdownDetailed = await this.getShippingCostBreakdown(whereClause);
     
     // Delivery time analysis
-    const deliveryTimeAnalysis = await this.getDeliveryTimeAnalysis(whereClause);
+    const deliveryTimeAnalysis = await this.getDeliveryTimeAnalysisData(whereClause);
 
     // Create simplified cost breakdown for top-level access
     const costBreakdown = {
@@ -6874,7 +6877,7 @@ export class DatabaseStorage implements IStorage {
   async getAvailableWarehouseStockForShipping(): Promise<WarehouseStock[]> {
     return await db.select().from(warehouseStock)
       .where(and(
-        eq(warehouseStock.status, 'READY_TO_SHIP'),
+        eq(warehouseStock.status as any, 'READY_TO_SHIP'),
         sql`${warehouseStock.qtyKgClean} > ${warehouseStock.qtyKgReserved}`
       ))
       .orderBy(desc(warehouseStock.createdAt));
@@ -7082,8 +7085,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedOriginalBatch] = await tx
         .update(warehouseBatches)
         .set({ 
-          totalQuantityKg: newOriginalQuantity.toString(),
-          updatedAt: new Date() 
+          totalQuantityKg: newOriginalQuantity.toString()
         })
         .where(eq(warehouseBatches.id, batchId))
         .returning();
@@ -7093,9 +7095,12 @@ export class DatabaseStorage implements IStorage {
         .insert(warehouseBatches)
         .values({
           batchNumber: `${originalBatch.batchNumber}-SPLIT-${Date.now()}`,
+          purchaseId: originalBatch.purchaseId,
+          orderId: originalBatch.orderId,
           supplierId: originalBatch.supplierId,
           qualityGrade: originalBatch.qualityGrade,
           totalQuantityKg: splitQuantityKg,
+          remainingQuantityKg: splitQuantityKg,
           notes: `Split from batch ${originalBatch.batchNumber}`,
           createdBy: userId,
         })
@@ -7139,9 +7144,12 @@ export class DatabaseStorage implements IStorage {
         .insert(warehouseBatches)
         .values({
           batchNumber: `MERGED-${Date.now()}`,
+          purchaseId: firstBatch.purchaseId,
+          orderId: firstBatch.orderId,
           supplierId: firstBatch.supplierId,
           qualityGrade: firstBatch.qualityGrade,
           totalQuantityKg: totalQuantity.toString(),
+          remainingQuantityKg: totalQuantity.toString(),
           notes: `Merged from batches: ${batches.map(b => b.batchNumber).join(', ')}`,
           createdBy: userId,
         })
@@ -7151,7 +7159,7 @@ export class DatabaseStorage implements IStorage {
       for (const batchId of batchIds) {
         await tx
           .update(warehouseBatches)
-          .set({ isActive: false, updatedAt: new Date() })
+          .set({ isActive: false })
           .where(eq(warehouseBatches.id, batchId));
       }
 
@@ -7164,7 +7172,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     
     if (filter?.status) {
-      conditions.push(eq(qualityInspections.status, filter.status));
+      conditions.push(eq(qualityInspections.status as any, filter.status));
     }
     if (filter?.inspectionType) {
       conditions.push(eq(qualityInspections.inspectionType, filter.inspectionType));
@@ -7199,7 +7207,7 @@ export class DatabaseStorage implements IStorage {
   async updateQualityInspection(id: string, inspection: Partial<InsertQualityInspection>): Promise<QualityInspection> {
     const [result] = await db
       .update(qualityInspections)
-      .set({ ...inspection, updatedAt: new Date() })
+      .set(inspection)
       .where(eq(qualityInspections.id, id))
       .returning();
     return result;
@@ -7216,13 +7224,11 @@ export class DatabaseStorage implements IStorage {
       .update(qualityInspections)
       .set({
         status: 'completed',
-        qualityGrade: results.qualityGrade,
+        qualityGrade: results.qualityGrade as any,
         overallScore: results.overallScore,
         testResults: results.testResults,
         recommendations: results.recommendations,
         completedAt: new Date(),
-        completedById: results.userId,
-        updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -7235,8 +7241,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
-        updatedAt: new Date(),
+        approvedBy: userId,
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -7249,9 +7254,6 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'rejected',
         rejectionReason,
-        rejectedAt: new Date(),
-        rejectedById: userId,
-        updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -7263,7 +7265,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(warehouseStock)
       .set({
-        qualityGrade,
+        qualityGrade: qualityGrade as any,
         qualityScore,
         gradedAt: new Date(),
         updatedAt: new Date(),
@@ -7343,7 +7345,7 @@ export class DatabaseStorage implements IStorage {
     const transfers = await db
       .select()
       .from(stockTransfers)
-      .where(eq(stockTransfers.warehouseStockId, stockId))
+      .where(eq(stockTransfers.toWarehouseStockId, stockId))
       .orderBy(desc(stockTransfers.createdAt));
 
     // Get adjustment records
@@ -7452,7 +7454,7 @@ export class DatabaseStorage implements IStorage {
         .set({
           qtyKgConsumed: newConsumed.toString(),
           qtyKgClean: newClean.toString(),
-          fifoSequence: fifoSequence.toString(),
+          fifoSequence: fifoSequence,
           updatedAt: new Date(),
         })
         .where(eq(warehouseStock.id, warehouseStockId));
@@ -7467,7 +7469,8 @@ export class DatabaseStorage implements IStorage {
           consumptionType,
           unitCostUsd: stock.unitCostCleanUsd || '0',
           totalCostUsd: (parseFloat(stock.unitCostCleanUsd || '0') * consumeQty).toString(),
-          createdBy: userId,
+          fifoSequence: fifoSequence,
+          consumedBy: userId,
         })
         .returning();
 
@@ -7553,7 +7556,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     
     if (filter?.status) {
-      conditions.push(eq(processingOperations.status, filter.status));
+      conditions.push(eq(processingOperations.status as any, filter.status));
     }
     if (filter?.operationType) {
       conditions.push(eq(processingOperations.operationType, filter.operationType));
@@ -7609,7 +7612,7 @@ export class DatabaseStorage implements IStorage {
       console.warn('toWarehouse filter not supported - requires warehouse stock join');
     }
     if (filter?.status) {
-      conditions.push(eq(stockTransfers.status, filter.status));
+      conditions.push(eq(stockTransfers.status as any, filter.status));
     }
     
     return await db
@@ -7630,7 +7633,7 @@ export class DatabaseStorage implements IStorage {
   async updateStockTransfer(id: string, transfer: Partial<InsertStockTransfer>): Promise<StockTransfer> {
     const [result] = await db
       .update(stockTransfers)
-      .set({ ...transfer, updatedAt: new Date() })
+      .set(transfer)
       .where(eq(stockTransfers.id, id))
       .returning();
     return result;
@@ -7644,7 +7647,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(inventoryAdjustments.warehouseStockId, filter.warehouseStockId));
     }
     if (filter?.status) {
-      conditions.push(eq(inventoryAdjustments.status, filter.status));
+      conditions.push(eq(inventoryAdjustments.status as any, filter.status));
     }
     
     return await db
@@ -7668,8 +7671,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
-        updatedAt: new Date(),
+        approvedBy: userId,
       })
       .where(eq(inventoryAdjustments.id, id))
       .returning();
@@ -7681,10 +7683,7 @@ export class DatabaseStorage implements IStorage {
       .update(inventoryAdjustments)
       .set({
         status: 'rejected',
-        rejectionReason: reason,
-        rejectedAt: new Date(),
-        rejectedById: userId,
-        updatedAt: new Date(),
+        reason: reason,
       })
       .where(eq(inventoryAdjustments.id, id))
       .returning();
@@ -7855,7 +7854,7 @@ export class DatabaseStorage implements IStorage {
         .update(warehouseStock)
         .set({
           unitCostCleanUsd: adjustedPrice.toFixed(2),
-          qualityGrade,
+          qualityGrade: qualityGrade as any,
           gradedAt: new Date(),
           updatedAt: new Date(),
         })
@@ -8026,7 +8025,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     
     if (filter?.category) {
-      conditions.push(eq(customers.category, filter.category));
+      conditions.push(eq(customers.category, filter.category as any));
     }
     if (filter?.isActive !== undefined) {
       conditions.push(eq(customers.isActive, filter.isActive));
@@ -8097,7 +8096,7 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(customers)
-      .where(eq(customers.category, category))
+      .where(eq(customers.category, category as any))
       .orderBy(customers.name);
   }
 
@@ -8118,11 +8117,18 @@ export class DatabaseStorage implements IStorage {
     const totalRevenueUsd = parseFloat(stats.totalRevenue?.toString() || '0');
     const averageOrderValueUsd = totalOrdersCount > 0 ? totalRevenueUsd / totalOrdersCount : 0;
 
-    return await this.updateCustomer(customerId, {
-      totalOrdersCount,
-      totalRevenueUsd: totalRevenueUsd.toString(),
-      averageOrderValueUsd: averageOrderValueUsd.toString(),
-    });
+    const [result] = await db
+      .update(customers)
+      .set({
+        totalOrdersCount,
+        totalRevenueUsd: totalRevenueUsd.toString(),
+        averageOrderValueUsd: averageOrderValueUsd.toString(),
+        updatedAt: new Date(),
+      })
+      .where(eq(customers.id, customerId))
+      .returning();
+    
+    return result;
   }
 
   // Sales order operations
@@ -8136,7 +8142,7 @@ export class DatabaseStorage implements IStorage {
     
     const conditions = [];
     if (filter?.status) {
-      conditions.push(eq(salesOrders.status, filter.status));
+      conditions.push(eq(salesOrders.status as any, filter.status));
     }
     if (filter?.customerId) {
       conditions.push(eq(salesOrders.customerId, filter.customerId));
@@ -8187,8 +8193,8 @@ export class DatabaseStorage implements IStorage {
           const [stock] = await db
             .select()
             .from(warehouseStock)
-            .where(eq(warehouseStock.id, item.warehouseStockId));
-          warehouseStock = stock;
+            .where(eq(warehouseStock.id, item.warehouseStockId!));
+          warehouseStock = stock!;
         }
         return { ...item, warehouseStock };
       })
@@ -8204,7 +8210,7 @@ export class DatabaseStorage implements IStorage {
 
   async createSalesOrder(salesOrder: InsertSalesOrder, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
     // CRITICAL: Enforce approval requirement for sales orders above thresholds
-    const orderAmount = parseFloat(salesOrder.totalAmount || '0');
+    const orderAmount = parseFloat((salesOrder as any).totalAmount || '0');
     const approvalGuardContext: ApprovalGuardContext = {
       ...approvalContext,
       userId: auditContext?.userId || approvalContext?.userId,
@@ -8261,8 +8267,8 @@ export class DatabaseStorage implements IStorage {
     }
 
     // CRITICAL: Enforce approval requirement for significant sales order changes
-    const orderAmount = parseFloat(salesOrder.totalAmount || beforeState.totalAmount || '0');
-    const isSignificantChange = this.isSignificantSalesOrderChange(beforeState, salesOrder);
+    const orderAmount = parseFloat((salesOrder as any).totalAmount || (beforeState as any).totalAmount || '0');
+    const isSignificantChange = StorageApprovalGuard.isSignificantSalesOrderChange(beforeState, salesOrder);
     
     if (isSignificantChange) {
       const approvalGuardContext: ApprovalGuardContext = {
@@ -8329,10 +8335,11 @@ export class DatabaseStorage implements IStorage {
 
     await StorageApprovalGuard.enforceApprovalRequirement(confirmationContext);
 
-    return await this.updateSalesOrder(id, { 
+    const updateData: any = { 
       status: 'confirmed',
       confirmedAt: new Date(),
-    }, auditContext, approvalContext);
+    };
+    return await this.updateSalesOrder(id, updateData, auditContext, approvalContext);
   }
 
   async fulfillSalesOrder(id: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
@@ -8362,7 +8369,7 @@ export class DatabaseStorage implements IStorage {
       // Reserve warehouse stock for each item
       for (const item of items) {
         if (item.warehouseStockId) {
-          await this.reserveStockInTransaction(tx, item.warehouseStockId, parseFloat(item.quantity), id);
+          await this.reserveStockInTransaction(tx, item.warehouseStockId, parseFloat(item.quantityKg), id);
         }
       }
       
@@ -8397,10 +8404,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deliverSalesOrder(id: string, userId: string): Promise<SalesOrder> {
-    return await this.updateSalesOrder(id, { 
+    const updateData: any = { 
       status: 'delivered',
       deliveredAt: new Date(),
-    });
+    };
+    return await this.updateSalesOrder(id, updateData);
   }
 
   async cancelSalesOrder(id: string, reason: string, userId: string, auditContext?: AuditContext, approvalContext?: ApprovalGuardContext): Promise<SalesOrder> {
@@ -8423,11 +8431,12 @@ export class DatabaseStorage implements IStorage {
 
     await StorageApprovalGuard.enforceApprovalRequirement(cancellationContext);
 
-    return await this.updateSalesOrder(id, { 
+    const updateData: any = { 
       status: 'cancelled',
       cancelledAt: new Date(),
       notes: reason,
-    }, auditContext, approvalContext);
+    };
+    return await this.updateSalesOrder(id, updateData, auditContext, approvalContext);
   }
 
   async calculateSalesOrderTotals(salesOrderId: string): Promise<SalesOrder> {
@@ -8445,11 +8454,12 @@ export class DatabaseStorage implements IStorage {
     const exchangeRate = parseFloat(salesOrder.exchangeRate || '1');
     const totalAmountUsd = salesOrder.currency === 'USD' ? totalAmount : totalAmount * exchangeRate;
 
-    return await this.updateSalesOrder(salesOrderId, {
+    const updateData: any = {
       subtotalAmount: subtotalAmount.toString(),
       totalAmount: totalAmount.toString(),
       totalAmountUsd: totalAmountUsd.toString(),
-    });
+    };
+    return await this.updateSalesOrder(salesOrderId, updateData);
   }
 
   // Sales order item operations
@@ -8612,7 +8622,7 @@ export class DatabaseStorage implements IStorage {
       query = query.where(eq(salesReturns.originalSalesOrderId, filter.originalSalesOrderId));
     }
     if (filter?.status) {
-      query = query.where(eq(salesReturns.status, filter.status));
+      query = query.where(eq(salesReturns.status as any, filter.status));
     }
     if (filter?.returnedBy) {
       query = query.where(eq(salesReturns.returnedBy, filter.returnedBy));
@@ -8889,7 +8899,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [
       sql`${customerCommunications.followUpDate} IS NOT NULL`,
       gte(customerCommunications.followUpDate, now),
-      eq(customerCommunications.status, 'pending')
+      eq(customerCommunications.status as any, 'pending')
     ];
 
     if (userId) {
@@ -9230,9 +9240,9 @@ export class DatabaseStorage implements IStorage {
     const availableCredit = limit - currentBalance;
 
     return {
-      isApproved: availableCredit >= orderAmount && !creditLimit.isSuspended,
+      isApproved: availableCredit >= orderAmount && !creditLimit.suspendedAt,
       availableCredit,
-      reason: creditLimit.isSuspended ? 'Credit suspended' : 
+      reason: creditLimit.suspendedAt ? 'Credit suspended' : 
               availableCredit < orderAmount ? 'Insufficient credit limit' : undefined,
     };
   }
@@ -9495,7 +9505,7 @@ export class DatabaseStorage implements IStorage {
           totalOrders: count(salesOrders.id),
         })
         .from(salesOrders)
-        .where(eq(salesOrders.status, 'delivered'));
+        .where(eq(salesOrders.status as any, 'delivered'));
 
       const currentRevenue = Number(salesResult[0]?.totalRevenueUsd || 0);
       const totalOrders = Number(salesResult[0]?.totalOrders || 0);
@@ -9583,7 +9593,7 @@ export class DatabaseStorage implements IStorage {
           `),
         })
         .from(salesOrders)
-        .where(eq(salesOrders.status, 'delivered'));
+        .where(eq(salesOrders.status as any, 'delivered'));
 
       const revenue = Number(salesResult[0]?.totalRevenueUsd || 0);
       const cogs = financialSummary.summary.totalPurchases || 0; // Cost of Goods Sold
@@ -9810,7 +9820,7 @@ export class DatabaseStorage implements IStorage {
           `),
         })
         .from(salesOrders)
-        .where(eq(salesOrders.status, 'delivered'));
+        .where(eq(salesOrders.status as any, 'delivered'));
 
       const totalReturns = Number(salesResult[0]?.totalRevenueUsd || 0);
       const absoluteReturn = totalReturns - totalInvestedCapital;
@@ -10118,7 +10128,7 @@ export class DatabaseStorage implements IStorage {
           alertType: notificationQueue.alertType,
           alertCategory: notificationQueue.alertCategory,
           createdAt: notificationQueue.createdAt,
-          status: notificationQueue.status,
+          status: notificationQueue.status as any,
         })
         .from(notificationQueue)
         .where(eq(notificationQueue.userId, userId))
@@ -10318,7 +10328,7 @@ export class DatabaseStorage implements IStorage {
 
       const conditions = [];
       if (filter.userId) conditions.push(eq(notificationQueue.userId, filter.userId));
-      if (filter.status) conditions.push(eq(notificationQueue.status, filter.status));
+      if (filter.status) conditions.push(eq(notificationQueue.status as any, filter.status));
       if (filter.priority) conditions.push(eq(notificationQueue.priority, filter.priority));
       if (filter.channel) conditions.push(eq(notificationQueue.channel, filter.channel));
       if (filter.alertType) conditions.push(eq(notificationQueue.alertType, filter.alertType));
@@ -10374,7 +10384,7 @@ export class DatabaseStorage implements IStorage {
         .from(notificationQueue)
         .where(and(
           eq(notificationQueue.userId, userId),
-          eq(notificationQueue.status, 'pending')
+          eq(notificationQueue.status as any, 'pending')
         ))
         .groupBy(notificationQueue.priority);
 
@@ -10395,7 +10405,7 @@ export class DatabaseStorage implements IStorage {
         .from(notificationQueue)
         .where(and(
           eq(notificationQueue.userId, userId),
-          eq(notificationQueue.status, 'pending')
+          eq(notificationQueue.status as any, 'pending')
         ));
 
       const unreadCount = Number(unreadResult[0]?.count || 0);
@@ -10528,7 +10538,7 @@ export class DatabaseStorage implements IStorage {
         console.log(`📝 Notification data:`, {
           id: existingNotification[0].id,
           userId: existingNotification[0].userId,
-          status: existingNotification[0].status,
+          status: existingNotification[0].status as any,
           title: existingNotification[0].title
         });
       }
@@ -10607,7 +10617,7 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(notificationQueue)
         .where(and(
-          eq(notificationQueue.status, 'pending'),
+          eq(notificationQueue.status as any, 'pending'),
           lte(notificationQueue.scheduledFor, new Date())
         ))
         .orderBy(notificationQueue.priority, notificationQueue.scheduledFor)
@@ -10623,7 +10633,7 @@ export class DatabaseStorage implements IStorage {
       return await db
         .select()
         .from(notificationQueue)
-        .where(eq(notificationQueue.status, 'failed'))
+        .where(eq(notificationQueue.status as any, 'failed'))
         .orderBy(desc(notificationQueue.lastAttemptAt))
         .limit(limit);
     } catch (error) {
@@ -10857,7 +10867,7 @@ export class DatabaseStorage implements IStorage {
 
       const conditions = [];
       if (filter.userId) conditions.push(eq(notificationHistory.userId, filter.userId));
-      if (filter.status) conditions.push(eq(notificationHistory.status, filter.status));
+      if (filter.status) conditions.push(eq(notificationHistory.status as any, filter.status));
       if (filter.alertType) conditions.push(eq(notificationHistory.alertType, filter.alertType));
       if (filter.alertCategory) conditions.push(eq(notificationHistory.alertCategory, filter.alertCategory));
       if (filter.channel) conditions.push(eq(notificationHistory.channel, filter.channel));
@@ -11006,7 +11016,7 @@ export class DatabaseStorage implements IStorage {
 
       return {
         notificationId,
-        status: notification.status,
+        status: notification.status as any,
         channels: [{
           channel: notification.channel,
           status: notification.status === 'sent' ? 'sent' : 'pending',
@@ -11198,7 +11208,7 @@ export class DatabaseStorage implements IStorage {
           revEntryId,
           amountUsd: amountUsd.toFixed(2),
           accountingPeriod: entryData.accountingPeriod || currentPeriod,
-          createdBy: auditContext.userId,
+          createdBy: auditContext.userId || 'system',
         })
         .returning();
 
@@ -11241,7 +11251,7 @@ export class DatabaseStorage implements IStorage {
         description: receiptData.description,
         note: receiptData.note,
         date: receiptData.recognitionDate ? new Date(receiptData.recognitionDate) : new Date(),
-        createdBy: auditContext.userId, // Required field
+        createdBy: auditContext.userId || 'system', // Required field
         accountingPeriod: this.getCurrentAccountingPeriod(), // Required field
       };
 
@@ -11289,7 +11299,7 @@ export class DatabaseStorage implements IStorage {
           conditions.push(ilike(withdrawalRecords.partner, `%${filter.partner}%`));
         }
         if (filter.status) {
-          conditions.push(eq(withdrawalRecords.status, filter.status));
+          conditions.push(eq(withdrawalRecords.status as any, filter.status));
         }
         if (filter.dateFrom) {
           conditions.push(gte(withdrawalRecords.date, new Date(filter.dateFrom)));
@@ -11373,7 +11383,7 @@ export class DatabaseStorage implements IStorage {
             ...withdrawalData,
             withdrawalId,
             amountUsd: amountUsd.toFixed(2),
-            createdBy: auditContext.userId,
+            createdBy: auditContext.userId || 'system',
           })
           .returning();
 
@@ -11386,7 +11396,7 @@ export class DatabaseStorage implements IStorage {
           description: `Partner withdrawal - ${withdrawalData.partner}`,
           note: withdrawalData.note,
           accountingPeriod: this.getCurrentAccountingPeriod(),
-          createdBy: auditContext.userId, // Required field
+          createdBy: auditContext.userId || 'system', // Required field
         };
 
         await tx
@@ -11395,7 +11405,7 @@ export class DatabaseStorage implements IStorage {
             ...revenueLedgerEntry,
             revEntryId: `REV-WD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             amountUsd: revenueLedgerEntry.amount,
-            createdBy: auditContext.userId,
+            createdBy: auditContext.userId || 'system',
           });
 
         // Audit logging
@@ -11469,7 +11479,7 @@ export class DatabaseStorage implements IStorage {
       
       if (filter) {
         if (filter.status) {
-          conditions.push(eq(reinvestments.status, filter.status));
+          conditions.push(eq(reinvestments.status as any, filter.status));
         }
         if (filter.allocationPolicy) {
           conditions.push(eq(reinvestments.allocationPolicy, filter.allocationPolicy));
@@ -11558,7 +11568,7 @@ export class DatabaseStorage implements IStorage {
             ...reinvestmentData,
             reinvestId,
             transferCostUsd: transferCostUsd.toFixed(2),
-            createdBy: auditContext.userId,
+            createdBy: auditContext.userId || 'system',
           })
           .returning();
 
@@ -11581,7 +11591,7 @@ export class DatabaseStorage implements IStorage {
             currency: 'USD',
             paymentDate: new Date().toISOString().split('T')[0],
             fundingSource: 'external', // Transfer fees are external costs
-            createdBy: auditContext.userId,
+            createdBy: auditContext.userId || 'system',
           }, auditContext);
           operatingExpenseId = operatingExpense.id;
         }
@@ -11613,7 +11623,7 @@ export class DatabaseStorage implements IStorage {
             description: `Revenue reinvestment to capital - ${reinvestId}`,
             note: reinvestmentData.note,
             accountingPeriod: currentPeriod,
-            createdBy: auditContext.userId,
+            createdBy: auditContext.userId || 'system',
           });
 
         // Entry for transfer fees (negative) if any
@@ -11630,7 +11640,7 @@ export class DatabaseStorage implements IStorage {
               description: `Transfer fees for reinvestment - ${reinvestId}`,
               note: `Bank/wire transfer fees`,
               accountingPeriod: currentPeriod,
-              createdBy: auditContext.userId,
+              createdBy: auditContext.userId || 'system',
             });
         }
 
@@ -12011,7 +12021,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       if (searchRequest.status) {
-        conditions.push(eq(documents.status, searchRequest.status));
+        conditions.push(eq(documents.status as any, searchRequest.status));
       }
 
       if (conditions.length > 0) {
@@ -12082,8 +12092,8 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(documents)
         .where(and(
-          eq(documents.entityType, entityType),
-          eq(documents.entityId, entityId)
+          eq(documents.relatedEntityType, entityType),
+          eq(documents.relatedEntityId, entityId)
         ))
         .orderBy(desc(documents.createdAt));
     } catch (error) {
@@ -12150,7 +12160,7 @@ export class DatabaseStorage implements IStorage {
         totalVersions: versions.length,
         latestVersion: versions[0],
         createdAt: document?.createdAt || new Date(),
-        lastModified: versions[0]?.createdAt || document?.updatedAt || new Date()
+        lastModified: versions[0]?.createdAt || document?.createdAt || new Date()
       };
     } catch (error) {
       console.error('Error fetching document version history:', error);
@@ -12202,7 +12212,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedVersion] = await db
         .update(documentVersions)
         .set({
-          status: 'approved',
+          isApproved: true,
           approvedBy: userId,
           approvedAt: new Date(),
           updatedAt: new Date()
@@ -12550,7 +12560,7 @@ export class DatabaseStorage implements IStorage {
           documentTitle: documents.title,
           requirementName: documentCompliance.requirementName,
           complianceType: documentCompliance.complianceType,
-          status: documentCompliance.status,
+          status: documentCompliance.status as any,
           expiryDate: documentCompliance.expiryDate,
           renewalRequired: documentCompliance.renewalRequired,
           issuingAuthority: documentCompliance.issuingAuthority,
@@ -12567,7 +12577,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
         .where(and(
           lte(documentCompliance.expiryDate, expiryDate),
-          eq(documentCompliance.status, 'compliant')
+          eq(documentCompliance.status as any, 'compliant')
         ))
         .orderBy(documentCompliance.expiryDate);
 
@@ -12582,7 +12592,7 @@ export class DatabaseStorage implements IStorage {
         message: `${item.complianceType} for ${item.documentTitle} expires on ${item.expiryDate?.toLocaleDateString()}`,
         complianceType: item.complianceType,
         expiryDate: item.expiryDate,
-        status: item.status,
+        status: item.status as any,
         renewalRequired: item.renewalRequired,
         issuingAuthority: item.issuingAuthority,
         daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
@@ -12605,7 +12615,7 @@ export class DatabaseStorage implements IStorage {
           documentTitle: documents.title,
           requirementName: documentCompliance.requirementName,
           complianceType: documentCompliance.complianceType,
-          status: documentCompliance.status,
+          status: documentCompliance.status as any,
           expiryDate: documentCompliance.expiryDate,
           renewalRequired: documentCompliance.renewalRequired,
           issuingAuthority: documentCompliance.issuingAuthority
@@ -12614,7 +12624,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(documents, eq(documentCompliance.documentId, documents.id))
         .where(and(
           sql`${documentCompliance.expiryDate} < NOW()`,
-          eq(documentCompliance.status, 'compliant')
+          eq(documentCompliance.status as any, 'compliant')
         ))
         .orderBy(documentCompliance.expiryDate);
 
@@ -12629,7 +12639,7 @@ export class DatabaseStorage implements IStorage {
         message: `${item.complianceType} for ${item.documentTitle} expired on ${item.expiryDate?.toLocaleDateString()}`,
         complianceType: item.complianceType,
         expiryDate: item.expiryDate,
-        status: item.status,
+        status: item.status as any,
         renewalRequired: item.renewalRequired,
         issuingAuthority: item.issuingAuthority,
         daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
@@ -12648,7 +12658,7 @@ export class DatabaseStorage implements IStorage {
       return await db
         .select()
         .from(documentCompliance)
-        .where(eq(documentCompliance.status, status))
+        .where(eq(documentCompliance.status as any, status))
         .orderBy(desc(documentCompliance.createdAt));
     } catch (error) {
       console.error('Error fetching compliance by status:', error);
@@ -12703,14 +12713,14 @@ export class DatabaseStorage implements IStorage {
       const [activeCompliance] = await db
         .select({ count: sql<number>`count(*)` })
         .from(documentCompliance)
-        .where(eq(documentCompliance.status, 'active'));
+        .where(eq(documentCompliance.status as any, 'active'));
 
       const [expiredCompliance] = await db
         .select({ count: sql<number>`count(*)` })
         .from(documentCompliance)
         .where(and(
           sql`${documentCompliance.expiryDate} < NOW()`,
-          eq(documentCompliance.status, 'compliant')
+          eq(documentCompliance.status as any, 'compliant')
         ));
 
       const [expiringSoonCompliance] = await db
@@ -12718,13 +12728,13 @@ export class DatabaseStorage implements IStorage {
         .from(documentCompliance)
         .where(and(
           sql`${documentCompliance.expiryDate} BETWEEN NOW() AND NOW() + INTERVAL '30 days'`,
-          eq(documentCompliance.status, 'compliant')
+          eq(documentCompliance.status as any, 'compliant')
         ));
 
       const [pendingReviewCompliance] = await db
         .select({ count: sql<number>`count(*)` })
         .from(documentCompliance)
-        .where(eq(documentCompliance.status, 'pending_review'));
+        .where(eq(documentCompliance.status as any, 'pending_review'));
 
       const expiringAlerts = await this.getExpiringCompliance(30);
       const expiredAlerts = await this.getExpiredCompliance();
@@ -12830,7 +12840,7 @@ export class DatabaseStorage implements IStorage {
       const conditions = [];
 
       if (filters?.status) {
-        conditions.push(eq(documentCompliance.status, filters.status));
+        conditions.push(eq(documentCompliance.status as any, filters.status));
       }
 
       if (filters?.complianceType) {
@@ -13267,8 +13277,8 @@ export class DatabaseStorage implements IStorage {
       }).length;
 
       const recentlyModified = allDocuments.filter(doc => {
-        if (!doc.updatedAt) return false;
-        const daysSinceModified = (Date.now() - doc.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (!doc.createdAt) return false;
+        const daysSinceModified = (Date.now() - doc.createdAt.getTime()) / (1000 * 60 * 60 * 24);
         return daysSinceModified <= 7;
       }).length;
 
@@ -13787,7 +13797,7 @@ export class DatabaseStorage implements IStorage {
       let query = db.select().from(financialPeriods).orderBy(desc(financialPeriods.createdAt));
       
       if (status) {
-        query = query.where(eq(financialPeriods.status, status));
+        query = query.where(eq(financialPeriods.status as any, status));
       }
       
       return await query;
@@ -13812,7 +13822,7 @@ export class DatabaseStorage implements IStorage {
       const [period] = await db
         .select()
         .from(financialPeriods)
-        .where(eq(financialPeriods.status, 'current'))
+        .where(eq(financialPeriods.status as any, 'current'))
         .orderBy(desc(financialPeriods.createdAt))
         .limit(1);
       return period;
