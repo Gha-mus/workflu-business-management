@@ -2106,8 +2106,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/revenue/ledger', requireRole(['admin', 'finance']), async (req: AuthenticatedRequest, res) => {
     try {
+      // Calculate required fields
+      const amount = new Decimal(req.body.amount || 0);
+      const exchangeRate = new Decimal(req.body.exchangeRate || 1);
+      const amountUsd = req.body.currency === 'USD' ? amount : amount.div(exchangeRate);
+      
+      // Generate accounting period if not provided (format: YYYY-MM)
+      const now = new Date();
+      const accountingPeriod = req.body.accountingPeriod || 
+        `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
       const entryData = insertRevenueLedgerSchema.parse({
         ...req.body,
+        amountUsd: amountUsd.toFixed(2),
+        accountingPeriod,
         createdBy: req.user.id,
       });
 

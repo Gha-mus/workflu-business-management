@@ -36,15 +36,27 @@ salesRouter.post("/orders",
       const validatedData = insertSalesOrderSchema.parse(req.body);
       const userId = req.user.id;
       
-      // CREDIT LIMIT ENFORCEMENT - Check customer credit before creating order
-      if (validatedData.customerId && validatedData.items && validatedData.items.length > 0) {
-        const orderAmount = validatedData.items.reduce((sum: Decimal, item: any) => {
+      // Calculate order totals
+      let orderAmount = new Decimal(0);
+      if (validatedData.items && validatedData.items.length > 0) {
+        orderAmount = validatedData.items.reduce((sum: Decimal, item: any) => {
           const itemTotal = new Decimal(item.unitPriceUsd || 0).mul(item.quantityKg || 0);
           return sum.add(itemTotal);
         }, new Decimal(0));
-        
-        // Use precise Decimal conversion to avoid precision loss
-        const creditCheck = await storage.checkCreditLimitAvailability(validatedData.customerId, orderAmount.toDecimalPlaces(2).toNumber());
+      }
+
+      const subtotalAmount = orderAmount;
+      const discountAmount = new Decimal(validatedData.discountAmount || 0);
+      const taxAmount = new Decimal(validatedData.taxAmount || 0);
+      const shippingAmount = new Decimal(validatedData.shippingAmount || 0);
+      const totalAmount = subtotalAmount.minus(discountAmount).plus(taxAmount).plus(shippingAmount);
+      const exchangeRate = new Decimal(validatedData.exchangeRate || 1);
+      const totalAmountUsd = validatedData.currency === 'USD' ? totalAmount : totalAmount.div(exchangeRate);
+      const balanceDue = totalAmount; // New orders have full balance due
+      
+      // CREDIT LIMIT ENFORCEMENT - Check customer credit before creating order
+      if (validatedData.customerId && totalAmount.greaterThan(0)) {
+        const creditCheck = await storage.checkCreditLimitAvailability(validatedData.customerId, totalAmount.toNumber());
         
         if (!creditCheck.isApproved) {
           return res.status(400).json({ 
@@ -57,6 +69,10 @@ salesRouter.post("/orders",
       
       const order = await storage.createSalesOrder({
         ...validatedData,
+        subtotalAmount: subtotalAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        totalAmountUsd: totalAmountUsd.toFixed(2),
+        balanceDue: balanceDue.toFixed(2),
         createdBy: userId
       });
       
