@@ -3781,13 +3781,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error validating workflow:", error);
       
-      if (error.message.includes('OpenAI API key')) {
+      if (error.message?.includes('OpenAI API key')) {
         return res.status(500).json({
           message: "AI service not configured. Please set OPENAI_API_KEY environment variable."
         });
       }
       
-      if (error.message.includes('Document appears to be empty')) {
+      if (error.message?.includes('Document appears to be empty')) {
         return res.status(400).json({
           message: "Business document is invalid or corrupted. Please check the document file."
         });
@@ -3795,7 +3795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(500).json({
         message: "Failed to validate workflow",
-        error: error.message
+        error: error?.message || 'Unknown error'
       });
     }
   });
@@ -4019,7 +4019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const userId = req.user.id;
-      const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const history = await storage.getExportHistory(userId, limit);
       res.json(history);
     } catch (error) {

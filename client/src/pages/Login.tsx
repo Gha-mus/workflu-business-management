@@ -43,7 +43,7 @@ export default function Login() {
       await signIn(email, password);
       // Don't redirect here - the useEffect will handle it when isAuthenticated becomes true
     } catch (err: any) {
-      setError(err.message || "Failed to sign in");
+      setError(err instanceof Error ? err.message : "Failed to sign in");
       setIsSubmitting(false);
     }
   };
