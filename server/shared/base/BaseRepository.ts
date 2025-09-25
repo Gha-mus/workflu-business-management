@@ -1,12 +1,15 @@
 import { db } from "../../core/db";
 import { auditService } from "../../auditService";
 import type { AuditContext, ChangeRecord } from "../../auditService";
+
+// Define allowed audit actions based on the audit service schema
+export type AuditAction = 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import' | 'validate' | 'auto_correct' | 'password_reset_failed';
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 export interface BaseEntity {
   id: string;
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
   deletedAt?: Date | null;
 }
 
@@ -22,7 +25,7 @@ export interface AuditHooks<TEntity> {
 export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
   protected abstract table: any; // Use any to avoid complex PgTable typing issues
   protected abstract tableName: string; // Explicit table name for audit logging
-  protected abstract auditHooks?: AuditHooks<TEntity>;
+  protected auditHooks?: AuditHooks<TEntity>; // Make optional to avoid implementation requirement
 
   async findById(id: string): Promise<TEntity | undefined> {
     const results = await db
@@ -56,7 +59,7 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
       await auditService.logOperation(auditContext, {
         entityType: this.tableName,
         entityId: entity.id,
-        action: 'create',
+        action: 'create' as const,
         newValues: data as any,
         description: `Created ${this.tableName}`,
         businessContext: `${this.tableName} creation`
@@ -93,7 +96,7 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
       await auditService.logOperation(auditContext, {
         entityType: this.tableName,
         entityId: id,
-        action: 'update',
+        action: 'update' as const,
         oldValues: oldEntity,
         newValues: updates as any,
         description: `Updated ${this.tableName}`,
@@ -127,7 +130,7 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
       await auditService.logOperation(auditContext, {
         entityType: this.tableName,
         entityId: id,
-        action: 'delete',
+        action: 'delete' as const,
         oldValues: entityToDelete,
         description: `Deleted ${this.tableName}`,
         businessContext: `${this.tableName} deletion`
