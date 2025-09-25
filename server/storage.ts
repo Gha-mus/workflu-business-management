@@ -388,7 +388,9 @@ import {
   OperationStatus,
   TransferStatus,
   AdjustmentType,
-  WarehouseStockStatus
+  WarehouseStockStatus,
+  PeriodStatus,
+  TransactionStatus
 } from '../shared/enums';
 import { SalesOrderStatus } from '../shared/enums/sales';
 
@@ -4776,7 +4778,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: 'closed',
+          status: PeriodStatus.closed,
           closedBy: userId,
           closedAt: new Date(),
           updatedAt: sql`now()`
@@ -4831,7 +4833,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: 'closed',
+          status: PeriodStatus.closed,
           closedBy: userId,
           closedAt: new Date(),
           updatedAt: sql`now()`
@@ -4858,7 +4860,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: 'open',
+          status: PeriodStatus.open,
           closedBy: null,
           closedAt: null,
           updatedAt: sql`now()`
@@ -4899,7 +4901,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: 'open',
+          status: PeriodStatus.open,
           closedBy: null,
           closedAt: null,
           updatedAt: sql`now()`
@@ -5581,7 +5583,7 @@ export class DatabaseStorage implements IStorage {
         orderId: shipmentData.orderId,
         carrierId: shipmentData.carrierId,
         method: shipmentData.method,
-        status: 'pending',
+        status: ShipmentStatus.pending,
         originAddress: shipmentData.originAddress,
         destinationAddress: shipmentData.destinationAddress,
         estimatedDepartureDate: shipmentData.estimatedDepartureDate ? new Date(shipmentData.estimatedDepartureDate) : undefined,
@@ -6348,7 +6350,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: 'completed',
+        status: InspectionStatus.completed,
         qualityGrade: results.qualityGrade as QualityGrade,
         overallScore: results.overallScore,
         testResults: results.testResults,
@@ -6365,7 +6367,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: 'approved',
+        status: InspectionStatus.approved,
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -6378,7 +6380,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: 'rejected',
+        status: InspectionStatus.rejected,
         rejectionReason,
         rejectedAt: new Date(),
         rejectedById: userId,
@@ -6790,7 +6792,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: 'approved',
+        status: ApprovalStatus.approved,
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -6803,7 +6805,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: 'rejected',
+        status: ApprovalStatus.rejected,
         rejectionReason: reason,
         rejectedAt: new Date(),
         rejectedById: userId,
@@ -7340,7 +7342,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         ...salesOrder,
         salesOrderNumber,
-        status: 'draft',
+        status: SalesOrderStatus.draft,
       })
       .returning();
 
@@ -7438,7 +7440,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'confirmed' },
+      operationData: { ...existingOrder, status: SalesOrderStatus.confirmed },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order confirmation - ${existingOrder.salesOrderNumber} for ${orderAmount} ${existingOrder.currency || 'USD'}`
@@ -7447,7 +7449,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(confirmationContext);
 
     return await this.updateSalesOrder(id, { 
-      status: 'confirmed',
+      status: SalesOrderStatus.confirmed,
       confirmedAt: new Date(),
     }, auditContext, approvalContext);
   }
@@ -7464,7 +7466,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'fulfilled' },
+      operationData: { ...existingOrder, status: SalesOrderStatus.fulfilled },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order fulfillment with inventory reservation - ${existingOrder.salesOrderNumber}`
@@ -7487,7 +7489,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedOrder] = await tx
         .update(salesOrders)
         .set({ 
-          status: 'fulfilled',
+          status: SalesOrderStatus.fulfilled,
           fulfilledAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -7515,7 +7517,7 @@ export class DatabaseStorage implements IStorage {
 
   async deliverSalesOrder(id: string, userId: string): Promise<SalesOrder> {
     return await this.updateSalesOrder(id, { 
-      status: 'delivered',
+      status: SalesOrderStatus.delivered,
       deliveredAt: new Date(),
     });
   }
@@ -7532,7 +7534,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'cancelled', notes: reason },
+      operationData: { ...existingOrder, status: SalesOrderStatus.cancelled, notes: reason },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order cancellation - ${existingOrder.salesOrderNumber}: ${reason}`
@@ -7541,7 +7543,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(cancellationContext);
 
     return await this.updateSalesOrder(id, { 
-      status: 'cancelled',
+      status: SalesOrderStatus.cancelled,
       cancelledAt: new Date(),
       notes: reason,
     }, auditContext, approvalContext);
@@ -7860,7 +7862,7 @@ export class DatabaseStorage implements IStorage {
       const [processedReturn] = await tx
         .update(salesReturns)
         .set({
-          status: 'processed',
+          status: ApprovalStatus.processed,
           processedAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -8021,7 +8023,7 @@ export class DatabaseStorage implements IStorage {
 
   async markCommunicationComplete(id: string, userId: string): Promise<CustomerCommunication> {
     return await this.updateCustomerCommunication(id, {
-      status: 'completed',
+      status: CommunicationStatus.completed,
       completedAt: new Date(),
     });
   }
@@ -8121,7 +8123,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingTransaction, status: 'approved' },
+      operationData: { ...existingTransaction, status: ApprovalStatus.approved },
       amount: transactionAmount,
       currency: existingTransaction.currency || 'USD',
       businessContext: `Revenue transaction approval - ${existingTransaction.transactionNumber} for ${transactionAmount} ${existingTransaction.currency || 'USD'}`
@@ -8130,7 +8132,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(approvalContext_);
 
     return await this.updateRevenueTransaction(id, {
-      status: 'approved',
+      status: ApprovalStatus.approved,
       approvedAt: new Date(),
       approvedBy: userId,
     }, auditContext, approvalContext);
@@ -8138,7 +8140,7 @@ export class DatabaseStorage implements IStorage {
 
   async reverseRevenueTransaction(id: string, reason: string, userId: string): Promise<RevenueTransaction> {
     return await this.updateRevenueTransaction(id, {
-      status: 'reversed',
+      status: TransactionStatus.reversed,
       notes: reason,
     });
   }
@@ -8155,7 +8157,7 @@ export class DatabaseStorage implements IStorage {
       currency: salesOrder.currency,
       exchangeRate: salesOrder.exchangeRate,
       paymentMethod,
-      status: 'pending',
+      status: TransactionStatus.pending,
       transactionDate: new Date(),
       userId,
     });
@@ -9611,7 +9613,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedNotification] = await db
         .update(notificationQueue)
         .set({ 
-          status: 'read',
+          status: NotificationStatus.read,
           readAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -9637,7 +9639,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedNotification] = await db
         .update(notificationQueue)
         .set({ 
-          status: 'dismissed',
+          status: NotificationStatus.dismissed,
           dismissedAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -9663,7 +9665,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .update(notificationQueue)
         .set({ 
-          status: 'read',
+          status: NotificationStatus.read,
           readAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -9684,7 +9686,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .update(notificationQueue)
         .set({ 
-          status: 'dismissed',
+          status: NotificationStatus.dismissed,
           dismissedAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -11313,7 +11315,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedVersion] = await db
         .update(documentVersions)
         .set({
-          status: 'approved',
+          status: DocumentStatus.approved,
           approvedBy: userId,
           approvedAt: new Date(),
           updatedAt: sql`now()`
@@ -11329,7 +11331,7 @@ export class DatabaseStorage implements IStorage {
           'update',
           'document_management',
           null,
-          { status: 'approved', approvedBy: userId }
+          { status: DocumentStatus.approved, approvedBy: userId }
         );
       }
 
@@ -12214,7 +12216,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedWorkflowState] = await db
         .update(documentWorkflowStates)
         .set({
-          status: 'completed',
+          status: DocumentStatus.completed,
           outcome,
           comments,
           completedBy: userId,
