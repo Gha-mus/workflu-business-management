@@ -5,7 +5,7 @@ import crypto from "crypto";
 import type { Request } from "express";
 
 // Audit context for tracking business operations
-interface AuditContext {
+export interface AuditContext {
   userId?: string;
   userName?: string;
   userRole?: string;
@@ -19,7 +19,7 @@ interface AuditContext {
 }
 
 // Change tracking for database operations
-interface ChangeRecord {
+export interface ChangeRecord {
   entityType: string;
   entityId?: string;
   action: 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import' | 'validate' | 'auto_correct' | 'password_reset_failed';
