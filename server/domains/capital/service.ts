@@ -2,6 +2,7 @@ import { CapitalRepository } from "./repository";
 import { BaseService } from "../../shared/base/BaseService";
 import type { CapitalEntry, InsertCapitalEntry } from "@shared/schema";
 import type { AuditContext } from "../../auditService";
+import { CapitalEntryType } from "@shared/enums/capital";
 import { insertCapitalEntrySchema } from "@shared/schema";
 
 export interface ApprovalGuardContext {
@@ -31,7 +32,7 @@ export class CapitalService extends BaseService<CapitalEntry, InsertCapitalEntry
     return await this.getCapitalEntryById(id);
   }
 
-  async getCapitalEntriesByType(type: string): Promise<CapitalEntry[]> {
+  async getCapitalEntriesByType(type: CapitalEntryType): Promise<CapitalEntry[]> {
     return await this.repository.findByType(type);
   }
 
@@ -95,9 +96,8 @@ export class CapitalService extends BaseService<CapitalEntry, InsertCapitalEntry
       throw new Error('Capital entry amount must be positive');
     }
 
-    // Validate type
-    const validTypes = ['credit', 'debit', 'investment', 'withdrawal', 'adjustment'];
-    if (!validTypes.includes(entry.type)) {
+    // Validate type using enum constants
+    if (!CapitalEntryType.includes(entry.type)) {
       throw new Error(`Invalid capital entry type: ${entry.type}`);
     }
 

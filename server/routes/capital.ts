@@ -119,7 +119,7 @@ capitalRouter.post("/reverse-entry",
       };
 
       const reversalEntry = await capitalService.createCapitalEntry({
-        type: 'adjustment', // Use valid type instead of 'Reverse'
+        type: 'Reverse', // Use valid CapitalEntryType
         amount: originalEntry.amount,
         description: `REVERSAL: ${originalEntry.description} | Reason: ${reason}`,
         reference: originalEntry.reference,
@@ -145,7 +145,7 @@ capitalRouter.post("/opening-balance",
       const { amount, date, description } = req.body;
       
       // Check if opening balance already exists - MIGRATED to use CapitalService
-      const existingOpening = await capitalService.getCapitalEntriesByType('investment'); // Use valid type
+      const existingOpening = await capitalService.getCapitalEntriesByType('Opening'); // Use valid CapitalEntryType
       if (existingOpening.length > 0) {
         return res.status(400).json({ 
           message: "Opening balance already exists. Use reversal/reclass to modify." 
@@ -170,7 +170,7 @@ capitalRouter.post("/opening-balance",
       };
 
       const openingEntry = await capitalService.createCapitalEntry({
-        type: 'investment', // Use valid type instead of 'Opening'
+        type: 'Opening', // Use valid CapitalEntryType
         amount: parseFloat(amount), // FIX: Use numeric amount instead of string
         date: new Date(date),
         description: description || 'Opening Balance',

@@ -371,6 +371,21 @@ import Decimal from "decimal.js";
 import { auditService } from "./auditService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
 import { ConfigurationService } from "./configurationService";
+import { 
+  UserRole, 
+  PurchaseStatus, 
+  ShipmentStatus, 
+  ApprovalStatus,
+  ApprovalOperationType,
+  QualityGrade,
+  InspectionStatus,
+  DocumentStatus,
+  WarehouseAccessLevel,
+  SupplyType,
+  CapitalEntryType,
+  DeliveryTrackingStatus,
+  SettlementType
+} from '@shared/enums';
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -2253,7 +2268,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'supplier_update',
         operationData: supplier,
-        businessContext: `Update supplier: ${beforeState?.name || id}`
+        businessContext: `Update supplier: ${(beforeState as any)?.name || id}`
       });
     }
 
@@ -2328,7 +2343,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'order_update',
         operationData: order,
-        businessContext: `Update order: ${beforeState?.orderNumber || id}`
+        businessContext: `Update order: ${(beforeState as any)?.orderNumber || id}`
       });
     }
 
@@ -2485,13 +2500,13 @@ export class DatabaseStorage implements IStorage {
     const amount = parseFloat(entry.amount);
     
     switch (entry.type) {
-      case 'CapitalIn' satisfies CapitalType:
+      case 'CapitalIn' satisfies CapitalEntryType:
         return amount; // Positive impact
-      case 'CapitalOut' satisfies CapitalType:
+      case 'CapitalOut' satisfies CapitalEntryType:
         return -amount; // Negative impact
-      case 'Reclass' satisfies CapitalType:
+      case 'Reclass' satisfies CapitalEntryType:
         return 0; // Net-zero balance impact
-      case 'Reverse' satisfies CapitalType:
+      case 'Reverse' satisfies CapitalEntryType:
         // STAGE 1 COMPLIANCE: Reverse entries should be exempt from negative balance checking
         // since they reference existing entries and their actual impact depends on what they reverse
         // To avoid circular dependencies during transaction, we exempt them from validation
@@ -2506,13 +2521,13 @@ export class DatabaseStorage implements IStorage {
     const amount = parseFloat(entry.amount);
     
     switch (entry.type) {
-      case 'CapitalIn' satisfies CapitalType:
+      case 'CapitalIn' satisfies CapitalEntryType:
         return amount; // Positive impact
-      case 'CapitalOut' satisfies CapitalType:
+      case 'CapitalOut' satisfies CapitalEntryType:
         return -amount; // Negative impact
-      case 'Reclass' satisfies CapitalType:
+      case 'Reclass' satisfies CapitalEntryType:
         return 0; // Net-zero balance impact (just changes classification)
-      case 'Reverse' satisfies CapitalType:
+      case 'Reverse' satisfies CapitalEntryType:
         // Reverse entries negate the original entry's balance impact
         if (!entry.reference) {
           throw new Error('Reverse entries must reference the original entry');
@@ -2945,7 +2960,7 @@ export class DatabaseStorage implements IStorage {
           reference: purchase.id,
           description,
           paymentCurrency: 'USD', // Normalized to USD
-          exchangeRate: '1.00', // USD base currency
+
           createdBy: auditContext?.userId || 'system',
         });
       }
@@ -3034,7 +3049,7 @@ export class DatabaseStorage implements IStorage {
           reference: purchase.id,
           description: `Supplier return refund - ${returnedWeight}kg returned (${returnData.returnReason})`,
           paymentCurrency: 'USD', // Normalized to USD
-          exchangeRate: '1.00', // USD base currency
+
           createdBy: auditContext?.userId || 'system',
         });
       }
