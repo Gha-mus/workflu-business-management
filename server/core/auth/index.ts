@@ -28,7 +28,9 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   return provider.isAuthenticated(req, res, next);
 };
 
-export const requireRole = (allowedRoles: string[]): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
+import type { AllowedRole } from '@shared/schema';
+
+export const requireRole = (allowedRoles: AllowedRole[]): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
   const provider = await getAuthProvider();
   return provider.requireRole(allowedRoles)(req, res, next);
 };

@@ -181,7 +181,6 @@ class CommissionCalculationService {
       const approvalResult = await approvalWorkflowService.createApprovalRequest({
         operationType: 'capital_entry',
         requestedBy: userId,
-        description: `Shipping commission payment: ${commissionUsd} USD for leg ${shipmentLegId}`,
         operationData: capitalEntryData,
         priority: 'normal'
       });

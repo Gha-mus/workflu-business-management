@@ -137,7 +137,7 @@ class WarehouseEnhancementService {
 
           alerts.push({
             stockId: stock.stockId,
-            orderId: stock.orderId,
+            orderId: stock.orderId || '',
             supplierName: stock.supplierName,
             quantityKg: new Decimal(stock.quantityKg).toNumber(),
             daysWaiting,
@@ -153,12 +153,12 @@ class WarehouseEnhancementService {
               alertCategory: 'operational_delay',
               priority: priority === 'critical' ? 'critical' : 'high',
               title: 'Filtering Delay Alert',
-              message: `Order ${stock.orderId} from ${stock.supplierName} has been waiting ${daysWaiting} days for filtering (${stock.quantityKg}kg)`,
+              message: `Order ${stock.orderId || 'N/A'} from ${stock.supplierName} has been waiting ${daysWaiting} days for filtering (${stock.quantityKg}kg)`,
               entityType: 'warehouse_stock',
               entityId: stock.stockId,
               actionUrl: `/warehouse/filtering`,
               templateData: {
-                orderId: stock.orderId,
+                orderId: stock.orderId || '',
                 supplierName: stock.supplierName,
                 quantityKg: stock.quantityKg,
                 daysWaiting: daysWaiting.toString(),
