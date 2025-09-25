@@ -8,3 +8,6 @@ export type ShipmentStatus = typeof ShipmentStatus[number];
 
 export const CostType = ['broker', 'delivery', 'customs', 'inspection', 'handling', 'other'] as const;
 export type CostType = typeof CostType[number];
+
+export const DeliveryTrackingStatus = ['pending', 'in_transit', 'out_for_delivery', 'delivered', 'failed', 'returned'] as const;
+export type DeliveryTrackingStatus = typeof DeliveryTrackingStatus[number];

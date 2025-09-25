@@ -11,5 +11,5 @@ export type RevenueEntryType = typeof RevenueEntryType[number];
 export const ReinvestmentAllocationPolicy = ['aggregate', 'pro_rata', 'specified'] as const;
 export type ReinvestmentAllocationPolicy = typeof ReinvestmentAllocationPolicy[number];
 
-export const PeriodStatus = ['open', 'pending_close', 'closed'] as const;
+export const PeriodStatus = ['open', 'pending_close', 'closed', 'locked'] as const;
 export type PeriodStatus = typeof PeriodStatus[number];

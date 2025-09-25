@@ -22,11 +22,11 @@ import Decimal from "decimal.js";
 import { UserRole, AuthProvider, PermissionScope } from './enums/users';
 import { PurchaseStatus, PaymentMethod, FundingSource } from './enums/purchases';
 import { CustomerCategory, SalesOrderStatus, PaymentTerms, TransactionStatus } from './enums/sales';
-import { WarehouseStockStatus, QualityGrade, SupplyType, ExpenseCategory, TransferStatus } from './enums/warehouse';
+import { WarehouseStockStatus, QualityGrade, SupplyType, ExpenseCategory, TransferStatus, OperationStatus } from './enums/warehouse';
 import { CapitalEntryType, RevenueEntryType, ReinvestmentAllocationPolicy, PeriodStatus } from './enums/capital';
 import { InspectionType, InspectionStatus } from './enums/quality';
-import { NotificationStatus, NotificationChannel, NotificationPriority, AlertType, AlertCategory, NotificationFrequency } from './enums/notifications';
-import { ShipmentMethod, ShipmentStatus, CostType } from './enums/shipping';
+import { NotificationStatus, NotificationChannel, NotificationPriority, AlertType, AlertCategory, NotificationFrequency, CommunicationStatus } from './enums/notifications';
+import { ShipmentMethod, ShipmentStatus, CostType, DeliveryTrackingStatus } from './enums/shipping';
 import { ExportStatus, DocumentCategory, DocumentStatus, ComplianceStatus, DocumentAccessLevel } from './enums/analytics';
 import { ApprovalStatus, ApprovalOperationType, AuditAction } from './enums/approvals';
 
@@ -100,6 +100,14 @@ export const inspectionStatusEnum = pgEnum('inspection_status', InspectionStatus
 // Export and document status enums
 export const exportStatusEnum = pgEnum('export_status', ExportStatus);
 export const documentStatusEnum = pgEnum('document_status', DocumentStatus);
+
+// Additional status enums for remaining varchar conversions
+export const deliveryTrackingStatusEnum = pgEnum('delivery_tracking_status', DeliveryTrackingStatus);
+export const operationStatusEnum = pgEnum('operation_status', OperationStatus);
+export const communicationStatusEnum = pgEnum('communication_status', CommunicationStatus);
+
+// Update period status enum to include locked status
+export const periodStatusEnum = pgEnum('period_status', PeriodStatus);
 
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
@@ -444,7 +452,7 @@ export const shippingCosts = pgTable("shipping_costs", {
 export const deliveryTracking = pgTable("delivery_tracking", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   shipmentId: varchar("shipment_id").notNull().references(() => shipments.id),
-  status: varchar("status").notNull(),
+  status: deliveryTrackingStatusEnum("status").notNull().default('pending'),
   location: varchar("location"),
   description: text("description"),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
@@ -597,7 +605,7 @@ export const landedCostCalculations = pgTable("landed_cost_calculations", {
   calculationMethod: varchar("calculation_method").notNull().default('weight_basis'), // weight_basis, value_basis
   
   // Status and approval
-  status: varchar("status").notNull().default('draft'), // draft, approved, finalized
+  status: documentStatusEnum("status").notNull().default('draft'), // draft, approved, finalized
   approvedBy: varchar("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   
@@ -706,7 +714,7 @@ export const processingOperations = pgTable("processing_operations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   operationNumber: varchar("operation_number").notNull().unique().$defaultFn(() => `OPR-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   operationType: varchar("operation_type").notNull(), // washing, drying, hulling, sorting, milling
-  status: varchar("status").notNull().default('planned'), // planned, in_progress, completed, cancelled
+  status: operationStatusEnum("status").notNull().default('planned'), // planned, in_progress, completed, cancelled
   batchId: varchar("batch_id").notNull().references(() => warehouseBatches.id),
   inputQuantityKg: decimal("input_quantity_kg", { precision: 10, scale: 2 }).notNull(),
   outputQuantityKg: decimal("output_quantity_kg", { precision: 10, scale: 2 }),
@@ -1977,7 +1985,7 @@ export const customerCommunications = pgTable("customer_communications", {
   
   // Status and follow-up
   priority: varchar("priority").default('normal'), // low, normal, high, urgent
-  status: varchar("status").default('completed'), // pending, completed, follow_up_required
+  status: communicationStatusEnum("status").default('completed'), // pending, completed, follow_up_required
   followUpDate: timestamp("follow_up_date"),
   followUpNotes: text("follow_up_notes"),
   
@@ -2222,7 +2230,7 @@ export const withdrawalRecords = pgTable("withdrawal_records", {
   approvedAt: timestamp("approved_at"),
   
   // Status
-  status: varchar("status").notNull().default('pending'), // pending, completed, cancelled
+  status: transactionStatusEnum("status").notNull().default('pending'), // pending, completed, cancelled
   completedAt: timestamp("completed_at"),
   
   // Audit fields
@@ -2271,7 +2279,7 @@ export const reinvestments = pgTable("reinvestments", {
   approvedAt: timestamp("approved_at"),
   
   // Status
-  status: varchar("status").notNull().default('pending'), // pending, completed, cancelled
+  status: transactionStatusEnum("status").notNull().default('pending'), // pending, completed, cancelled
   completedAt: timestamp("completed_at"),
   
   // Audit fields
@@ -4079,7 +4087,6 @@ export const aiConversations = pgTable("ai_conversations", {
 // Period Management Tables
 
 // Period status enum
-export const periodStatusEnum = pgEnum('period_status', ['open', 'pending_close', 'closed']);
 
 // Periods table for financial period management
 export const periods = pgTable("periods", {
@@ -4458,7 +4465,7 @@ export const financialPeriods = pgTable("financial_periods", {
   periodType: varchar("period_type").notNull(), // month, quarter, year, custom
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
-  status: varchar("status").notNull().default('open'), // open, closed, locked
+  status: periodStatusEnum("status").notNull().default('open'), // open, closed, locked
   exchangeRateSnapshot: jsonb("exchange_rate_snapshot"), // Exchange rates at period close
   closedBy: varchar("closed_by").references(() => users.id),
   closedAt: timestamp("closed_at"),

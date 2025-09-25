@@ -15,3 +15,8 @@ export * from './approvals';
 
 // Quality exports (avoiding QualityGrade conflict with warehouse)
 export { InspectionType, InspectionStatus } from './quality';
+
+// Additional status exports for remaining varchar conversions
+export { DeliveryTrackingStatus } from './shipping';
+export { OperationStatus } from './warehouse';  
+export { CommunicationStatus } from './notifications';
