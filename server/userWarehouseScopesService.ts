@@ -178,7 +178,7 @@ class UserWarehouseScopesService {
       // Send notification to the user
       await this.notificationService.sendNotification({
         userId: request.userId,
-        type: 'permission_granted',
+        alertType: 'security_alert',
         title: 'Warehouse Access Granted',
         message: `You have been granted access to warehouse ${request.warehouseCode}`,
         data: { warehouseCode: request.warehouseCode, scopeId }
@@ -243,7 +243,7 @@ class UserWarehouseScopesService {
       // Send notification to the user
       await this.notificationService.sendNotification({
         userId: userId,
-        type: 'permission_revoked',
+        alertType: 'security_alert',
         title: 'Warehouse Access Revoked',
         message: `Your access to warehouse ${warehouseCode} has been revoked${reason ? `: ${reason}` : ''}`,
         data: { warehouseCode, reason }

@@ -252,7 +252,7 @@ export const qualityGradingImplementations = `
   async updateQualityInspection(id: string, inspection: Partial<InsertQualityInspection>): Promise<QualityInspection> {
     const [result] = await db
       .update(qualityInspections)
-      .set({ ...inspection, updatedAt: new Date() })
+      .set(inspection)
       .where(eq(qualityInspections.id, id))
       .returning();
     return result;
@@ -274,8 +274,7 @@ export const qualityGradingImplementations = `
         testResults: results.testResults,
         recommendations: results.recommendations,
         completedAt: new Date(),
-        completedById: results.userId,
-        updatedAt: new Date(),
+        inspectedBy: results.userId,
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -288,8 +287,7 @@ export const qualityGradingImplementations = `
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
-        updatedAt: new Date(),
+        approvedBy: userId,
       })
       .where(eq(qualityInspections.id, id))
       .returning();
