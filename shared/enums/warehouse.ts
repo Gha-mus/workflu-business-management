@@ -21,6 +21,17 @@ export type TransferType = typeof TransferType[number];
 export const OperationType = ['washing', 'drying', 'hulling', 'sorting', 'milling'] as const;
 export type OperationType = typeof OperationType[number];
 
+export const WarehouseAccessLevel = ['read', 'write', 'transfer', 'admin'] as const;
+export type WarehouseAccessLevel = typeof WarehouseAccessLevel[number];
+
+// Enum constants for use in code
+export const WAREHOUSE_ACCESS_LEVEL = {
+  READ: 'read' as const,
+  WRITE: 'write' as const,
+  TRANSFER: 'transfer' as const,
+  ADMIN: 'admin' as const
+} as const;
+
 export const ExpenseCategory = ['wages', 'rent', 'utilities', 'supplies', 'transfer_fees', 'other'] as const;
 export type ExpenseCategory = typeof ExpenseCategory[number];
 

@@ -17,6 +17,8 @@ import {
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { auditService } from "./auditService";
 import { notificationService } from "./notificationService";
+import { WarehouseAccessLevel, WAREHOUSE_ACCESS_LEVEL } from "../shared/enums/warehouse";
+import { UserRole, USER_ROLE } from "../shared/enums/users";
 
 // Request interfaces for warehouse scope management
 export interface UserWarehouseScopeRequest {
@@ -34,7 +36,7 @@ export interface BulkScopeAssignmentRequest {
 export interface WarehouseAccessValidationRequest {
   userId: string;
   warehouseCode: string;
-  operation: 'read' | 'write' | 'transfer' | 'admin';
+  operation: WarehouseAccessLevel;
 }
 
 export interface UserPermissionSummary {
@@ -281,7 +283,7 @@ class UserWarehouseScopesService {
       }
 
       // Admin users have access to all warehouses and operations
-      if (user.role === 'admin') {
+      if (user.role === USER_ROLE.ADMIN) {
         return true;
       }
 
@@ -294,21 +296,21 @@ class UserWarehouseScopesService {
       const hasScope = userScopes.length > 0;
       
       switch (request.operation) {
-        case 'read':
+        case WAREHOUSE_ACCESS_LEVEL.READ:
           // All users with scope can read
           return hasScope;
           
-        case 'write':
+        case WAREHOUSE_ACCESS_LEVEL.WRITE:
           // Workers, warehouse staff, and above can write
-          return hasScope && ['worker', 'warehouse', 'sales', 'finance', 'admin'].includes(user.role);
+          return hasScope && [USER_ROLE.WORKER, USER_ROLE.WAREHOUSE, USER_ROLE.SALES, USER_ROLE.FINANCE, USER_ROLE.ADMIN].includes(user.role);
           
-        case 'transfer':
+        case WAREHOUSE_ACCESS_LEVEL.TRANSFER:
           // Warehouse staff and above can transfer
-          return hasScope && ['warehouse', 'sales', 'finance', 'admin'].includes(user.role);
+          return hasScope && [USER_ROLE.WAREHOUSE, USER_ROLE.SALES, USER_ROLE.FINANCE, USER_ROLE.ADMIN].includes(user.role);
           
-        case 'admin':
+        case WAREHOUSE_ACCESS_LEVEL.ADMIN:
           // Only admin and warehouse managers can perform admin operations
-          return hasScope && ['admin'].includes(user.role);
+          return hasScope && [USER_ROLE.ADMIN].includes(user.role);
           
         default:
           return false;

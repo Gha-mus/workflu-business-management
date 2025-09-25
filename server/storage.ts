@@ -713,25 +713,25 @@ class StorageApprovalGuard {
    */
   private static extractEntityIdFromData(operationData: any, operationType: string): string | undefined {
     switch (operationType) {
-      case 'capital_entry':
+      case 'capital_entry' satisfies ApprovalOperationType:
         return operationData?.reference; // Reference to order/purchase ID
         
-      case 'purchase':
+      case 'purchase' satisfies ApprovalOperationType:
         return operationData?.supplierId;
         
-      case 'sale_order':
+      case 'sale_order' satisfies ApprovalOperationType:
         return operationData?.customerId;
         
-      case 'user_role_change':
+      case 'user_role_change' satisfies ApprovalOperationType:
         return operationData?.userId || operationData?.id;
         
-      case 'system_setting_change':
+      case 'system_setting_change' satisfies ApprovalOperationType:
         return operationData?.key; // Setting key as entity identifier
         
-      case 'warehouse_operation':
+      case 'warehouse_operation' satisfies ApprovalOperationType:
         return operationData?.id; // Warehouse stock ID
         
-      case 'shipping_operation':
+      case 'shipping_operation' satisfies ApprovalOperationType:
         return operationData?.customerId || operationData?.shipmentId;
         
       default:
@@ -2485,13 +2485,13 @@ export class DatabaseStorage implements IStorage {
     const amount = parseFloat(entry.amount);
     
     switch (entry.type) {
-      case 'CapitalIn':
+      case 'CapitalIn' satisfies CapitalType:
         return amount; // Positive impact
-      case 'CapitalOut':
+      case 'CapitalOut' satisfies CapitalType:
         return -amount; // Negative impact
-      case 'Reclass':
+      case 'Reclass' satisfies CapitalType:
         return 0; // Net-zero balance impact
-      case 'Reverse':
+      case 'Reverse' satisfies CapitalType:
         // STAGE 1 COMPLIANCE: Reverse entries should be exempt from negative balance checking
         // since they reference existing entries and their actual impact depends on what they reverse
         // To avoid circular dependencies during transaction, we exempt them from validation
@@ -2506,13 +2506,13 @@ export class DatabaseStorage implements IStorage {
     const amount = parseFloat(entry.amount);
     
     switch (entry.type) {
-      case 'CapitalIn':
+      case 'CapitalIn' satisfies CapitalType:
         return amount; // Positive impact
-      case 'CapitalOut':
+      case 'CapitalOut' satisfies CapitalType:
         return -amount; // Negative impact
-      case 'Reclass':
+      case 'Reclass' satisfies CapitalType:
         return 0; // Net-zero balance impact (just changes classification)
-      case 'Reverse':
+      case 'Reverse' satisfies CapitalType:
         // Reverse entries negate the original entry's balance impact
         if (!entry.reference) {
           throw new Error('Reverse entries must reference the original entry');
@@ -4379,7 +4379,7 @@ export class DatabaseStorage implements IStorage {
         case 'completed':
           acc.completed += statusCount;
           break;
-        case 'cancelled':
+        case 'cancelled' satisfies OrderStatus:
           acc.cancelled += statusCount;
           break;
         default:
