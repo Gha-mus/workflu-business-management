@@ -4,7 +4,8 @@ export const CapitalEntryType = ['CapitalIn', 'CapitalOut', 'Reverse', 'Reclass'
 export type CapitalEntryType = typeof CapitalEntryType[number];
 
 export const RevenueEntryType = [
-  'revenue_in', 'revenue_out', 'transfer', 'adjustment', 'reversal'
+  'revenue_in', 'revenue_out', 'transfer', 'adjustment', 'reversal',
+  'customer_refund', 'withdrawal', 'reinvest_out'
 ] as const;
 export type RevenueEntryType = typeof RevenueEntryType[number];
 
