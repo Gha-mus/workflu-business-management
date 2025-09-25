@@ -419,8 +419,8 @@ class ShippingEnhancementService {
 
         alerts.push({
           shipmentId,
-          expectedWeightKg: expectedWeight,
-          actualWeightKg: actualWeight,
+          expectedWeightKg: expectedWeight.toNumber(),
+          actualWeightKg: actualWeight.toNumber(),
           discrepancyKg,
           discrepancyPercent,
           severity,

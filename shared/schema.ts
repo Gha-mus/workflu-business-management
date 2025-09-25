@@ -242,6 +242,7 @@ export const capitalEntries = pgTable("capital_entries", {
   type: capitalEntryTypeEnum("type").notNull(),
   reference: varchar("reference"), // order_id, purchase_id, etc.
   description: text("description"),
+  fundingSource: varchar("funding_source").default('external'), // external, internal, commission
   paymentCurrency: varchar("payment_currency").notNull().default('USD'),
   exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
   isValidated: boolean("is_validated").notNull().default(false),
@@ -533,6 +534,7 @@ export const shipmentInspections = pgTable("shipment_inspections", {
   // Inspection results per workflow_reference.json line 635
   expectedWeightKg: decimal("expected_weight_kg", { precision: 10, scale: 2 }).notNull(), // Net weight expected
   receivedWeightKg: decimal("received_weight_kg", { precision: 10, scale: 2 }).notNull(), // Total received
+  grossWeightKg: decimal("gross_weight_kg", { precision: 10, scale: 2 }), // Gross weight including packaging
   cleanWeightKg: decimal("clean_weight_kg", { precision: 10, scale: 2 }).notNull(), // Good condition
   damagedWeightKg: decimal("damaged_weight_kg", { precision: 10, scale: 2 }).notNull(), // Damaged/loss
   
@@ -543,6 +545,7 @@ export const shipmentInspections = pgTable("shipment_inspections", {
   // Settlement options per workflow_reference.json lines 597-600
   settlementRequired: boolean("settlement_required").notNull().default(false),
   settlementAction: varchar("settlement_action"), // accept_difference, request_correction, write_off
+  settlementType: varchar("settlement_type"), // accept, return, discount
   settlementNotes: text("settlement_notes"),
   
   // Final warehouse transfer per workflow_reference.json line 636
