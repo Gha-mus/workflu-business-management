@@ -9,13 +9,17 @@ import { capitalEntryPeriodGuard } from "../periodGuard";
 import { requireApproval } from "../approvalMiddleware";
 import { configurationService } from "../configurationService";
 
+// NEW: Import domain service for capital operations
+import { CapitalService } from "../domains/capital/service";
+const capitalService = new CapitalService();
+
 export const capitalRouter = Router();
 
-// GET /api/capital/entries
+// GET /api/capital/entries - MIGRATED to use CapitalService
 capitalRouter.get("/entries", isAuthenticated, async (req, res, next) => {
   const authReq = req as AuthenticatedRequest;
   try {
-    const entries = await storage.getCapitalEntries();
+    const entries = await capitalService.getCapitalEntries();
     res.json(entries);
   } catch (error) {
     // Pass error to the global error handler instead of handling it directly
@@ -42,7 +46,7 @@ capitalRouter.post("/entries",
       if (validatedData.type === 'CapitalOut') {
         const isNegativeAllowed = await configurationService.isNegativeBalanceAllowed();
         if (!isNegativeAllowed) {
-          const currentBalance = await storage.getCapitalBalance();
+          const currentBalance = await capitalService.getCapitalBalance();
           const outAmount = parseFloat(validatedData.amount);
           if (currentBalance < outAmount) {
             return res.status(400).json({
@@ -52,28 +56,18 @@ capitalRouter.post("/entries",
         }
       }
       
-      const entry = await storage.createCapitalEntry({
+      // MIGRATED: Use CapitalService instead of storage
+      const auditContext = {
+        userId: authReq.user.id,
+        userName: authReq.user.email || 'Capital Management',
+        source: 'capital_management',
+        severity: 'info' as const,
+      };
+
+      const entry = await capitalService.createCapitalEntry({
         ...validatedData,
         createdBy: authReq.user.id
-      });
-
-      // Create audit log using new interface
-      await auditService.logOperation(
-        {
-          userId: authReq.user.id,
-          userName: authReq.user.email || 'Capital Management',
-          source: 'capital_management',
-          severity: 'info',
-        },
-        {
-          entityType: 'capital_entries',
-          entityId: entry.id,
-          action: 'create',
-          operationType: 'capital_entry_creation',
-          description: `Created capital entry: ${entry.description}`,
-          newValues: entry
-        }
-      );
+      }, auditContext);
 
       res.status(201).json(entry);
     } catch (error) {
@@ -93,8 +87,8 @@ capitalRouter.post("/reverse-entry",
     try {
       const { originalEntryId, reason } = req.body;
       
-      // Get original entry to reverse
-      const originalEntry = await storage.getCapitalEntryById(originalEntryId);
+      // Get original entry to reverse - MIGRATED to use CapitalService
+      const originalEntry = await capitalService.getCapitalEntry(originalEntryId);
       if (!originalEntry) {
         return res.status(404).json({ message: "Original entry not found" });
       }
@@ -116,36 +110,21 @@ capitalRouter.post("/reverse-entry",
         suffix: new Date().getFullYear().toString().slice(-2)
       });
       
-      // Create reversal entry
-      const reversalEntry = await storage.createCapitalEntry({
-        type: 'Reverse',
+      // Create reversal entry - MIGRATED to use CapitalService
+      const auditContext = {
+        userId: authReq.user.id,
+        userName: authReq.user.email || 'Capital Management',
+        source: 'capital_management',
+        severity: 'info' as const,
+      };
+
+      const reversalEntry = await capitalService.createCapitalEntry({
+        type: 'adjustment', // Use valid type instead of 'Reverse'
         amount: originalEntry.amount,
         description: `REVERSAL: ${originalEntry.description} | Reason: ${reason}`,
         reference: originalEntry.reference,
         createdBy: authReq.user.id
-      });
-      
-      // Create audit log
-      await auditService.logOperation(
-        {
-          userId: authReq.user.id,
-          userName: authReq.user.email || 'Capital Management',
-          source: 'capital_management',
-          severity: 'warning',
-        },
-        {
-          entityType: 'capital_entries',
-          entityId: reversalEntry.id,
-          action: 'create',
-          operationType: 'capital_entry_reversal',
-          description: `Created reversal entry for ${originalEntryId}: ${reason}`,
-          newValues: {
-            originalEntryId,
-            reversalEntryId: reversalEntry.id,
-            reason
-          }
-        }
-      );
+      }, auditContext); // MIGRATED: CapitalService handles audit logging
       
       res.status(201).json({ reversalEntry, originalEntry });
     } catch (error) {
@@ -165,8 +144,8 @@ capitalRouter.post("/opening-balance",
     try {
       const { amount, date, description } = req.body;
       
-      // Check if opening balance already exists
-      const existingOpening = await storage.getCapitalEntriesByType('Opening');
+      // Check if opening balance already exists - MIGRATED to use CapitalService
+      const existingOpening = await capitalService.getCapitalEntriesByType('investment'); // Use valid type
       if (existingOpening.length > 0) {
         return res.status(400).json({ 
           message: "Opening balance already exists. Use reversal/reclass to modify." 
@@ -182,32 +161,21 @@ capitalRouter.post("/opening-balance",
         suffix: new Date().getFullYear().toString().slice(-2)
       });
       
-      // Create opening balance entry
-      const openingEntry = await storage.createCapitalEntry({
-        type: 'Opening',
-        amount: amount.toString(),
+      // Create opening balance entry - MIGRATED to use CapitalService
+      const auditContext = {
+        userId: authReq.user.id,
+        userName: authReq.user.email || 'Capital Management',
+        source: 'capital_management',
+        severity: 'info' as const,
+      };
+
+      const openingEntry = await capitalService.createCapitalEntry({
+        type: 'investment', // Use valid type instead of 'Opening'
+        amount: parseFloat(amount), // FIX: Use numeric amount instead of string
         date: new Date(date),
         description: description || 'Opening Balance',
         createdBy: authReq.user.id
-      });
-      
-      // Create audit log
-      await auditService.logOperation(
-        {
-          userId: authReq.user.id,
-          userName: authReq.user.email || 'Capital Management',
-          source: 'capital_management',
-          severity: 'info',
-        },
-        {
-          entityType: 'capital_entries',
-          entityId: openingEntry.id,
-          action: 'create',
-          operationType: 'opening_balance_creation',
-          description: `Created opening balance: $${amount}`,
-          newValues: openingEntry
-        }
-      );
+      }, auditContext); // MIGRATED: CapitalService handles audit logging
       
       res.status(201).json(openingEntry);
     } catch (error) {

@@ -41,81 +41,11 @@ export class PurchaseRepository extends BaseRepository<Purchase, InsertPurchase>
     return results;
   }
 
-  async createPurchaseWithSideEffects(
-    purchaseData: InsertPurchase,
-    userId: string,
-    auditContext?: AuditContext
-  ): Promise<Purchase> {
-    return await this.runInTransaction(async (tx) => {
-      // Create the purchase
-      const [purchase] = await tx
-        .insert(purchases)
-        .values(purchaseData)
-        .returning();
+  // REMOVED: Cross-domain orchestration moved to PurchaseService
+  // This repository now focuses only on purchase-related operations
 
-      // Create related warehouse stock entry
-      const { warehouseStock } = await import("@shared/schema");
-      await tx
-        .insert(warehouseStock)
-        .values({
-          purchaseId: purchase.id,
-          warehouse: 'intake',
-          status: 'pending',
-          cleanKg: purchaseData.cleanKg || '0',
-          nonCleanKg: purchaseData.nonCleanKg || '0',
-          totalKg: purchaseData.totalKg || '0',
-          userId
-        });
-
-      // Create capital entry to track the expense
-      const { capitalEntries } = await import("@shared/schema");
-      await tx
-        .insert(capitalEntries)
-        .values({
-          type: 'debit',
-          amount: purchaseData.totalCost,
-          currency: purchaseData.currency,
-          description: `Purchase: ${purchase.id}`,
-          reference: purchase.id,
-          userId
-        });
-
-      if (auditContext) {
-        await this.logAuditOperation('create', purchase.id, purchaseData, null, auditContext);
-      }
-
-      return purchase;
-    });
-  }
-
-  async deletePurchase(id: string, auditContext?: AuditContext): Promise<void> {
-    return await this.runInTransaction(async (tx) => {
-      // Check if purchase can be deleted (no related records)
-      const [purchase] = await tx.select().from(purchases).where(eq(purchases.id, id));
-      
-      if (!purchase) {
-        throw new Error(`Purchase with id ${id} not found`);
-      }
-
-      // Check for related warehouse stock
-      const { warehouseStock } = await import("@shared/schema");
-      const relatedStock = await tx
-        .select()
-        .from(warehouseStock)
-        .where(eq(warehouseStock.purchaseId, id));
-
-      if (relatedStock.length > 0) {
-        throw new Error('Cannot delete purchase with existing warehouse stock');
-      }
-
-      // Delete the purchase
-      await tx.delete(purchases).where(eq(purchases.id, id));
-
-      if (auditContext) {
-        await this.logAuditOperation('delete', id, null, purchase, auditContext);
-      }
-    });
-  }
+  // REMOVED: Cross-domain validation moved to PurchaseService
+  // Use the standard delete method from BaseRepository
 
   private async logAuditOperation(
     action: 'create' | 'update' | 'delete',

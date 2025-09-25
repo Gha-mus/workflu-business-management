@@ -26,6 +26,11 @@ export class CapitalService extends BaseService<CapitalEntry, InsertCapitalEntry
     return await this.repository.findById(id);
   }
 
+  // Alias for API compatibility
+  async getCapitalEntry(id: string): Promise<CapitalEntry | undefined> {
+    return await this.getCapitalEntryById(id);
+  }
+
   async getCapitalEntriesByType(type: string): Promise<CapitalEntry[]> {
     return await this.repository.findByType(type);
   }
