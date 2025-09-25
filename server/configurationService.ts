@@ -443,6 +443,26 @@ export class ConfigurationService {
   async clearCache(key?: string): Promise<void> {
     this.clearSettingCache(key);
   }
+
+  /**
+   * Get numeric setting with type safety
+   */
+  async getNumericSetting(key: string, category?: string): Promise<number | null> {
+    const value = await this.getSystemSetting(key, category);
+    if (value === null) return null;
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  /**
+   * Get boolean setting with type safety
+   */
+  async getBooleanSetting(key: string, category?: string): Promise<boolean | null> {
+    const value = await this.getSystemSetting(key, category);
+    if (value === null) return null;
+    const lowercaseValue = value.toLowerCase().trim();
+    return lowercaseValue === 'true' || lowercaseValue === '1' || lowercaseValue === 'yes';
+  }
 }
 
 // Export singleton instance

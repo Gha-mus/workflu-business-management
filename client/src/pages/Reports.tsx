@@ -12,7 +12,8 @@ import type {
   WarehouseStockResponse,
   FinancialSummaryResponse,
   InventoryAnalyticsResponse,
-  TradingActivityResponse
+  TradingActivityResponse,
+  WorkflowValidationResponse
 } from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -362,12 +363,12 @@ export default function Reports() {
   });
 
   // Validation queries
-  const { data: latestValidation, isLoading: validationLoading, refetch: refetchValidation } = useQuery({
+  const { data: latestValidation, isLoading: validationLoading, refetch: refetchValidation } = useQuery<WorkflowValidationResponse>({
     queryKey: ['/api/ai/validation/latest'],
     enabled: isAuthenticated
   });
 
-  const { data: validationHistory } = useQuery({
+  const { data: validationHistory } = useQuery<WorkflowValidationResponse[]>({
     queryKey: ['/api/ai/validation/history', 'limit=5'],
     enabled: isAuthenticated
   });
