@@ -6,7 +6,7 @@ export type ApprovalStatus = typeof ApprovalStatus[number];
 export const ApprovalOperationType = [
   'capital_entry', 'purchase', 'sale_order', 'financial_adjustment', 
   'user_role_change', 'system_setting_change', 'warehouse_operation',
-  'shipping_operation', 'operating_expense', 'supply_purchase'
+  'shipping_operation', 'operating_expense', 'supply_purchase', 'notification_delivery', 'monitoring_check'
 ] as const;
 export type ApprovalOperationType = typeof ApprovalOperationType[number];
 
