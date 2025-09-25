@@ -10,5 +10,5 @@ export const ApprovalOperationType = [
 ] as const;
 export type ApprovalOperationType = typeof ApprovalOperationType[number];
 
-export const AuditAction = ['create', 'update', 'delete', 'approve', 'reject', 'escalate'] as const;
+export const AuditAction = ['create', 'update', 'delete', 'approve', 'reject', 'escalate', 'export', 'view', 'login', 'logout', 'import', 'validate', 'auto_correct', 'password_reset_failed'] as const;
 export type AuditAction = typeof AuditAction[number];

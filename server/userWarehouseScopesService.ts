@@ -181,6 +181,9 @@ class UserWarehouseScopesService {
       await this.notificationService.sendNotification({
         userId: request.userId,
         alertType: 'security_alert',
+        alertCategory: 'warehouse_access',
+        priority: 'medium',
+        channels: ['in_app'],
         title: 'Warehouse Access Granted',
         message: `You have been granted access to warehouse ${request.warehouseCode}`,
         templateData: { warehouseCode: request.warehouseCode, scopeId }
@@ -246,6 +249,9 @@ class UserWarehouseScopesService {
       await this.notificationService.sendNotification({
         userId: userId,
         alertType: 'security_alert',
+        alertCategory: 'warehouse_access',
+        priority: 'high',
+        channels: ['in_app'],
         title: 'Warehouse Access Revoked',
         message: `Your access to warehouse ${warehouseCode} has been revoked${reason ? `: ${reason}` : ''}`,
         templateData: { warehouseCode, reason }
@@ -302,15 +308,15 @@ class UserWarehouseScopesService {
           
         case WAREHOUSE_ACCESS_LEVEL.WRITE:
           // Workers, warehouse staff, and above can write
-          return hasScope && [USER_ROLE.WORKER, USER_ROLE.WAREHOUSE, USER_ROLE.SALES, USER_ROLE.FINANCE, USER_ROLE.ADMIN].includes(user.role);
+          return hasScope && [USER_ROLE.WORKER, USER_ROLE.WAREHOUSE, USER_ROLE.SALES, USER_ROLE.FINANCE, USER_ROLE.PURCHASING, USER_ROLE.ADMIN].includes(user.role);
           
         case WAREHOUSE_ACCESS_LEVEL.TRANSFER:
           // Warehouse staff and above can transfer
-          return hasScope && [USER_ROLE.WAREHOUSE, USER_ROLE.SALES, USER_ROLE.FINANCE, USER_ROLE.ADMIN].includes(user.role);
+          return hasScope && [USER_ROLE.WAREHOUSE, USER_ROLE.SALES, USER_ROLE.FINANCE, USER_ROLE.PURCHASING, USER_ROLE.ADMIN].includes(user.role);
           
         case WAREHOUSE_ACCESS_LEVEL.ADMIN:
-          // Only admin and warehouse managers can perform admin operations
-          return hasScope && [USER_ROLE.ADMIN].includes(user.role);
+          // Only admin can perform admin operations
+          return hasScope && user.role === USER_ROLE.ADMIN;
           
         default:
           return false;

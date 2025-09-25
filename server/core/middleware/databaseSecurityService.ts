@@ -1,4 +1,4 @@
-import { db, pool } from "./db";
+import { db, pool } from "../../db";
 import { sql } from "drizzle-orm";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";

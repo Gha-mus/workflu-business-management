@@ -1,0 +1,65 @@
+Unblock build: fix the 11 TypeScript errors and deliver the enum proof pack
+
+This is an execution order. Do not come back until everything below is done. No any, no @ts-ignore, no partial fixes, no “will address later”.
+
+Objective (non-negotiable)
+	•	npx tsc --noEmit → exit 0
+	•	npm run build → success
+	•	Provide the enum proof pack after the build is green.
+
+Fix the current blockers (file-specific)
+	1.	server/userWarehouseScopesService.ts (5 errors)
+	•	Unify role types: use a single UserRole enum source (shared/enums/users or the current canonical export). Remove/replace any duplicate or string-based role lists.
+	•	.includes() typing: arrays used in includes() must be UserRole[]. Stop mixing string literals and enum values.
+	•	Guards: if roles come from DB as string, map/validate to UserRole via a safe converter (reject invalid values).
+	•	Import hygiene: every role comparison must import the same enum source.
+	2.	server/shippingEnhancementService.ts (6 errors)
+	•	Schema alignment: align property names to shared/schema.ts. If shipmentId does not exist, use the correct FK/PK field names.
+	•	Invalid status: remove/replace 'settled' with the valid ShipmentStatus enum member(s). No string literals.
+	•	Private method call: stop calling triggerFinalWarehouseTransfer if it’s marked private. Either expose a public orchestration method or move the logic into the service correctly (no access violations).
+	•	Validation: Zod schemas must use z.nativeEnum(ShipmentStatus).
+	3.	Other references
+	•	server/storage.ts / server/supplyInventoryService.ts: fix schema/type mismatches and replace any lingering status strings with enums; align to shared/schema.ts; add/adjust Zod validation where the service accepts status.
+
+Enum normalization requirements (complete it while you’re here)
+	•	No string literals for status values across storage, services, and client. Import enum members from a single index (e.g., shared/enums).
+	•	All status columns that are still varchar must be converted to pgEnum with enum defaults (no string defaults). Provide the migration(s).
+
+What to run before you report back
+	1.	TypeScript build
+
+npm ci
+npx tsc --noEmit
+npm run build
+
+Must pass with 0 errors.
+
+	2.	Grep proof (no status string literals)
+
+grep -RniE "('|\")pending('|\")|('|\")approved('|\")|('|\")completed('|\")|('|\")rejected('|\")|('|\")cancelled('|\")|('|\")settled('|\")" \
+  server client --exclude-dir=node_modules --exclude=*.map
+
+Result must be 0 matches (excluding enum definition files).
+
+	3.	Enum inventory (final)
+	•	Table listing: enum name, values, file defined at, DB columns bound (pgEnum), primary consumers.
+	•	All bound columns must show pgEnum (no remaining varchar).
+	4.	Migrations
+	•	Attach the SQL/Drizzle migrations used to convert leftover columns to pgEnum.
+	•	Note how any out-of-range strings were handled (coerced/rejected).
+
+Acceptance criteria (don’t return unless all true)
+	•	npx tsc --noEmit = 0 errors
+	•	npm run build = success
+	•	Grep proof = 0 matches for status literals (outside enum files)
+	•	Enum inventory shows all status columns are pgEnum with enum defaults
+	•	No any, no @ts-ignore, no silencing
+	•	No API contract changes/regressions introduced
+
+Proceed and report back only with:
+	•	Command outputs (1–2–4 above)
+	•	Grep proof
+	•	Final enum inventory table
+	•	Short list of files changed (paths)
+
+Do not return otherwise.
