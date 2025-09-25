@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2019", "DOM"],
+    "downlevelIteration": true,
+    "moduleResolution": "Node",
+    "skipLibCheck": true,
+    "strict": true
+  }
+}
