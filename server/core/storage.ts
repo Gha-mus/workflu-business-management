@@ -1956,7 +1956,7 @@ export class DatabaseStorage implements IStorage {
 
   async countAdminUsers(): Promise<number> {
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)`.as('count') })
       .from(users)
       .where(and(eq(users.role, 'admin'), eq(users.isActive, true)));
     return Number(result[0]?.count || 0);
@@ -3450,7 +3450,7 @@ export class DatabaseStorage implements IStorage {
 
     // Check if purchase has linked warehouse operations (making it immutable for sensitive fields)
     const linkedWarehouseOperations = await db
-      .select({ count: count() })
+      .select({ count: count().as('count') })
       .from(warehouseStock)
       .where(eq(warehouseStock.purchaseId, id));
     
@@ -3513,7 +3513,7 @@ export class DatabaseStorage implements IStorage {
 
     // Check for linked warehouse stock to prevent data inconsistency
     const linkedStock = await db
-      .select({ count: count() })
+      .select({ count: count().as('count') })
       .from(warehouseStock)
       .where(eq(warehouseStock.purchaseId, id));
     
@@ -3523,7 +3523,7 @@ export class DatabaseStorage implements IStorage {
 
     // Check for capital entries linked to this purchase
     const linkedCapitalEntries = await db
-      .select({ count: count() })
+      .select({ count: count().as('count') })
       .from(capitalEntries)
       .where(eq(capitalEntries.reference, id));
     
@@ -3533,7 +3533,7 @@ export class DatabaseStorage implements IStorage {
 
     // Check for payments linked to this purchase
     const linkedPayments = await db
-      .select({ count: count() })
+      .select({ count: count().as('count') })
       .from(purchasePayments)
       .where(eq(purchasePayments.purchaseId, id));
     
@@ -4847,10 +4847,10 @@ export class DatabaseStorage implements IStorage {
       .select({
         capitalIn: sum(
           sql`CASE WHEN ${capitalEntries.type} = 'CapitalIn' THEN ${capitalEntries.amount} ELSE 0 END`
-        ),
+        ).as('capital_in'),
         capitalOut: sum(
           sql`CASE WHEN ${capitalEntries.type} = 'CapitalOut' THEN ${capitalEntries.amount} ELSE 0 END`
-        ),
+        ).as('capital_out'),
       })
       .from(capitalEntries)
       .where(capitalDateConditions.length > 0 ? and(...capitalDateConditions) : undefined);
@@ -4862,12 +4862,12 @@ export class DatabaseStorage implements IStorage {
     // Get purchase totals with USD normalization
     const purchaseQuery = db
       .select({
-        totalPurchases: sum(purchases.total),
-        totalPaid: sum(purchases.amountPaid),
-        usdCount: count(sql`CASE WHEN ${purchases.currency} = 'USD' THEN 1 END`),
-        usdAmount: sum(sql`CASE WHEN ${purchases.currency} = 'USD' THEN ${purchases.total} ELSE 0 END`),
-        etbCount: count(sql`CASE WHEN ${purchases.currency} = 'ETB' THEN 1 END`),
-        etbAmount: sum(sql`CASE WHEN ${purchases.currency} = 'ETB' THEN (${purchases.total} / ${purchases.exchangeRate}) ELSE 0 END`),
+        totalPurchases: sum(purchases.total).as('total_purchases'),
+        totalPaid: sum(purchases.amountPaid).as('total_paid'),
+        usdCount: count(sql`CASE WHEN ${purchases.currency} = 'USD' THEN 1 END`).as('usd_count'),
+        usdAmount: sum(sql`CASE WHEN ${purchases.currency} = 'USD' THEN ${purchases.total} ELSE 0 END`).as('usd_amount'),
+        etbCount: count(sql`CASE WHEN ${purchases.currency} = 'ETB' THEN 1 END`).as('etb_count'),
+        etbAmount: sum(sql`CASE WHEN ${purchases.currency} = 'ETB' THEN (${purchases.total} / ${purchases.exchangeRate}) ELSE 0 END`).as('etb_amount'),
       })
       .from(purchases);
 
@@ -4884,7 +4884,7 @@ export class DatabaseStorage implements IStorage {
     // Calculate inventory value with USD normalization
     const inventoryResult = await db
       .select({
-        totalValue: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
+        totalValue: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`).as('total_value'),
       })
       .from(warehouseStock)
       .where(sql`${warehouseStock.qtyKgClean} > 0`);
@@ -4902,6 +4902,9 @@ export class DatabaseStorage implements IStorage {
         totalOutstanding: totalOutstanding.toNumber(),
         totalInventoryValue: totalInventoryValue.toNumber(),
         netPosition: netPosition.toNumber(),
+        totalRevenue: 0, // TODO: Calculate from sales orders
+        totalCapitalIn: capitalIn.toNumber(),
+        totalPurchasePayments: totalPaid.toNumber(),
       },
       currencyBreakdown: {
         usd: {
@@ -5026,9 +5029,9 @@ export class DatabaseStorage implements IStorage {
     const warehouseSummary = await db
       .select({
         warehouse: warehouseStock.warehouse,
-        totalKg: sum(warehouseStock.qtyKgClean),
-        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
-        count: count(),
+        totalKg: sum(warehouseStock.qtyKgClean).as('total_kg'),
+        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`).as('value_usd'),
+        count: count().as('count'),
       })
       .from(warehouseStock)
       .where(sql`${warehouseStock.qtyKgClean} > 0`)
@@ -5041,9 +5044,9 @@ export class DatabaseStorage implements IStorage {
     const statusBreakdown = await db
       .select({
         status: warehouseStock.status,
-        count: count(),
-        totalKg: sum(warehouseStock.qtyKgClean),
-        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`),
+        count: count().as('count'),
+        totalKg: sum(warehouseStock.qtyKgClean).as('total_kg'),
+        valueUsd: sum(sql`${warehouseStock.qtyKgClean} * COALESCE(${warehouseStock.unitCostCleanUsd}, 0)`).as('value_usd'),
       })
       .from(warehouseStock)
       .where(sql`${warehouseStock.qtyKgClean} > 0`)
@@ -5052,10 +5055,10 @@ export class DatabaseStorage implements IStorage {
     // Get filter analysis
     const filterAnalysis = await db
       .select({
-        totalFiltered: count(),
-        avgYield: avg(filterRecords.filterYield),
-        totalInput: sum(filterRecords.inputKg),
-        totalOutput: sum(filterRecords.outputCleanKg),
+        totalFiltered: count().as('total_filtered'),
+        avgYield: avg(filterRecords.filterYield).as('avg_yield'),
+        totalInput: sum(filterRecords.inputKg).as('total_input'),
+        totalOutput: sum(filterRecords.outputCleanKg).as('total_output'),
       })
       .from(filterRecords);
 
@@ -5105,6 +5108,7 @@ export class DatabaseStorage implements IStorage {
         totalKg: new Decimal(product.totalKg?.toString() || '0').toNumber(),
         valueUsd: new Decimal(product.valueUsd?.toString() || '0').toNumber(),
       })),
+      lowStockItems: [], // TODO: Implement low stock items logic
     };
   }
 
@@ -8104,8 +8108,8 @@ export class DatabaseStorage implements IStorage {
   async updateCustomerPerformanceMetrics(customerId: string): Promise<Customer> {
     const ordersData = await db
       .select({
-        totalOrders: count(salesOrders.id),
-        totalRevenue: sum(salesOrders.totalAmountUsd),
+        totalOrders: count(salesOrders.id).as('total_orders'),
+        totalRevenue: sum(salesOrders.totalAmountUsd).as('total_revenue'),
       })
       .from(salesOrders)
       .where(and(

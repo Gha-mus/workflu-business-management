@@ -90,7 +90,7 @@ class WarehouseEnhancementService {
    */
   async checkFilteringAlerts(): Promise<FilteringAlert[]> {
     try {
-      const alertThresholdDays = await configurationService.getNumericSetting('FILTERING_ALERT_THRESHOLD_DAYS', 3);
+      const alertThresholdDays = await configurationService.getNumericSetting('FILTERING_ALERT_THRESHOLD_DAYS') || 3;
       
       // Get stock items awaiting filtering for more than threshold days
       const awaitingFilteringStock = await db
@@ -329,12 +329,12 @@ class WarehouseEnhancementService {
       }
 
       // Check quantities
-      const expectedCleanKg = new Decimal(warehouseStockRecord.qtyKgClean);
+      const expectedCleanKg = new Decimal(warehouseStockRecord.qtyKgClean).toNumber();
       if (Math.abs(expectedCleanKg - cleanOutput) > 0.01) {
         errors.push(`Clean quantity mismatch: Expected ${cleanOutput}, got ${expectedCleanKg}`);
       }
 
-      const expectedNonCleanKg = new Decimal(warehouseStockRecord.qtyKgNonClean);
+      const expectedNonCleanKg = new Decimal(warehouseStockRecord.qtyKgNonClean).toNumber();
       if (Math.abs(expectedNonCleanKg - nonCleanOutput) > 0.01) {
         errors.push(`Non-clean quantity mismatch: Expected ${nonCleanOutput}, got ${expectedNonCleanKg}`);
       }
@@ -347,8 +347,8 @@ class WarehouseEnhancementService {
 
       const validation: CostRedistributionValidation = {
         orderId,
-        originalCostPerKg,
-        redistributedCleanCostPerKg,
+        originalCostPerKg: originalCostPerKg.toNumber(),
+        redistributedCleanCostPerKg: redistributedCleanCostPerKg.toNumber(),
         totalInput,
         cleanOutput,
         nonCleanOutput,
