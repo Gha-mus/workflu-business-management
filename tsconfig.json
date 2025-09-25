@@ -1,4 +1,5 @@
 {
+  "extends": "./tsconfig.base.json",
   "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
   "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
   "compilerOptions": {
@@ -6,11 +7,9 @@
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
     "noEmit": true,
     "module": "ESNext",
-    "strict": true,
-    "lib": ["esnext", "dom", "dom.iterable"],
+    "lib": ["ES2019", "DOM", "DOM.iterable"],
     "jsx": "preserve",
     "esModuleInterop": true,
-    "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
