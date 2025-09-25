@@ -93,12 +93,12 @@ export interface PermissionAuditEntry {
  */
 class UserWarehouseScopesService {
   private static instance: UserWarehouseScopesService;
-  private auditService: AuditService;
-  private notificationService: NotificationService;
+  private auditService: typeof auditService;
+  private notificationService: typeof notificationService;
 
   private constructor() {
-    this.auditService = AuditService.getInstance();
-    this.notificationService = NotificationService.getInstance();
+    this.auditService = auditService;
+    this.notificationService = notificationService;
     console.log("UserWarehouseScopesService initialized for Stage 8 warehouse-level permissions");
   }
 

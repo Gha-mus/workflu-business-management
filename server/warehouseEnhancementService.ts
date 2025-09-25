@@ -330,29 +330,29 @@ class WarehouseEnhancementService {
 
       // Check quantities
       const expectedCleanKg = new Decimal(warehouseStockRecord.qtyKgClean).toNumber();
-      if (Math.abs(expectedCleanKg - cleanOutput) > 0.01) {
-        errors.push(`Clean quantity mismatch: Expected ${cleanOutput}, got ${expectedCleanKg}`);
+      if (Math.abs(expectedCleanKg - cleanOutput.toNumber()) > 0.01) {
+        errors.push(`Clean quantity mismatch: Expected ${cleanOutput.toNumber()}, got ${expectedCleanKg}`);
       }
 
       const expectedNonCleanKg = new Decimal(warehouseStockRecord.qtyKgNonClean).toNumber();
-      if (Math.abs(expectedNonCleanKg - nonCleanOutput) > 0.01) {
-        errors.push(`Non-clean quantity mismatch: Expected ${nonCleanOutput}, got ${expectedNonCleanKg}`);
+      if (Math.abs(expectedNonCleanKg - nonCleanOutput.toNumber()) > 0.01) {
+        errors.push(`Non-clean quantity mismatch: Expected ${nonCleanOutput.toNumber()}, got ${expectedNonCleanKg}`);
       }
 
       // Check filter yield
-      const calculatedYield = totalInput > 0 ? (cleanOutput / totalInput) * 100 : 0;
-      if (Math.abs(calculatedYield - filterYield) > 0.01) {
-        errors.push(`Filter yield mismatch: Expected ${calculatedYield.toFixed(2)}%, got ${filterYield.toFixed(2)}%`);
+      const calculatedYield = totalInput.toNumber() > 0 ? (cleanOutput.toNumber() / totalInput.toNumber()) * 100 : 0;
+      if (Math.abs(calculatedYield - filterYield.toNumber()) > 0.01) {
+        errors.push(`Filter yield mismatch: Expected ${calculatedYield.toFixed(2)}%, got ${filterYield.toNumber().toFixed(2)}%`);
       }
 
       const validation: CostRedistributionValidation = {
         orderId,
         originalCostPerKg: originalCostPerKg.toNumber(),
-        redistributedCleanCostPerKg: redistributedCleanCostPerKg.toNumber(),
-        totalInput,
-        cleanOutput,
-        nonCleanOutput,
-        filterYield,
+        redistributedCleanCostPerKg: redistributedCleanCostPerKg,
+        totalInput: totalInput.toNumber(),
+        cleanOutput: cleanOutput.toNumber(),
+        nonCleanOutput: nonCleanOutput.toNumber(),
+        filterYield: filterYield.toNumber(),
         costSavingsFromNonClean,
         isValid: errors.length === 0,
         errors,

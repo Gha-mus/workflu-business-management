@@ -7203,7 +7203,7 @@ export class DatabaseStorage implements IStorage {
   async updateQualityInspection(id: string, inspection: Partial<InsertQualityInspection>): Promise<QualityInspection> {
     const [result] = await db
       .update(qualityInspections)
-      .set({ ...inspection, updatedAt: new Date() })
+      .set(inspection)
       .where(eq(qualityInspections.id, id))
       .returning();
     return result;
@@ -7226,7 +7226,6 @@ export class DatabaseStorage implements IStorage {
         recommendations: results.recommendations,
         completedAt: new Date(),
         completedById: results.userId,
-        updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -7240,7 +7239,6 @@ export class DatabaseStorage implements IStorage {
         status: 'approved',
         approvedAt: new Date(),
         approvedById: userId,
-        updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -7673,7 +7671,6 @@ export class DatabaseStorage implements IStorage {
         status: 'approved',
         approvedAt: new Date(),
         approvedById: userId,
-        updatedAt: new Date(),
       })
       .where(eq(inventoryAdjustments.id, id))
       .returning();
