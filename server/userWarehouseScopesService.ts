@@ -183,7 +183,7 @@ class UserWarehouseScopesService {
         alertType: 'security_alert',
         title: 'Warehouse Access Granted',
         message: `You have been granted access to warehouse ${request.warehouseCode}`,
-        data: { warehouseCode: request.warehouseCode, scopeId }
+        templateData: { warehouseCode: request.warehouseCode, scopeId }
       });
 
       return scopeId;
@@ -248,7 +248,7 @@ class UserWarehouseScopesService {
         alertType: 'security_alert',
         title: 'Warehouse Access Revoked',
         message: `Your access to warehouse ${warehouseCode} has been revoked${reason ? `: ${reason}` : ''}`,
-        data: { warehouseCode, reason }
+        templateData: { warehouseCode, reason }
       });
     } catch (error) {
       console.error("Error revoking warehouse scope:", error);
