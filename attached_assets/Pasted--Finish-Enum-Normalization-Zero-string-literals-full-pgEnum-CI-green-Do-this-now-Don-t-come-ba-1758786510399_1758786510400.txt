@@ -1,0 +1,68 @@
+
+Finish Enum Normalization (Zero string literals, full pgEnum, CI green)
+
+Do this now. Don’t come back until everything below is done. No any, no @ts-ignore, no partial work, no “will fix later”.
+
+Scope (must cover ALL layers)
+	•	Storage layer: replace every hardcoded status string with the proper enum.
+	•	Service layer: same—no string literals for status/typed columns.
+	•	Frontend (client): components, hooks, utils—no hardcoded enum strings.
+	•	Schema/DB: remaining varchar status columns must be converted to pgEnum.
+
+Required fixes
+	1.	Replace string literals with enums
+	•	Find & replace all status literals (e.g. 'pending', 'approved', 'completed', etc.) with imported enum members.
+	•	Use a single source of truth (shared/enums/* re-exported from shared/enums/index.ts).
+	2.	Complete schema migration to pgEnum
+	•	Convert all remaining varchar status columns to pgEnum in shared/schema.ts and database migrations.
+	•	Ensure defaults come from the enum (not bare strings).
+	3.	Frontend alignment
+	•	Import enums in pages/components; remove string comparisons.
+	•	Centralize UI labels via a map { enumValue -> displayLabel }.
+	4.	Service/business logic
+	•	Remove any string branching; switch on enum types.
+	•	Update validation (Zod) to use z.nativeEnum(...).
+	5.	Validation & guards
+	•	Each route that accepts a status must validate via Zod enum (400 on invalid).
+
+Proof you must provide (don’t skip)
+	•	A. TypeScript clean build
+	•	npm ci
+	•	npx tsc --noEmit → 0 errors
+	•	npm run build → success
+	•	B. Grep proof (no literals)
+	•	Run (case-insensitive) searches and paste counts before/after:
+
+grep -RniE "('|\")pending('|\")|('|\")approved('|\")|('|\")completed('|\")|('|\")rejected('|\")|('|\")cancelled('|\")" \
+  server client --exclude-dir=node_modules --exclude=*.map
+
+
+	•	Result must be 0 matches (excluding enum definition files).
+
+	•	C. Enum inventory table (final)
+	•	For each enum: name, values, defined at, DB columns bound, primary consumers.
+	•	Mark every bound column as pgEnum (not varchar).
+	•	D. Migration scripts
+	•	Provide the SQL/Drizzle migrations used to convert leftover columns to pgEnum.
+	•	Confirm data preserved; list any coerced values and how handled.
+	•	E. Route validation samples
+	•	One example per domain showing Zod schema using the enum.
+	•	Paste the request/response excerpt for invalid value (should return 400).
+
+Acceptance criteria (non-negotiable)
+	•	Zero string-literal statuses anywhere outside enum definitions.
+	•	All status columns are pgEnum with enum defaults (no string defaults).
+	•	npx tsc --noEmit = 0 errors. npm run build = success.
+	•	Grep proof shows 0 literal matches.
+	•	Existing behavior unchanged (no API contract changes, same states and transitions).
+	•	No any, no @ts-ignore, no suppression tricks.
+
+Order of work
+	1.	Finish schema pgEnum conversions + migrations.
+	2.	Replace literals in storage.
+	3.	Replace literals in services.
+	4.	Replace literals in client (components/hooks).
+	5.	Add/verify Zod enum validation on routes.
+	6.	Run proof pack (A–E) and deliver.
+
+Do not return until all of the above is complete and the proof pack is attached.

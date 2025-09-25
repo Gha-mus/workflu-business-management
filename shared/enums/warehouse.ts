@@ -26,3 +26,6 @@ export type ExpenseCategory = typeof ExpenseCategory[number];
 
 export const TransferStatus = ['pending', 'in_transit', 'completed', 'cancelled'] as const;
 export type TransferStatus = typeof TransferStatus[number];
+
+export const OperationStatus = ['planned', 'in_progress', 'completed', 'cancelled'] as const;
+export type OperationStatus = typeof OperationStatus[number];

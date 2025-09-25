@@ -22,3 +22,6 @@ export type AlertCategory = typeof AlertCategory[number];
 
 export const NotificationFrequency = ['immediate', 'daily_digest', 'weekly_summary', 'monthly_report'] as const;
 export type NotificationFrequency = typeof NotificationFrequency[number];
+
+export const CommunicationStatus = ['pending', 'completed', 'follow_up_required'] as const;
+export type CommunicationStatus = typeof CommunicationStatus[number];
