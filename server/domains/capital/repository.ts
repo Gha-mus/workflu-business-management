@@ -66,6 +66,13 @@ export class CapitalRepository extends BaseRepository<CapitalEntry, InsertCapita
     return Number(result[0]?.total || 0);
   }
 
+  // Transaction-aware method for cross-domain operations
+  async createCapitalEntryWithTransaction(tx: any, entryData: any): Promise<void> {
+    await tx
+      .insert(capitalEntries)
+      .values(entryData);
+  }
+
   async generateNextEntryNumber(): Promise<string> {
     const result = await db
       .select({ 

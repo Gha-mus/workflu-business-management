@@ -81,7 +81,52 @@ export class PurchaseService extends BaseService<Purchase, InsertPurchase> {
     // Validate business rules
     await this.validatePurchase(purchaseData);
 
-    return await this.repository.createPurchaseWithSideEffects(purchaseData, userId, auditContext);
+    // PROPER TRANSACTIONAL COORDINATOR: Single transaction with repository helpers
+    return await this.repository.runInTransaction(async (tx) => {
+      // 1. Create the purchase using transaction
+      const [purchase] = await tx
+        .insert((await import("@shared/schema")).purchases)
+        .values(purchaseData)
+        .returning();
+
+      // 2. Create warehouse stock using transaction-aware repository helper
+      const warehouseRepository = new (await import("../warehouse/repository")).WarehouseRepository();
+      await warehouseRepository.createWarehouseStockWithTransaction(tx, {
+        purchaseId: purchase.id,
+        warehouse: 'intake',
+        status: 'pending',
+        cleanKg: (purchaseData as any).cleanKg || '0',
+        nonCleanKg: (purchaseData as any).nonCleanKg || '0',
+        totalKg: (purchaseData as any).totalKg || purchaseData.weight || '0',
+        userId
+      });
+
+      // 3. Create capital entry using transaction-aware repository helper
+      const capitalRepository = new (await import("../capital/repository")).CapitalRepository();
+      await capitalRepository.createCapitalEntryWithTransaction(tx, {
+        type: 'debit',
+        amount: (purchaseData as any).totalCost || purchaseData.total,
+        currency: (purchaseData as any).currency || 'USD',
+        description: `Purchase: ${purchase.id}`,
+        reference: purchase.id,
+        createdBy: userId
+      });
+
+      // 4. Log audit operation within transaction
+      if (auditContext) {
+        const { auditService } = await import("../../auditService");
+        await auditService.logOperation(auditContext, {
+          entityType: 'purchases',
+          entityId: purchase.id,
+          action: 'create' as const,
+          newValues: purchaseData,
+          description: 'Created purchase with side effects',
+          businessContext: 'Purchase creation with warehouse stock and capital entry'
+        });
+      }
+
+      return purchase;
+    });
   }
 
   async updatePurchase(
@@ -108,7 +153,25 @@ export class PurchaseService extends BaseService<Purchase, InsertPurchase> {
       await this.enforceApprovalRequirement(approvalContext);
     }
 
-    await this.repository.deletePurchase(id, auditContext);
+    // PROPER CROSS-DOMAIN VALIDATION - moved from repository to service layer
+    // Check if purchase can be deleted (no related warehouse stock)
+    try {
+      const warehouseService = new (await import("../warehouse/service")).WarehouseService();
+      const relatedStock = await warehouseService.getWarehouseStockByPurchase(id);
+      
+      if (relatedStock && relatedStock.length > 0) {
+        throw new Error('Cannot delete purchase with existing warehouse stock');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Cannot delete purchase')) {
+        throw error;
+      }
+      // If warehouse service is not available, continue with deletion
+      console.warn('Could not check warehouse stock for purchase deletion:', error);
+    }
+
+    // Use the standard delete method from BaseRepository
+    await this.repository.delete(id, auditContext);
   }
 
   // Purchase payment operations

@@ -201,6 +201,14 @@ export class FilterRecordRepository extends BaseRepository<FilterRecord, InsertF
   }
 }
 
+  // Transaction-aware method for cross-domain operations
+  async createWarehouseStockWithTransaction(tx: any, stockData: any): Promise<void> {
+    await tx
+      .insert(warehouseStock)
+      .values(stockData);
+  }
+}
+
 export class WarehouseBatchRepository extends BaseRepository<WarehouseBatch, InsertWarehouseBatch> {
   protected table = warehouseBatches;
   protected tableName = 'warehouseBatches';
