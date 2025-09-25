@@ -297,6 +297,7 @@ import { ConfigurationService } from "../configurationService";
 import { guardSystemUser } from "./systemUserGuard";
 import { CapitalEntryType } from "@shared/enums/capital";
 import { DeliveryTrackingStatus } from "@shared/enums/shipping";
+import { QualityGrade, OperationStatus, TransferStatus, AdjustmentType } from "@shared/enums/warehouse";
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -7236,7 +7237,7 @@ export class DatabaseStorage implements IStorage {
       .update(qualityInspections)
       .set({
         status: 'completed' satisfies InspectionStatus,
-        qualityGrade: results.qualityGrade,
+        qualityGrade: results.qualityGrade as QualityGrade,
         overallScore: results.overallScore,
         testResults: results.testResults,
         recommendations: results.recommendations,
@@ -7269,7 +7270,6 @@ export class DatabaseStorage implements IStorage {
         rejectionReason,
         rejectedAt: new Date(),
         rejectedById: userId,
-        updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -7281,7 +7281,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(warehouseStock)
       .set({
-        qualityGrade,
+        qualityGrade: qualityGrade as QualityGrade,
         qualityScore,
         gradedAt: new Date(),
         updatedAt: new Date(),
@@ -7648,7 +7648,7 @@ export class DatabaseStorage implements IStorage {
   async updateStockTransfer(id: string, transfer: Partial<InsertStockTransfer>): Promise<StockTransfer> {
     const [result] = await db
       .update(stockTransfers)
-      .set({ ...transfer, updatedAt: new Date() })
+      .set(transfer)
       .where(eq(stockTransfers.id, id))
       .returning();
     return result;
@@ -7698,10 +7698,9 @@ export class DatabaseStorage implements IStorage {
       .update(inventoryAdjustments)
       .set({
         status: 'rejected' satisfies ApprovalStatus,
-        rejectionReason: reason,
+        reason,
         rejectedAt: new Date(),
         rejectedById: userId,
-        updatedAt: new Date(),
       })
       .where(eq(inventoryAdjustments.id, id))
       .returning();
