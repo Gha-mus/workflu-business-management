@@ -23,3 +23,6 @@ export type OperationType = typeof OperationType[number];
 
 export const ExpenseCategory = ['wages', 'rent', 'utilities', 'supplies', 'transfer_fees', 'other'] as const;
 export type ExpenseCategory = typeof ExpenseCategory[number];
+
+export const TransferStatus = ['pending', 'in_transit', 'completed', 'cancelled'] as const;
+export type TransferStatus = typeof TransferStatus[number];
