@@ -213,14 +213,14 @@ export class SalesOrderService extends BaseService<SalesOrder, InsertSalesOrder>
       throw new Error(`Sales order with id ${orderId} not found`);
     }
 
-    if (order.status === 'completed') {
-      throw new Error('Sales order is already completed');
+    if (order.status === 'fulfilled') {
+      throw new Error('Sales order is already fulfilled');
     }
 
     // Update order status to completed
     const updatedOrder = await this.repository.update(
       orderId,
-      { status: 'completed' },
+      { status: 'fulfilled' },
       auditContext
     );
 
@@ -228,7 +228,7 @@ export class SalesOrderService extends BaseService<SalesOrder, InsertSalesOrder>
     const revenueTransaction = await this.revenueRepository.createRevenueFromSale({
       orderId,
       customerId: order.customerId,
-      amount: order.totalAmount,
+      amount: parseFloat(order.totalAmount || '0'),
       currency: order.currency,
       description: `Revenue from completed sale order ${orderId}`
     }, auditContext);
@@ -263,14 +263,9 @@ export class SalesOrderService extends BaseService<SalesOrder, InsertSalesOrder>
       throw new Error(`Customer with id ${order.customerId} not found`);
     }
 
-    // Validate amounts are positive
-    if (order.totalAmount <= 0) {
-      throw new Error('Sales order total amount must be positive');
-    }
-
     // Validate currency
     const validCurrencies = ['USD', 'ETB'];
-    if (!validCurrencies.includes(order.currency)) {
+    if (!validCurrencies.includes(order.currency || 'USD')) {
       throw new Error(`Invalid currency: ${order.currency}`);
     }
 
@@ -289,18 +284,18 @@ export class SalesOrderService extends BaseService<SalesOrder, InsertSalesOrder>
 
   private async validateSalesOrderItem(item: InsertSalesOrderItem): Promise<void> {
     // Validate quantities are positive
-    if (item.quantity <= 0) {
+    if (parseFloat(item.quantityKg || '0') <= 0) {
       throw new Error('Order item quantity must be positive');
     }
 
-    if (item.unitPrice <= 0) {
+    if (parseFloat(item.unitPriceUsd || '0') <= 0) {
       throw new Error('Order item unit price must be positive');
     }
 
     // Validate order exists
-    const order = await this.repository.findById(item.orderId);
+    const order = await this.repository.findById(item.salesOrderId);
     if (!order) {
-      throw new Error(`Sales order with id ${item.orderId} not found`);
+      throw new Error(`Sales order with id ${item.salesOrderId} not found`);
     }
   }
 

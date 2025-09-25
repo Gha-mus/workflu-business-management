@@ -201,18 +201,18 @@ export class PurchaseService extends BaseService<Purchase, InsertPurchase> {
 
   private async validatePurchase(purchase: InsertPurchase): Promise<void> {
     // Validate amounts are positive
-    if (purchase.totalCost <= 0) {
+    if (parseFloat(purchase.totalCost || '0') <= 0) {
       throw new Error('Purchase total cost must be positive');
     }
 
     // Validate quantities
     if (purchase.totalKg && parseFloat(purchase.totalKg) <= 0) {
-      throw new Error('Purchase total kg must be positive');
+      throw new Error('Purchase weight must be positive');
     }
 
     // Validate currency
     const validCurrencies = ['USD', 'ETB'];
-    if (!validCurrencies.includes(purchase.currency)) {
+    if (!validCurrencies.includes(purchase.currency || 'USD')) {
       throw new Error(`Invalid currency: ${purchase.currency}`);
     }
 
@@ -240,7 +240,7 @@ export class PurchaseService extends BaseService<Purchase, InsertPurchase> {
 
   private async validatePurchasePayment(payment: InsertPurchasePayment): Promise<void> {
     // Validate amount is positive
-    if (payment.amount <= 0) {
+    if (parseFloat(payment.amount || '0') <= 0) {
       throw new Error('Payment amount must be positive');
     }
 

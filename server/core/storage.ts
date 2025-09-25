@@ -295,6 +295,8 @@ import { supabaseAdmin } from "./auth/providers/supabaseProvider";
 import { approvalWorkflowService } from "../approvalWorkflowService";
 import { ConfigurationService } from "../configurationService";
 import { guardSystemUser } from "./systemUserGuard";
+import { CapitalEntryType } from "@shared/enums/capital";
+import { DeliveryTrackingStatus } from "@shared/enums/shipping";
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -759,7 +761,7 @@ class StorageApprovalGuard {
    */
   static isSignificantRevenueTransactionChange(beforeState: any, changes: any): boolean {
     // Check for status changes that require approval
-    const significantStatusChanges = ['approved' satisfies ApprovalStatus, 'reconciled' satisfies TransactionStatus, 'refunded' satisfies TransactionStatus];
+    const significantStatusChanges = ['approved' satisfies ApprovalStatus, 'confirmed' satisfies TransactionStatus, 'reversed' satisfies TransactionStatus];
     if (changes.status && significantStatusChanges.includes(changes.status)) {
       return true;
     }
@@ -2858,7 +2860,7 @@ export class DatabaseStorage implements IStorage {
     return entry;
   }
 
-  async getCapitalEntriesByType(type: string): Promise<CapitalEntry[]> {
+  async getCapitalEntriesByType(type: CapitalEntryType): Promise<CapitalEntry[]> {
     return await db.select().from(capitalEntries)
       .where(eq(capitalEntries.type, type))
       .orderBy(desc(capitalEntries.date));
@@ -4028,7 +4030,7 @@ export class DatabaseStorage implements IStorage {
         const currentSupplyTyped = safeAccessBeforeState(currentSupply, ['quantityOnHand', 'unitCostUsd']);
         const quantity = new Decimal(supply.quantityOnHand ?? (currentSupplyTyped?.quantityOnHand || '0'));
         const unitCost = new Decimal(supply.unitCostUsd ?? (currentSupplyTyped?.unitCostUsd || '0'));
-        updateData = { ...updateData, totalValueUsd: quantity.mul(unitCost).toFixed(2) };
+        updateData = { ...updateData };
       }
     }
 
@@ -5265,7 +5267,7 @@ export class DatabaseStorage implements IStorage {
       acc.total += statusCount;
       
       switch (stat.status) {
-        case 'completed':
+        case 'fulfilled' satisfies SalesOrderStatus:
           acc.completed += statusCount;
           break;
         case 'cancelled' satisfies SalesOrderStatus:
@@ -5297,7 +5299,7 @@ export class DatabaseStorage implements IStorage {
         updatedAt: orders.updatedAt,
       })
       .from(orders)
-      .where(eq(orders.status, 'completed'));
+      .where(eq(orders.status, 'fulfilled'));
 
     let totalProcessingDays = 0;
     let processedOrdersCount = 0;
@@ -6624,7 +6626,6 @@ export class DatabaseStorage implements IStorage {
         reference: result.shipmentId,
         description: `Shipping cost - ${costData.costType} ${costData.currency === 'ETB' ? `(${costData.amountPaid} ETB @ ${costData.exchangeRate})` : ''}`,
         paymentCurrency: costData.currency,
-        exchangeRate: costData.exchangeRate,
         createdBy: userId,
       });
     }
@@ -6658,7 +6659,7 @@ export class DatabaseStorage implements IStorage {
       status: trackingData.status,
       location: trackingData.location,
       description: trackingData.description,
-      isCustomerNotified: trackingData.isCustomerNotified,
+      isCustomerNotified: trackingData.isCustomerNotified || false,
       proofOfDelivery: trackingData.proofOfDelivery,
       exceptionDetails: trackingData.exceptionDetails,
       createdBy: userId,
@@ -7179,7 +7180,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Quality Inspections operations
-  async getQualityInspections(filter?: { status?: string; inspectionType?: string; batchId?: string }): Promise<QualityInspection[]> {
+  async getQualityInspections(filter?: { status?: InspectionStatus; inspectionType?: string; batchId?: string }): Promise<QualityInspection[]> {
     const conditions = [];
     
     if (filter?.status) {
@@ -7480,7 +7481,7 @@ export class DatabaseStorage implements IStorage {
         .values({
           warehouseStockId,
           orderId: allocatedTo,
-          quantityKg: quantity,
+          quantityKg: quantity.toString(),
           consumptionType,
           unitCostUsd: stock.unitCostCleanUsd || '0',
           totalCostUsd: (parseFloat(stock.unitCostCleanUsd || '0') * consumeQty).toString(),
