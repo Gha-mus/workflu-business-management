@@ -1,3 +1,100 @@
+// Phase 1: Request-to-schema enum normalization utility per architect guidance
+interface RequestEnumNormalizer {
+  normalizeWarehouseStatus(status: string): 'AWAITING_DECISION' | 'FILTERING' | 'FILTERED' | 'PACKED' | 'RESERVED' | 'CONSUMED' | 'READY_TO_SHIP' | 'NON_CLEAN' | 'READY_FOR_SALE' | 'AWAITING_FILTER';
+  normalizeAuditAction(action: string): 'create' | 'update' | 'delete';
+  normalizeFullAuditAction(action: string): 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import' | 'validate' | 'auto_correct' | 'password_reset_failed';
+  normalizeBasicAuditAction(action: string): 'create' | 'update' | 'delete';
+  normalizeDocumentCategory(category: string): 'invoice' | 'contract' | 'compliance_record' | 'certificate' | 'receipt' | 'purchase_order' | 'shipping_document' | 'quality_report' | 'financial_statement' | 'audit_report' | 'insurance_document' | 'tax_document' | 'regulation_document';
+}
+
+class RequestEnumNormalizerImpl implements RequestEnumNormalizer {
+  normalizeWarehouseStatus(status: string): 'AWAITING_DECISION' | 'FILTERING' | 'FILTERED' | 'PACKED' | 'RESERVED' | 'CONSUMED' | 'READY_TO_SHIP' | 'NON_CLEAN' | 'READY_FOR_SALE' | 'AWAITING_FILTER' {
+    const statusMap: Record<string, any> = {
+      'AWAITING_DECISION': 'AWAITING_DECISION',
+      'FILTERING': 'FILTERING', 
+      'FILTERED': 'FILTERED',
+      'PACKED': 'PACKED',
+      'RESERVED': 'RESERVED',
+      'CONSUMED': 'CONSUMED',
+      'READY_TO_SHIP': 'READY_TO_SHIP',
+      'NON_CLEAN': 'NON_CLEAN',
+      'READY_FOR_SALE': 'READY_FOR_SALE',
+      'AWAITING_FILTER': 'AWAITING_FILTER'
+    };
+    return statusMap[status] || 'AWAITING_DECISION';
+  }
+
+  normalizeAuditAction(action: string): 'create' | 'update' | 'delete' {
+    const actionMap: Partial<Record<string, 'create' | 'update' | 'delete'>> = {
+      'create': 'create',
+      'update': 'update', 
+      'delete': 'delete',
+      // Legacy mappings per architect guidance - narrow to basic actions
+      'settle_advance': 'update',
+      'supplier_return': 'update'
+    };
+    return actionMap[action] || 'create';
+  }
+
+  normalizeFullAuditAction(action: string): 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import' | 'validate' | 'auto_correct' | 'password_reset_failed' {
+    const actionMap: Partial<Record<string, 'create' | 'update' | 'delete' | 'view' | 'approve' | 'reject' | 'login' | 'logout' | 'export' | 'import' | 'validate' | 'auto_correct' | 'password_reset_failed'>> = {
+      'create': 'create',
+      'update': 'update', 
+      'delete': 'delete',
+      'view': 'view',
+      'approve': 'approve',
+      'reject': 'reject',
+      'login': 'login',
+      'logout': 'logout',
+      'export': 'export',
+      'import': 'import',
+      'validate': 'validate',
+      'auto_correct': 'auto_correct',
+      'password_reset_failed': 'password_reset_failed',
+      // Legacy mappings per architect guidance
+      'settle_advance': 'update',
+      'supplier_return': 'update',
+      'approved': 'approve'
+    };
+    return actionMap[action] || 'view';
+  }
+
+  normalizeBasicAuditAction(action: string): 'create' | 'update' | 'delete' {
+    const actionMap: Record<string, 'create' | 'update' | 'delete'> = {
+      'create': 'create',
+      'update': 'update', 
+      'delete': 'delete',
+      // Legacy mappings per architect guidance - constrained to basic actions
+      'settle_advance': 'update',
+      'supplier_return': 'update',
+      'approved': 'update'
+    };
+    return actionMap[action] || 'create';
+  }
+
+  normalizeDocumentCategory(category: string): 'invoice' | 'contract' | 'compliance_record' | 'certificate' | 'receipt' | 'purchase_order' | 'shipping_document' | 'quality_report' | 'financial_statement' | 'audit_report' | 'insurance_document' | 'tax_document' | 'regulation_document' {
+    const categoryMap: Record<string, 'invoice' | 'contract' | 'compliance_record' | 'certificate' | 'receipt' | 'purchase_order' | 'shipping_document' | 'quality_report' | 'financial_statement' | 'audit_report' | 'insurance_document' | 'tax_document' | 'regulation_document'> = {
+      'invoice': 'invoice',
+      'contract': 'contract',
+      'compliance_record': 'compliance_record',
+      'certificate': 'certificate',
+      'receipt': 'receipt',
+      'purchase_order': 'purchase_order',
+      'shipping_document': 'shipping_document',
+      'quality_report': 'quality_report',
+      'financial_statement': 'financial_statement',
+      'audit_report': 'audit_report',
+      'insurance_document': 'insurance_document',
+      'tax_document': 'tax_document',
+      'regulation_document': 'regulation_document'
+    };
+    return categoryMap[category] || 'invoice';
+  }
+}
+
+// Singleton enum normalizer instance
+const enumNormalizer = new RequestEnumNormalizerImpl();
+
 import {
   users,
   userWarehouseScopes,
@@ -2862,7 +2959,7 @@ export class DatabaseStorage implements IStorage {
         auditContext,
         'purchases',
         result.id,
-        'settle_advance',
+        enumNormalizer.normalizeAuditAction('settle_advance'),
         'purchase_advance_settlement',
         {
           originalTotal: new Decimal(result.total).add(new Decimal(settlementData.settledAmount)).sub(new Decimal(result.amountPaid)).toFixed(2),
@@ -2951,7 +3048,7 @@ export class DatabaseStorage implements IStorage {
         auditContext,
         'purchases',
         result.purchase.id,
-        'supplier_return',
+        enumNormalizer.normalizeAuditAction('supplier_return'),
         'purchase_return',
         null,
         result.purchase,
@@ -3517,7 +3614,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getWarehouseStockByStatus(status: string): Promise<WarehouseStock[]> {
-    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, status));
+    // Apply enum normalizer per architect guidance - Phase 1B
+    const normalizedStatus = enumNormalizer.normalizeWarehouseStatus(status);
+    return await db.select().from(warehouseStock).where(eq(warehouseStock.status, normalizedStatus));
   }
 
   async getWarehouseStockByWarehouse(warehouse: string): Promise<WarehouseStock[]> {
@@ -10941,7 +11040,9 @@ export class DatabaseStorage implements IStorage {
       }
 
       if (searchRequest.category) {
-        conditions.push(eq(documents.category, searchRequest.category));
+        // Apply enum normalizer per architect guidance - Phase 1B
+        const normalizedCategory = enumNormalizer.normalizeDocumentCategory(searchRequest.category);
+        conditions.push(eq(documents.category, normalizedCategory));
       }
 
       if (searchRequest.status) {
@@ -10973,12 +11074,23 @@ export class DatabaseStorage implements IStorage {
 
       const documents_result = await query.orderBy(desc(documents.createdAt));
 
+      // Transform Document objects to DocumentWithMetadata per schema requirements
+      const documentsWithMetadata = documents_result.map(doc => ({
+        ...doc,
+        metadata: [], // TODO: Load actual metadata if needed
+        compliance: [], // TODO: Load actual compliance if needed
+        currentVersionInfo: undefined, // TODO: Load current version if needed
+        accessLevel: 'internal' as const,
+        canEdit: true, // TODO: Implement permission logic based on userId/role
+        canDelete: true, // TODO: Implement permission logic based on userId/role  
+        canDownload: true // TODO: Implement permission logic based on userId/role
+      }));
+
       return {
-        documents: documents_result,
+        documents: documentsWithMetadata,
         total,
         page: Math.floor((searchRequest.offset || 0) / (searchRequest.limit || 10)) + 1,
-        totalPages: Math.ceil(total / (searchRequest.limit || 10)),
-        hasMore: (searchRequest.offset || 0) + documents_result.length < total
+        totalPages: Math.ceil(total / (searchRequest.limit || 10))
       };
     } catch (error) {
       console.error('Error searching documents:', error);
@@ -10986,18 +11098,19 @@ export class DatabaseStorage implements IStorage {
         documents: [],
         total: 0,
         page: 1,
-        totalPages: 0,
-        hasMore: false
+        totalPages: 0
       };
     }
   }
 
   async getDocumentsByCategory(category: string, limit?: number, offset?: number): Promise<Document[]> {
     try {
+      // Apply enum normalizer per architect guidance - Phase 1B
+      const normalizedCategory = enumNormalizer.normalizeDocumentCategory(category);
       let query = db
         .select()
         .from(documents)
-        .where(eq(documents.category, category))
+        .where(eq(documents.category, normalizedCategory))
         .orderBy(desc(documents.createdAt));
 
       if (limit) query = query.limit(limit);
