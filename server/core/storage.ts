@@ -6690,9 +6690,9 @@ export class DatabaseStorage implements IStorage {
     // Summary stats
     const summaryResult = await db
       .select({
-        totalShipments: count(),
-        inTransit: sum(sql`CASE WHEN ${shipments.status} = 'in_transit' THEN 1 ELSE 0 END`),
-        delivered: sum(sql`CASE WHEN ${shipments.status} = 'delivered' THEN 1 ELSE 0 END`),
+        totalShipments: count().as('total_shipments'),
+        inTransit: sum(sql`CASE WHEN ${shipments.status} = 'in_transit' THEN 1 ELSE 0 END`).as('in_transit'),
+        delivered: sum(sql`CASE WHEN ${shipments.status} = 'delivered' THEN 1 ELSE 0 END`).as('delivered'),
       })
       .from(shipments)
       .where(whereClause);
@@ -6700,8 +6700,8 @@ export class DatabaseStorage implements IStorage {
     // Cost summary
     const costResult = await db
       .select({
-        totalCostUsd: sum(shippingCosts.amountUsd),
-        totalWeight: sum(shipments.totalWeight),
+        totalCostUsd: sum(shippingCosts.amountUsd).as('total_cost_usd'),
+        totalWeight: sum(shipments.totalWeight).as('total_weight'),
       })
       .from(shipments)
       .leftJoin(shippingCosts, eq(shipments.id, shippingCosts.shipmentId))
@@ -6733,7 +6733,7 @@ export class DatabaseStorage implements IStorage {
     // Calculate on-time delivery rate
     const onTimeResult = await db
       .select({
-        onTimeDeliveries: sum(sql`CASE WHEN ${shipments.actualArrivalDate} <= ${shipments.estimatedArrivalDate} THEN 1 ELSE 0 END`),
+        onTimeDeliveries: sum(sql`CASE WHEN ${shipments.actualArrivalDate} <= ${shipments.estimatedArrivalDate} THEN 1 ELSE 0 END`).as('on_time_deliveries'),
       })
       .from(shipments)
       .where(and(whereClause, sql`${shipments.actualArrivalDate} IS NOT NULL AND ${shipments.estimatedArrivalDate} IS NOT NULL`));
