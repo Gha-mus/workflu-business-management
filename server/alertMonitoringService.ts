@@ -685,13 +685,13 @@ class AlertMonitoringService {
       const mediumThreshold = thresholdValues?.medium;
       const operator = conditionValues?.operator;
       
-      if (criticalThreshold !== undefined && this.checkThreshold(currentValue, criticalThreshold, operator)) {
+      if (criticalThreshold !== undefined && this.checkThreshold(currentValue, criticalThreshold, operator || '>')) {
         triggered = true;
         severity = 'critical';
-      } else if (highThreshold !== undefined && this.checkThreshold(currentValue, highThreshold, operator)) {
+      } else if (highThreshold !== undefined && this.checkThreshold(currentValue, highThreshold, operator || '>')) {
         triggered = true;
         severity = 'high';
-      } else if (mediumThreshold !== undefined && this.checkThreshold(currentValue, mediumThreshold, operator)) {
+      } else if (mediumThreshold !== undefined && this.checkThreshold(currentValue, mediumThreshold, operator || '>')) {
         triggered = true;
         severity = 'medium';
       }

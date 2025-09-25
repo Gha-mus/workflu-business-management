@@ -619,7 +619,7 @@ class ApprovalWorkflowService {
             eq(approvalRequests.requestedBy, options.userId),
             eq(approvalRequests.currentApprover, options.userId),
             eq(approvalRequests.finalApprover, options.userId)
-          )
+          )!
         );
       }
 
@@ -1039,6 +1039,22 @@ class ApprovalWorkflowService {
         originalEvent: eventData,
         loggingError: logError instanceof Error ? logError.message : logError
       });
+    }
+  }
+
+  /**
+   * Get approval request by ID
+   */
+  async getApprovalById(requestId: string): Promise<any> {
+    try {
+      const [request] = await db
+        .select()
+        .from(approvalRequests)
+        .where(eq(approvalRequests.id, requestId));
+      return request;
+    } catch (error) {
+      console.error(`Error fetching approval by ID ${requestId}:`, error);
+      return null;
     }
   }
 }

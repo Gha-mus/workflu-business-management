@@ -18,7 +18,8 @@ import type {
   WarehouseStock,
   InsertShipmentLeg,
   InsertArrivalCost,
-  InsertShipmentInspection
+  InsertShipmentInspection,
+  ShippingAnalyticsResponse
 } from "@shared/schema";
 import { Sidebar } from "@/components/Sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -215,7 +216,7 @@ export default function Shipping() {
   });
 
   // Analytics query
-  const { data: analyticsData } = useQuery({
+  const { data: analyticsData } = useQuery<ShippingAnalyticsResponse>({
     queryKey: ['/api/shipping/analytics'],
   });
 
@@ -846,12 +847,18 @@ export default function Shipping() {
                 
                 // Validate and normalize weight data before submission
                 try {
-                  // Validate kg inputs using measurement utilities
-                  const netWeightKg = validateKgInput(data.netWeightKg);
-                  const cartonWeightKg = validateKgInput(data.cartonWeightKg);
-                  const grossWeightKg = validateKgInput(data.grossWeightKg);
-                  const chargeableWeightKg = validateKgInput(data.chargeableWeightKg);
+                  // Parse and validate kg inputs
+                  const netWeightKg = parseFloat(data.netWeightKg);
+                  const cartonWeightKg = parseFloat(data.cartonWeightKg);
+                  const grossWeightKg = parseFloat(data.grossWeightKg);
+                  const chargeableWeightKg = parseFloat(data.chargeableWeightKg);
                   const ratePerKg = parseFloat(data.ratePerKg);
+                  
+                  // Validate the parsed numbers
+                  if (!validateKgInput(netWeightKg) || !validateKgInput(cartonWeightKg) || 
+                      !validateKgInput(grossWeightKg) || !validateKgInput(chargeableWeightKg)) {
+                    throw new Error("Invalid weight values. Must be positive with up to 3 decimal places.");
+                  }
                   
                   // Calculate required cost fields
                   const legBaseCost = (chargeableWeightKg * ratePerKg).toFixed(2);
@@ -862,12 +869,15 @@ export default function Shipping() {
                   // Round kg values for precision
                   const normalizedData = {
                     ...data,
+                    shipmentId: selectedShipment,
                     netWeightKg: roundKg(netWeightKg).toString(),
                     cartonWeightKg: roundKg(cartonWeightKg).toString(),
                     grossWeightKg: roundKg(grossWeightKg).toString(),
                     chargeableWeightKg: roundKg(chargeableWeightKg).toString(),
                     legBaseCost: legBaseCost,
                     legTotalCost: legTotalCost,
+                    estimatedDepartureDate: data.estimatedDepartureDate ? new Date(data.estimatedDepartureDate) : null,
+                    estimatedArrivalDate: data.estimatedArrivalDate ? new Date(data.estimatedArrivalDate) : null,
                   };
                   
                   createLegMutation.mutate(normalizedData);
@@ -1341,6 +1351,7 @@ export default function Shipping() {
                 
                 const enrichedData = {
                   ...data,
+                  shipmentId: selectedShipment,
                   amountUsd: amountUsd.toFixed(2),
                   remaining: remaining.toFixed(2),
                 };
@@ -1507,10 +1518,12 @@ export default function Shipping() {
               onSubmit={inspectionForm.handleSubmit((data) => {
                 if (!selectedShipment || !user?.id) return;
                 
-                // Add required inspectedBy field
+                // Add required inspectedBy field and shipmentId
                 const enrichedData = {
                   ...data,
+                  shipmentId: selectedShipment,
                   inspectedBy: user.id,
+                  inspectionDate: data.inspectionDate ? new Date(data.inspectionDate) : undefined,
                 };
                 
                 createInspectionMutation.mutate(enrichedData);
