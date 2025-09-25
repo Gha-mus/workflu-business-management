@@ -723,7 +723,7 @@ class StorageApprovalGuard {
    */
   static isSignificantSalesOrderChange(beforeState: any, changes: any): boolean {
     // Check for status changes that require approval
-    const significantStatusChanges = ['confirmed', 'fulfilled', 'delivered', 'cancelled'];
+    const significantStatusChanges = ['confirmed' satisfies SalesOrderStatus, 'fulfilled' satisfies SalesOrderStatus, 'delivered' satisfies SalesOrderStatus, 'cancelled' satisfies SalesOrderStatus];
     if (changes.status && significantStatusChanges.includes(changes.status)) {
       return true;
     }
@@ -758,7 +758,7 @@ class StorageApprovalGuard {
    */
   static isSignificantRevenueTransactionChange(beforeState: any, changes: any): boolean {
     // Check for status changes that require approval
-    const significantStatusChanges = ['approved', 'reconciled', 'refunded'];
+    const significantStatusChanges = ['approved' satisfies ApprovalStatus, 'reconciled' satisfies TransactionStatus, 'refunded' satisfies TransactionStatus];
     if (changes.status && significantStatusChanges.includes(changes.status)) {
       return true;
     }
@@ -5267,7 +5267,7 @@ export class DatabaseStorage implements IStorage {
         case 'completed':
           acc.completed += statusCount;
           break;
-        case 'cancelled':
+        case 'cancelled' satisfies SalesOrderStatus:
           acc.cancelled += statusCount;
           break;
         default:
@@ -5812,7 +5812,7 @@ export class DatabaseStorage implements IStorage {
     
     if (filePath) updateData.filePath = filePath;
     if (fileSize) updateData.fileSize = fileSize;
-    if (status === 'completed') updateData.completedAt = new Date();
+    if (status === 'completed' satisfies ExportStatus) updateData.completedAt = new Date();
     
     const [result] = await db
       .update(exportHistory)
@@ -6515,11 +6515,11 @@ export class DatabaseStorage implements IStorage {
   async updateShipmentStatus(id: string, status: string, userId: string, actualDate?: Date): Promise<Shipment> {
     const updateData: any = { status, updatedAt: new Date() };
     
-    if (status === 'in_transit' && actualDate) {
+    if (status === ('in_transit' satisfies ShipmentStatus) && actualDate) {
       updateData.actualDepartureDate = actualDate;
     }
     
-    if (status === 'delivered' && actualDate) {
+    if (status === ('delivered' satisfies ShipmentStatus) && actualDate) {
       updateData.actualArrivalDate = actualDate;
     }
 
@@ -6530,7 +6530,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     // If delivered, update final warehouse stock
-    if (status === 'delivered') {
+    if (status === ('delivered' satisfies ShipmentStatus)) {
       await this.updateFinalWarehouseFromDelivery(id, userId);
     }
 
@@ -7250,7 +7250,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: 'approved',
+        status: 'approved' satisfies ApprovalStatus,
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -7263,7 +7263,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: 'rejected',
+        status: 'rejected' satisfies ApprovalStatus,
         rejectionReason,
         rejectedAt: new Date(),
         rejectedById: userId,
@@ -7682,7 +7682,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: 'approved',
+        status: 'approved' satisfies ApprovalStatus,
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -7695,7 +7695,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: 'rejected',
+        status: 'rejected' satisfies ApprovalStatus,
         rejectionReason: reason,
         rejectedAt: new Date(),
         rejectedById: userId,
@@ -12217,7 +12217,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedVersion] = await db
         .update(documentVersions)
         .set({
-          status: 'approved',
+          status: 'approved' satisfies ApprovalStatus,
           approvedBy: userId,
           approvedAt: new Date(),
           updatedAt: new Date()
