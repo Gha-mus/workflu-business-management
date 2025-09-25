@@ -22,7 +22,7 @@ export class WarehouseRepository extends BaseRepository<WarehouseStock, InsertWa
     const results = await db
       .select()
       .from(warehouseStock)
-      .where(eq(warehouseStock.status, status))
+      .where(sql`${warehouseStock.status} = ${status}`)
       .orderBy(warehouseStock.createdAt);
     
     return results;
@@ -59,7 +59,7 @@ export class WarehouseRepository extends BaseRepository<WarehouseStock, InsertWa
     const [updated] = await db
       .update(warehouseStock)
       .set({ 
-        status, 
+        status: status as any, 
         updatedAt: new Date() 
       })
       .where(eq(warehouseStock.id, id))
@@ -185,13 +185,15 @@ export class FilterRecordRepository extends BaseRepository<FilterRecord, InsertF
         .returning();
 
       if (auditContext) {
-        await this.logAuditOperation(
-          'create',
-          filterRecord.id,
-          { purchaseId, outputCleanKg, outputNonCleanKg },
-          null,
-          auditContext
-        );
+        const { auditService } = await import("../../auditService");
+        await auditService.logOperation(auditContext, {
+          entityType: this.tableName,
+          entityId: filterRecord.id,
+          action: 'create',
+          newValues: { purchaseId, outputCleanKg, outputNonCleanKg },
+          description: 'Filter operation executed',
+          businessContext: 'Warehouse filtering operation'
+        });
       }
 
       return { filterRecord, updatedStock };
@@ -207,7 +209,7 @@ export class WarehouseBatchRepository extends BaseRepository<WarehouseBatch, Ins
     const results = await db
       .select()
       .from(warehouseBatches)
-      .where(eq(warehouseBatches.warehouseLocation, warehouse))
+      .where(sql`${warehouseBatches.warehouseLocation} = ${warehouse}`)
       .orderBy(warehouseBatches.createdAt);
     
     return results;
@@ -217,7 +219,7 @@ export class WarehouseBatchRepository extends BaseRepository<WarehouseBatch, Ins
     const results = await db
       .select()
       .from(warehouseBatches)
-      .where(eq(warehouseBatches.status, status))
+      .where(sql`${warehouseBatches.batchStatus} = ${status}`)
       .orderBy(warehouseBatches.createdAt);
     
     return results;

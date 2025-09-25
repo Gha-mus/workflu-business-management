@@ -148,8 +148,9 @@ export class UserRepository extends BaseRepository<User, UpsertUser> {
       .returning();
 
     if (auditContext) {
+      // Use 'update' as the closest standard audit action for anonymization
       await this.logAuditOperation(
-        'anonymize',
+        'update',
         id,
         anonymizedData,
         oldUser,
@@ -205,7 +206,7 @@ export class UserRepository extends BaseRepository<User, UpsertUser> {
   }
 
   private async logAuditOperation(
-    action: 'create' | 'update' | 'delete' | 'upsert' | 'anonymize',
+    action: 'create' | 'update' | 'delete',
     entityId: string,
     newValues: any,
     oldValues: any,
@@ -213,10 +214,13 @@ export class UserRepository extends BaseRepository<User, UpsertUser> {
   ): Promise<void> {
     const { auditService } = await import("../../auditService");
     
+    // Map non-standard actions to standard audit actions
+    const auditAction = action === 'delete' ? 'delete' as const : action === 'update' ? 'update' as const : 'create' as const;
+    
     await auditService.logOperation(auditContext, {
       entityType: this.tableName,
       entityId,
-      action,
+      action: auditAction,
       newValues,
       oldValues,
       description: `${action} user`,
