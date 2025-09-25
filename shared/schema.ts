@@ -661,6 +661,8 @@ export const qualityInspections = pgTable("quality_inspections", {
   defectsFound: jsonb("defects_found"), // Array of defects with quantities
   recommendations: text("recommendations"),
   rejectionReason: text("rejection_reason"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectedById: varchar("rejected_by_id").references(() => users.id),
   inspectedBy: varchar("inspected_by").notNull().references(() => users.id),
   approvedBy: varchar("approved_by").references(() => users.id),
   inspectionDate: timestamp("inspection_date").notNull().defaultNow(),
