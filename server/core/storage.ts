@@ -12070,8 +12070,8 @@ export class DatabaseStorage implements IStorage {
         .where(eq(documents.category, category))
         .orderBy(desc(documents.createdAt));
 
-      if (limit) query = query.limit(limit);
-      if (offset) query = query.offset(offset);
+      if (limit !== undefined) query = query.limit(limit);
+      if (offset !== undefined) query = query.offset(offset);
 
       return await query;
     } catch (error) {

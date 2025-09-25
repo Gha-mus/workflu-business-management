@@ -127,7 +127,7 @@ class UserManagementEnhancementService {
         {
           entityType: 'users',
           entityId: request.userId,
-          action: 'approved',
+          action: 'approve',
           operationType: 'sensitive_change',
           description: `Sensitive change approved: ${request.changeType}`,
           newValues: {

@@ -16,7 +16,7 @@ import {
   type CapitalEntry,
   type InsertCapitalEntry
 } from "@shared/schema";
-import { eq, and, sum, sql, gte, lte } from "drizzle-orm";
+import { eq, and, sum, count, sql, gte, lte } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { notificationService } from "./notificationService";
 import { auditService } from "./auditService";
@@ -213,9 +213,11 @@ class CapitalEnhancementService {
       const totalOut = new Decimal(balanceResult[0]?.totalOut || '0');
       const currentBalance = totalIn.minus(totalOut).toNumber();
 
-      // Get alert thresholds from settings
-      const lowBalanceThreshold = await configurationService.getNumericSetting('CAPITAL_LOW_BALANCE_THRESHOLD', 10000);
-      const negativeBalancePrevention = await configurationService.getBooleanSetting('PREVENT_NEGATIVE_BALANCE', true);
+      // Get alert thresholds from settings with null safety
+      const lowBalanceThresholdResult = await configurationService.getNumericSetting('CAPITAL_LOW_BALANCE_THRESHOLD', '10000');
+      const lowBalanceThreshold = lowBalanceThresholdResult ?? 10000; // Default if null
+      const negativeBalancePreventionResult = await configurationService.getBooleanSetting('PREVENT_NEGATIVE_BALANCE', 'true');
+      const negativeBalancePrevention = negativeBalancePreventionResult ?? true; // Default if null
 
       const alerts: CapitalBalanceAlert[] = [];
 
@@ -343,11 +345,11 @@ class CapitalEnhancementService {
 
       // Get unvalidated entries count
       const unvalidatedResult = await db
-        .select({ count: sql`COUNT(*)::int` })
+        .select({ count: count().as('count') })
         .from(capitalEntries)
         .where(eq(capitalEntries.isValidated, false));
 
-      const unvalidatedEntries = unvalidatedResult[0]?.count || 0;
+      const unvalidatedEntries = Number(unvalidatedResult[0]?.count || 0);
 
       // Get recent alerts
       const recentAlerts = await this.checkBalanceAlerts();

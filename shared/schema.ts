@@ -31,6 +31,7 @@ export const sessions = pgTable(
 
 // User roles enum
 export const userRoleEnum = pgEnum('user_role', ['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker']);
+export type AllowedRole = 'admin' | 'finance' | 'purchasing' | 'warehouse' | 'sales' | 'worker';
 
 // User role update schema for role change operations
 export const userRoleUpdateSchema = z.object({
@@ -3252,6 +3253,9 @@ export const insertSupplyPurchaseSchema = createInsertSchema(supplyPurchases).om
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type SelectUser = typeof users.$inferSelect;
+export type InsertUserWarehouseScope = typeof userWarehouseScopes.$inferInsert;
+export type SelectUserWarehouseScope = typeof userWarehouseScopes.$inferSelect;
 
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;

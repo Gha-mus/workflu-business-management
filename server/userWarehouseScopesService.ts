@@ -15,8 +15,8 @@ import {
   InsertUserWarehouseScope, SelectUserWarehouseScope, SelectUser
 } from "../shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { AuditService } from "./auditService";
-import { NotificationService } from "./notificationService";
+import { auditService } from "./auditService";
+import { notificationService } from "./notificationService";
 
 // Request interfaces for warehouse scope management
 export interface UserWarehouseScopeRequest {

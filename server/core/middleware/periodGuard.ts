@@ -2,14 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
 
-interface AuthenticatedRequest extends Request {
-  user: {
-    claims: {
-      sub: string;
-      email?: string;
-    };
-  };
-}
+import type { AuthenticatedRequest } from '../auth/types';
 
 /**
  * Period Guard Middleware
@@ -31,7 +24,7 @@ export function periodGuard(options: {
         return next();
       }
 
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ message: "Authentication required" });
       }
