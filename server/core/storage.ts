@@ -275,6 +275,16 @@ import {
   type WithdrawalApproval,
   type ReinvestmentApproval,
 } from "@shared/schema";
+// Import typed enums to replace string literals  
+import { 
+  SalesOrderStatus, 
+  NotificationStatus, 
+  InspectionStatus, 
+  PeriodStatus,
+  ApprovalStatus,
+  WarehouseStockStatus,
+  ExportStatus
+} from '@shared/enums';
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
@@ -8227,7 +8237,7 @@ export class DatabaseStorage implements IStorage {
       .values({
         ...salesOrder,
         salesOrderNumber,
-        status: 'draft',
+        status: 'draft' as SalesOrderStatus,
       })
       .returning();
 
@@ -8325,7 +8335,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'confirmed' },
+      operationData: { ...existingOrder, status: 'confirmed' as SalesOrderStatus },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order confirmation - ${existingOrder.salesOrderNumber} for ${orderAmount} ${existingOrder.currency || 'USD'}`
@@ -8334,7 +8344,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(confirmationContext);
 
     return await this.updateSalesOrder(id, { 
-      status: 'confirmed',
+      status: 'confirmed' as SalesOrderStatus,
       confirmedAt: new Date(),
     }, auditContext, approvalContext);
   }
@@ -8351,7 +8361,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'fulfilled' },
+      operationData: { ...existingOrder, status: 'fulfilled' as SalesOrderStatus },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order fulfillment with inventory reservation - ${existingOrder.salesOrderNumber}`
@@ -8374,7 +8384,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedOrder] = await tx
         .update(salesOrders)
         .set({ 
-          status: 'fulfilled',
+          status: 'fulfilled' as SalesOrderStatus,
           fulfilledAt: new Date(),
           updatedAt: new Date(),
         })
@@ -8402,7 +8412,7 @@ export class DatabaseStorage implements IStorage {
 
   async deliverSalesOrder(id: string, userId: string): Promise<SalesOrder> {
     return await this.updateSalesOrder(id, { 
-      status: 'delivered',
+      status: 'delivered' as SalesOrderStatus,
       deliveredAt: new Date(),
     });
   }
@@ -8419,7 +8429,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'cancelled', notes: reason },
+      operationData: { ...existingOrder, status: 'cancelled' as SalesOrderStatus, notes: reason },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order cancellation - ${existingOrder.salesOrderNumber}: ${reason}`
@@ -8428,7 +8438,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(cancellationContext);
 
     return await this.updateSalesOrder(id, { 
-      status: 'cancelled',
+      status: 'cancelled' as SalesOrderStatus,
       cancelledAt: new Date(),
       notes: reason,
     }, auditContext, approvalContext);
