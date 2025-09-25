@@ -2816,46 +2816,74 @@ export const permissionGrantsRelations = relations(permissionGrants, ({ one }) =
 // Relations will be added after all table definitions to avoid initialization errors
 
 // Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertUserSchema = createInsertSchema(users).pick({
+  firstName: true,
+  lastName: true,
+  email: true,
+  role: true,
+  roles: true,
+  isActive: true,
+  isSuperAdmin: true,
+  profileImageUrl: true,
+  authProvider: true,
+  authProviderUserId: true,
 });
 
-export const insertSupplierSchema = createInsertSchema(suppliers).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertSupplierSchema = createInsertSchema(suppliers).pick({
+  name: true,
+  tradeName: true,
+  country: true,
+  notes: true,
+  qualityGrading: true,
+  qualityScore: true,
+  advanceBalance: true,
+  creditBalance: true,
+  lastAdvanceDate: true,
+  paymentTerms: true,
+  isActive: true,
 });
 
-export const insertOrderSchema = createInsertSchema(orders).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertOrderSchema = createInsertSchema(orders).pick({
+  orderNumber: true,
+  status: true,
+  totalValueUsd: true,
+  currency: true,
+  exchangeRate: true,
 });
 
 // Stage 1 Compliance: Purchases use central FX only - no client exchangeRate accepted
-export const insertPurchaseSchema = createInsertSchema(purchases).omit({
-  id: true,
-  purchaseNumber: true,
-  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
-  createdAt: true,
-  updatedAt: true,
+export const insertPurchaseSchema = createInsertSchema(purchases).pick({
+  supplierId: true,
+  orderId: true,
+  weight: true,
+  pricePerKg: true,
+  total: true,
+  totalValueUsd: true,
+  paymentMethod: true,
+  amountPaid: true,
+  remaining: true,
+  currency: true,
+  country: true,
+  quality: true,
+  fundingSource: true,
+  status: true,
+  date: true,
+  createdBy: true,
 });
 
 // Purchase payment schema for multiple payments per purchase
 export const insertPurchasePaymentSchema = createInsertSchema(purchasePayments).omit({
-  id: true,
-  paymentNumber: true,
-  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
-  createdAt: true,
+  id: true as any,
+  paymentNumber: true as any,
+  exchangeRate: true as any, // Stage 1 Compliance: No client-provided exchange rates
+  createdAt: true as any,
 });
 
 export const insertCapitalEntrySchema = createInsertSchema(capitalEntries).omit({
-  id: true,
-  entryId: true, // Stage 1 Compliance: Server-generated CAP- prefixed IDs only
-  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
-  createdAt: true,
+  id: true as any,
+  entryId: true as any, // Stage 1 Compliance: Server-generated CAP- prefixed IDs only
+  exchangeRate: true as any, // Stage 1 Compliance: No client-provided exchange rates
+  createdAt: true as any,
 });
 
 // Stage 1: Multi-order capital entry schema for enhancement features
@@ -2942,45 +2970,45 @@ export const warehouseCostCorrectionSchema = z.object({
 }).strict();
 
 export const insertWarehouseStockSchema = createInsertSchema(warehouseStock).omit({
-  id: true,
-  createdAt: true,
-  statusChangedAt: true,
-  filteredAt: true,
-  packedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  statusChangedAt: true as any,
+  filteredAt: true as any,
+  packedAt: true as any,
 });
 
 export const insertFilterRecordSchema = createInsertSchema(filterRecords).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertSettingSchema = createInsertSchema(settings).omit({
-  id: true,
-  updatedAt: true,
+  id: true as any,
+  updatedAt: true as any,
 });
 
 // Shipping insert schemas
 export const insertCarrierSchema = createInsertSchema(carriers).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertShipmentSchema = createInsertSchema(shipments).omit({
-  id: true,
-  shipmentNumber: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  shipmentNumber: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertShipmentItemSchema = createInsertSchema(shipmentItems).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertShippingCostSchema = createInsertSchema(shippingCosts).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 }).refine((data) => {
   // Require exchangeRate for non-USD currencies
   if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
@@ -2993,116 +3021,116 @@ export const insertShippingCostSchema = createInsertSchema(shippingCosts).omit({
 });
 
 export const insertDeliveryTrackingSchema = createInsertSchema(deliveryTracking).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 // Stage 4: Multi-leg shipping insert schemas
 export const insertShipmentLegSchema = createInsertSchema(shipmentLegs).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  confirmedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
+  confirmedAt: true as any,
 });
 
 export const insertArrivalCostSchema = createInsertSchema(arrivalCosts).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertShipmentInspectionSchema = createInsertSchema(shipmentInspections).omit({
-  id: true,
-  inspectionNumber: true,
-  createdAt: true,
-  completedAt: true,
+  id: true as any,
+  inspectionNumber: true as any,
+  createdAt: true as any,
+  completedAt: true as any,
 });
 
 export const insertLandedCostCalculationSchema = createInsertSchema(landedCostCalculations).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  approvedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
+  approvedAt: true as any,
 });
 
 // Advanced warehouse insert schemas
 export const insertQualityStandardSchema = createInsertSchema(qualityStandards).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertWarehouseBatchSchema = createInsertSchema(warehouseBatches).omit({
-  id: true,
-  batchNumber: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  batchNumber: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertQualityInspectionSchema = createInsertSchema(qualityInspections).omit({
-  id: true,
-  inspectionNumber: true,
-  completedAt: true,
-  approvedAt: true,
-  createdAt: true,
+  id: true as any,
+  inspectionNumber: true as any,
+  completedAt: true as any,
+  approvedAt: true as any,
+  createdAt: true as any,
 });
 
 export const insertInventoryConsumptionSchema = createInsertSchema(inventoryConsumption).omit({
-  id: true,
-  consumptionNumber: true,
-  createdAt: true,
+  id: true as any,
+  consumptionNumber: true as any,
+  createdAt: true as any,
 });
 
 export const insertProcessingOperationSchema = createInsertSchema(processingOperations).omit({
-  id: true,
-  operationNumber: true,
-  createdAt: true,
-  updatedAt: true,
-  startedAt: true,
-  completedAt: true,
+  id: true as any,
+  operationNumber: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
+  startedAt: true as any,
+  completedAt: true as any,
 });
 
 export const insertStockTransferSchema = createInsertSchema(stockTransfers).omit({
-  id: true,
-  transferNumber: true,
-  transferredAt: true,
-  createdAt: true,
+  id: true as any,
+  transferNumber: true as any,
+  transferredAt: true as any,
+  createdAt: true as any,
 });
 
 export const insertInventoryAdjustmentSchema = createInsertSchema(inventoryAdjustments).omit({
-  id: true,
-  adjustmentNumber: true,
-  approvedAt: true,
-  createdAt: true,
+  id: true as any,
+  adjustmentNumber: true as any,
+  approvedAt: true as any,
+  createdAt: true as any,
 });
 
 // Sales Pipeline Insert Schemas
 export const insertCustomerSchema = createInsertSchema(customers).omit({
-  id: true,
-  customerNumber: true,
-  totalOrdersCount: true,
-  totalRevenueUsd: true,
-  averageOrderValueUsd: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  customerNumber: true as any,
+  totalOrdersCount: true as any,
+  totalRevenueUsd: true as any,
+  averageOrderValueUsd: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateCustomerSchema = insertCustomerSchema.partial().omit({
-  createdBy: true,
+  createdBy: true as any,
 });
 
 const baseSalesOrderSchema = createInsertSchema(salesOrders).omit({
-  id: true,
-  salesOrderNumber: true,
-  subtotalAmount: true,
-  totalAmount: true,
-  totalAmountUsd: true,
-  balanceDue: true,
-  confirmedAt: true,
-  fulfilledAt: true,
-  deliveredAt: true,
-  cancelledAt: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  salesOrderNumber: true as any,
+  subtotalAmount: true as any,
+  totalAmount: true as any,
+  totalAmountUsd: true as any,
+  balanceDue: true as any,
+  confirmedAt: true as any,
+  fulfilledAt: true as any,
+  deliveredAt: true as any,
+  cancelledAt: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertSalesOrderSchema = baseSalesOrderSchema.refine((data) => {
@@ -3117,9 +3145,9 @@ export const insertSalesOrderSchema = baseSalesOrderSchema.refine((data) => {
 });
 
 export const updateSalesOrderSchema = baseSalesOrderSchema.partial().omit({
-  customerId: true,
-  salesRepId: true,
-  createdBy: true,
+  customerId: true as any,
+  salesRepId: true as any,
+  createdBy: true as any,
 }).refine((data) => {
   // Require exchangeRate for non-USD currencies when currency is provided
   if (data.currency && data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
@@ -3132,53 +3160,53 @@ export const updateSalesOrderSchema = baseSalesOrderSchema.partial().omit({
 });
 
 export const insertSalesOrderItemSchema = createInsertSchema(salesOrderItems).omit({
-  id: true,
-  lineTotal: true,
-  lineTotalUsd: true,
-  totalCostUsd: true,
-  marginAmount: true,
-  marginPercent: true,
-  quantityReserved: true,
-  quantityFulfilled: true,
-  quantityDelivered: true,
-  createdAt: true,
+  id: true as any,
+  lineTotal: true as any,
+  lineTotalUsd: true as any,
+  totalCostUsd: true as any,
+  marginAmount: true as any,
+  marginPercent: true as any,
+  quantityReserved: true as any,
+  quantityFulfilled: true as any,
+  quantityDelivered: true as any,
+  createdAt: true as any,
 });
 
 export const updateSalesOrderItemSchema = insertSalesOrderItemSchema.partial().omit({
-  salesOrderId: true,
+  salesOrderId: true as any,
 });
 
 export const insertSalesReturnSchema = createInsertSchema(salesReturns).omit({
-  id: true,
-  returnNumber: true,
-  status: true,
-  processedAt: true,
-  isApproved: true,
-  approvedBy: true,
-  approvedAt: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  returnNumber: true as any,
+  status: true as any,
+  processedAt: true as any,
+  isApproved: true as any,
+  approvedBy: true as any,
+  approvedAt: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateSalesReturnSchema = insertSalesReturnSchema.partial().omit({
-  originalSalesOrderId: true,
-  originalSalesOrderItemId: true,
-  returnedBy: true,
+  originalSalesOrderId: true as any,
+  originalSalesOrderItemId: true as any,
+  returnedBy: true as any,
 });
 
 export const insertCustomerCommunicationSchema = createInsertSchema(customerCommunications).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertRevenueTransactionSchema = createInsertSchema(revenueTransactions).omit({
-  id: true,
-  transactionNumber: true,
-  amountUsd: true,
-  grossMargin: true,
-  grossMarginPercent: true,
-  approvedAt: true,
-  createdAt: true,
+  id: true as any,
+  transactionNumber: true as any,
+  amountUsd: true as any,
+  grossMargin: true as any,
+  grossMarginPercent: true as any,
+  approvedAt: true as any,
+  createdAt: true as any,
 }).refine((data) => {
   // Require exchangeRate for non-USD currencies
   if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
@@ -3191,50 +3219,50 @@ export const insertRevenueTransactionSchema = createInsertSchema(revenueTransact
 });
 
 export const insertSalesPerformanceMetricSchema = createInsertSchema(salesPerformanceMetrics).omit({
-  id: true,
-  calculatedAt: true,
-  createdAt: true,
+  id: true as any,
+  calculatedAt: true as any,
+  createdAt: true as any,
 });
 
 export const insertCustomerCreditLimitSchema = createInsertSchema(customerCreditLimits).omit({
-  id: true,
-  currentBalance: true,
-  availableCredit: true,
-  suspendedAt: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  currentBalance: true as any,
+  availableCredit: true as any,
+  suspendedAt: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertPricingRuleSchema = createInsertSchema(pricingRules).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 // ===== OPERATING EXPENSES SYSTEM SCHEMAS (STAGE 5) =====
 
 export const insertSupplySchema = createInsertSchema(supplies).omit({
-  id: true,
-  supplyNumber: true,
-  totalValueUsd: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  supplyNumber: true as any,
+  totalValueUsd: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertOperatingExpenseCategorySchema = createInsertSchema(operatingExpenseCategories).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertOperatingExpenseSchema = createInsertSchema(operatingExpenses).omit({
-  id: true,
-  expenseNumber: true,
-  amountUsd: true,
-  remaining: true,
-  approvedAt: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  expenseNumber: true as any,
+  amountUsd: true as any,
+  remaining: true as any,
+  approvedAt: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 }).refine((data) => {
   // Require exchangeRate for non-USD currencies
   if (data.currency !== 'USD' && (!data.exchangeRate || data.exchangeRate === '0')) {
@@ -3247,22 +3275,22 @@ export const insertOperatingExpenseSchema = createInsertSchema(operatingExpenses
 });
 
 export const insertSupplyConsumptionSchema = createInsertSchema(supplyConsumption).omit({
-  id: true,
-  consumptionNumber: true,
-  totalCostUsd: true,
-  createdAt: true,
+  id: true as any,
+  consumptionNumber: true as any,
+  totalCostUsd: true as any,
+  createdAt: true as any,
 });
 
 export const insertSupplyPurchaseSchema = createInsertSchema(supplyPurchases).omit({
-  id: true,
-  purchaseNumber: true,
-  totalAmount: true,
-  amountUsd: true,
-  remaining: true,
-  exchangeRate: true, // Stage 1 Compliance: No client-provided exchange rates
-  receivedDate: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  purchaseNumber: true as any,
+  totalAmount: true as any,
+  amountUsd: true as any,
+  remaining: true as any,
+  exchangeRate: true as any, // Stage 1 Compliance: No client-provided exchange rates
+  receivedDate: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 // Note: exchangeRate validation removed since it's omitted from schema (handled server-side)
 
@@ -3280,8 +3308,8 @@ export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
 // STAGE 2 COMPLIANCE: Quality assessment types
 export type SupplierQualityAssessment = typeof supplierQualityAssessments.$inferSelect;
 export const insertSupplierQualityAssessmentSchema = createInsertSchema(supplierQualityAssessments).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 export type InsertSupplierQualityAssessment = z.infer<typeof insertSupplierQualityAssessmentSchema>;
 
@@ -3410,28 +3438,28 @@ export type InsertSupplyPurchase = z.infer<typeof insertSupplyPurchaseSchema>;
 
 // Approval system insert schemas
 export const insertApprovalChainSchema = createInsertSchema(approvalChains).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertApprovalRequestSchema = createInsertSchema(approvalRequests).omit({
-  id: true,
-  requestNumber: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  requestNumber: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
-  id: true,
-  timestamp: true,
+  id: true as any,
+  timestamp: true as any,
 });
 
 export const insertPermissionGrantSchema = createInsertSchema(permissionGrants).omit({
-  id: true,
-  currentUsageCount: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  currentUsageCount: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 // Approval system types
@@ -4202,59 +4230,59 @@ export const workflowValidations = pgTable("workflow_validations", {
 
 // AI-related insert schemas
 export const insertAiInsightsCacheSchema = createInsertSchema(aiInsightsCache).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertAiConversationSchema = createInsertSchema(aiConversations).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 // Period management insert schemas
 export const insertPeriodSchema = createInsertSchema(periods).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertPeriodClosingLogSchema = createInsertSchema(periodClosingLogs).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertPeriodAdjustmentSchema = createInsertSchema(periodAdjustments).omit({
-  id: true,
-  createdAt: true,
-  approvedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  approvedAt: true as any,
 });
 
 // Workflow validation insert schema
 export const insertWorkflowValidationSchema = createInsertSchema(workflowValidations).omit({
-  id: true,
-  createdAt: true,
-  completedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  completedAt: true as any,
 });
 
 // Export management insert schemas
 export const insertExportHistorySchema = createInsertSchema(exportHistory).omit({
-  id: true,
-  createdAt: true,
-  completedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  completedAt: true as any,
 });
 
 export const insertExportPreferencesSchema = createInsertSchema(exportPreferences).omit({
-  id: true,
-  updatedAt: true,
+  id: true as any,
+  updatedAt: true as any,
 });
 
 export const insertExportJobSchema = createInsertSchema(exportJobs).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  lastRun: true,
-  nextRun: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
+  lastRun: true as any,
+  nextRun: true as any,
 });
 
 // AI-related types
@@ -4749,37 +4777,37 @@ export const budgetTracking = pgTable("budget_tracking", {
 
 // Financial reporting insert schemas
 export const insertFinancialPeriodSchema = createInsertSchema(financialPeriods).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  closedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
+  closedAt: true as any,
 });
 
 export const insertFinancialMetricSchema = createInsertSchema(financialMetrics).omit({
-  id: true,
-  calculatedAt: true,
+  id: true as any,
+  calculatedAt: true as any,
 });
 
 export const insertProfitLossStatementSchema = createInsertSchema(profitLossStatements).omit({
-  id: true,
-  createdAt: true,
-  approvedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  approvedAt: true as any,
 });
 
 export const insertCashFlowAnalysisSchema = createInsertSchema(cashFlowAnalysis).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertMarginAnalysisSchema = createInsertSchema(marginAnalysis).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
 });
 
 export const insertBudgetTrackingSchema = createInsertSchema(budgetTracking).omit({
-  id: true,
-  createdAt: true,
-  approvedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  approvedAt: true as any,
 });
 
 // Financial reporting types
@@ -5149,44 +5177,44 @@ export type InsertDocumentWorkflowState = typeof documentWorkflowStates.$inferIn
 
 // Document management insert schemas
 export const insertDocumentSchema = createInsertSchema(documents).omit({
-  id: true,
-  documentNumber: true,
-  currentVersion: true,
-  isLatestVersion: true,
-  createdAt: true,
-  modifiedAt: true,
-  approvedAt: true,
-  archivedAt: true,
+  id: true as any,
+  documentNumber: true as any,
+  currentVersion: true as any,
+  isLatestVersion: true as any,
+  createdAt: true as any,
+  modifiedAt: true as any,
+  approvedAt: true as any,
+  archivedAt: true as any,
 });
 
 export const insertDocumentVersionSchema = createInsertSchema(documentVersions).omit({
-  id: true,
-  createdAt: true,
-  approvedAt: true,
-  supersededAt: true,
+  id: true as any,
+  createdAt: true as any,
+  approvedAt: true as any,
+  supersededAt: true as any,
 });
 
 export const insertDocumentMetadataSchema = createInsertSchema(documentMetadata).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertDocumentComplianceSchema = createInsertSchema(documentCompliance).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const insertDocumentAccessLogSchema = createInsertSchema(documentAccessLogs).omit({
-  id: true,
-  accessedAt: true,
+  id: true as any,
+  accessedAt: true as any,
 });
 
 export const insertDocumentWorkflowStateSchema = createInsertSchema(documentWorkflowStates).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 // Document management request schemas
@@ -5352,9 +5380,9 @@ export interface DocumentAnalytics {
 
 // Notification settings schemas
 export const insertNotificationSettingSchema = createInsertSchema(notificationSettings).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateNotificationSettingSchema = insertNotificationSettingSchema.partial();
@@ -5370,9 +5398,9 @@ export const notificationSettingFilterSchema = z.object({
 
 // Notification template schemas
 export const insertNotificationTemplateSchema = createInsertSchema(notificationTemplates).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateNotificationTemplateSchema = insertNotificationTemplateSchema.partial();
@@ -5388,9 +5416,9 @@ export const notificationTemplateFilterSchema = z.object({
 
 // Notification queue schemas
 export const insertNotificationQueueSchema = createInsertSchema(notificationQueue).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateNotificationQueueSchema = z.object({
@@ -5433,9 +5461,9 @@ export const createNotificationSchema = z.object({
 
 // Alert configuration schemas
 export const insertAlertConfigurationSchema = createInsertSchema(alertConfigurations).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateAlertConfigurationSchema = insertAlertConfigurationSchema.partial().extend({
@@ -5546,10 +5574,10 @@ export type ThresholdConfiguration = z.infer<typeof thresholdConfigurationSchema
 
 // Revenue ledger schemas
 export const insertRevenueLedgerSchema = createInsertSchema(revenueLedger).omit({
-  id: true,
-  revEntryId: true,
-  amountUsd: true,
-  createdAt: true,
+  id: true as any,
+  revEntryId: true as any,
+  amountUsd: true as any,
+  createdAt: true as any,
 });
 
 export const updateRevenueLedgerSchema = insertRevenueLedgerSchema.partial().extend({
@@ -5575,13 +5603,13 @@ export const revenueLedgerFilterSchema = z.object({
 
 // Withdrawal records schemas
 export const insertWithdrawalRecordSchema = createInsertSchema(withdrawalRecords).omit({
-  id: true,
-  withdrawalId: true,
-  amountUsd: true,
-  approvedAt: true,
-  completedAt: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  withdrawalId: true as any,
+  amountUsd: true as any,
+  approvedAt: true as any,
+  completedAt: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateWithdrawalRecordSchema = insertWithdrawalRecordSchema.partial().extend({
@@ -5610,15 +5638,15 @@ export const withdrawalApprovalSchema = z.object({
 
 // Reinvestment schemas
 export const insertReinvestmentSchema = createInsertSchema(reinvestments).omit({
-  id: true,
-  reinvestId: true,
-  transferCostUsd: true,
-  capitalEntryId: true,
-  operatingExpenseId: true,
-  approvedAt: true,
-  completedAt: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  reinvestId: true as any,
+  transferCostUsd: true as any,
+  capitalEntryId: true as any,
+  operatingExpenseId: true as any,
+  approvedAt: true as any,
+  completedAt: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateReinvestmentSchema = insertReinvestmentSchema.partial().extend({
@@ -5647,9 +5675,9 @@ export const reinvestmentApprovalSchema = z.object({
 
 // Revenue balance summary schemas
 export const insertRevenueBalanceSummarySchema = createInsertSchema(revenueBalanceSummary).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as any,
+  createdAt: true as any,
+  updatedAt: true as any,
 });
 
 export const updateRevenueBalanceSummarySchema = insertRevenueBalanceSummarySchema.partial().extend({
@@ -5867,18 +5895,18 @@ export interface NotificationAnalytics {
 
 // Enhanced settings schema
 export const insertSettingsHistorySchema = createInsertSchema(settingsHistory).omit({
-  id: true,
+  id: true as any,
   createdAt: true
 });
 
 export const insertNumberingSchemeSchema = createInsertSchema(numberingSchemes).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
   updatedAt: true
 });
 
 export const insertConfigurationSnapshotSchema = createInsertSchema(configurationSnapshots).omit({
-  id: true,
+  id: true as any,
   createdAt: true
 });
 
@@ -6002,8 +6030,8 @@ export const approvalGuards = pgTable("approval_guards", {
 
 // Approval guard schemas
 export const insertApprovalGuardSchema = createInsertSchema(approvalGuards).omit({
-  id: true,
-  createdAt: true,
+  id: true as any,
+  createdAt: true as any,
   updatedAt: true
 });
 
