@@ -757,6 +757,7 @@ export const inventoryAdjustments = pgTable("inventory_adjustments", {
   adjustmentDate: timestamp("adjustment_date").notNull().defaultNow(),
   approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // ===== OPERATING EXPENSES SYSTEM TABLES (STAGE 5) =====

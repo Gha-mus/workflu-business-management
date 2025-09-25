@@ -7097,9 +7097,12 @@ export class DatabaseStorage implements IStorage {
         .insert(warehouseBatches)
         .values({
           batchNumber: `${originalBatch.batchNumber}-SPLIT-${Date.now()}`,
+          purchaseId: originalBatch.purchaseId,
+          orderId: originalBatch.orderId,
           supplierId: originalBatch.supplierId,
           qualityGrade: originalBatch.qualityGrade,
           totalQuantityKg: splitQuantityKg,
+          remainingQuantityKg: splitQuantityKg,
           notes: `Split from batch ${originalBatch.batchNumber}`,
           createdBy: userId,
         })
@@ -7345,7 +7348,7 @@ export class DatabaseStorage implements IStorage {
     const transfers = await db
       .select()
       .from(stockTransfers)
-      .where(eq(stockTransfers.warehouseStockId, stockId))
+      .where(eq(stockTransfers.fromWarehouseStockId, stockId))
       .orderBy(desc(stockTransfers.createdAt));
 
     // Get adjustment records
