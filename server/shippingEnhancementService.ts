@@ -25,6 +25,7 @@ import { configurationService } from "./configurationService";
 import { commissionCalculationService } from "./commissionCalculationService";
 import { inspectionWorkflowService } from "./inspectionWorkflowService";
 import { nanoid } from "nanoid";
+import { SettlementType, SETTLEMENT_TYPE } from "../shared/enums/shipping";
 
 export interface ExtendedArrivalCost {
   shipmentId: string;
@@ -39,7 +40,7 @@ export interface ExtendedArrivalCost {
 
 export interface InspectionSettlement {
   inspectionId: string;
-  settlementType: 'accept' | 'claim' | 'return' | 'discount';
+  settlementType: SettlementType;
   settlementReason: string;
   negotiatedAmount?: number;
   discountPercent?: number;
@@ -181,12 +182,12 @@ class ShippingEnhancementService {
       let settlementResult: any = {};
 
       switch (settlement.settlementType) {
-        case 'accept':
+        case SETTLEMENT_TYPE.ACCEPT:
           // Accept goods as-is, proceed with normal warehouse transfer
           settlementResult = await this.processAcceptSettlement(inspection, userId);
           break;
 
-        case 'claim':
+        case SETTLEMENT_TYPE.CLAIM:
           // File claim with supplier/carrier
           if (!settlement.claimDetails) {
             throw new Error("Claim details required for claim settlement");
@@ -194,7 +195,7 @@ class ShippingEnhancementService {
           settlementResult = await this.processClaimSettlement(inspection, settlement.claimDetails, userId);
           break;
 
-        case 'return':
+        case SETTLEMENT_TYPE.RETURN:
           // Return goods to supplier
           if (!settlement.returnDetails) {
             throw new Error("Return details required for return settlement");
@@ -202,7 +203,7 @@ class ShippingEnhancementService {
           settlementResult = await this.processReturnSettlement(inspection, settlement.returnDetails, userId);
           break;
 
-        case 'discount':
+        case SETTLEMENT_TYPE.DISCOUNT:
           // Accept with negotiated discount
           if (!settlement.discountPercent) {
             throw new Error("Discount percent required for discount settlement");
@@ -258,7 +259,7 @@ class ShippingEnhancementService {
         userId,
         alertType: 'business_alert',
         alertCategory: 'shipping_delay',
-        priority: settlement.settlementType === 'return' ? 'high' : 'medium',
+        priority: settlement.settlementType === SETTLEMENT_TYPE.RETURN ? 'high' : 'medium',
         title: 'Inspection Settlement Processed',
         message: `Inspection settlement completed: ${settlement.settlementType} for shipment ${inspection.shipmentId}`,
         entityType: 'shipment_inspections',
