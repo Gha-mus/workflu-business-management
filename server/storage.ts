@@ -384,7 +384,10 @@ import {
   SupplyType,
   CapitalEntryType,
   DeliveryTrackingStatus,
-  SettlementType
+  SettlementType,
+  OperationStatus,
+  TransferStatus,
+  AdjustmentType
 } from '@shared/enums';
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
@@ -3136,18 +3139,19 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'supply_update',
         operationData: supply,
-        businessContext: `Update supply: ${beforeState?.name || id}`
+        businessContext: `Update supply: ${(beforeState as Supply)?.name || id}`
       });
     }
 
     // Recalculate total value if quantity or cost changed
     let updateData = { ...supply, updatedAt: new Date() };
     if (supply.quantityOnHand !== undefined || supply.unitCostUsd !== undefined) {
-      const currentSupply = beforeState || await this.getSupply(id);
+      // Load current supply to access persisted fields
+      const currentSupply = beforeState as Supply || await this.getSupply(id);
       if (currentSupply) {
-        const quantity = new Decimal(supply.quantityOnHand ?? currentSupply.quantityOnHand);
-        const unitCost = new Decimal(supply.unitCostUsd ?? currentSupply.unitCostUsd);
-        updateData.totalValueUsd = quantity.mul(unitCost).toFixed(2);
+        const quantity = new Decimal(supply.quantityOnHand !== undefined ? supply.quantityOnHand : currentSupply.quantityOnHand);
+        const unitCost = new Decimal(supply.unitCostUsd !== undefined ? supply.unitCostUsd : currentSupply.unitCostUsd);
+        // Note: totalValueUsd is auto-calculated in the database, don't set it manually
       }
     }
 
@@ -3393,7 +3397,7 @@ export class DatabaseStorage implements IStorage {
         'supply_consumption',
         null,
         result,
-        -parseFloat(consumption.totalCostUsd), // Negative impact for consumption (cost)
+        -parseFloat(result.totalCostUsd), // Negative impact for consumption (cost)
         'USD'
       );
     }
@@ -3470,7 +3474,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'supply_purchase',
         operationData: purchase,
-        amount: parseFloat(purchase.totalAmount),
+        amount: parseFloat(purchase.unitPrice) * parseFloat(purchase.quantity),
         currency: purchase.currency,
         businessContext: `Supply purchase from supplier`
       });
@@ -3491,7 +3495,7 @@ export class DatabaseStorage implements IStorage {
         'supply_purchase',
         null,
         result,
-        -parseFloat(purchase.totalAmount), // Negative impact for purchases (outflow)
+        -parseFloat(result.totalAmount), // Negative impact for purchases (outflow)
         purchase.currency
       );
     }
@@ -3503,20 +3507,26 @@ export class DatabaseStorage implements IStorage {
     // Generate next purchase number
     const purchaseNumber = await this.generateNextSupplyPurchaseNumberInTransaction(tx);
     
-    // Convert amount to USD for normalization
-    let amountUsd = new Decimal(purchase.totalAmount);
-    if (purchase.currency === 'ETB' && purchase.exchangeRate) {
-      amountUsd = amountUsd.div(new Decimal(purchase.exchangeRate));
+    // Calculate total amount from quantity and unit price
+    const totalAmount = new Decimal(purchase.quantity).mul(new Decimal(purchase.unitPrice));
+    
+    // Convert amount to USD for normalization  
+    let amountUsd = totalAmount;
+    if (purchase.currency === 'ETB') {
+      // Use a default exchange rate if not provided (should be improved with proper service)
+      const exchangeRate = new Decimal('55.0'); // Default ETB/USD rate
+      amountUsd = totalAmount.div(exchangeRate);
     }
     
     // Calculate remaining amount
     const amountPaid = new Decimal(purchase.amountPaid || '0');
-    const remaining = new Decimal(purchase.totalAmount).sub(amountPaid);
+    const remaining = totalAmount.sub(amountPaid);
 
     // Create the supply purchase
     const [result] = await tx.insert(supplyPurchases).values({
       ...purchase,
       purchaseNumber,
+      totalAmount: totalAmount.toFixed(2),
       amountUsd: amountUsd.toFixed(2),
       remaining: remaining.toFixed(2),
     }).returning();
