@@ -1,0 +1,94 @@
+Here’s Root Cause #1 to send now—detailed, firm, and self-contained.
+(When they finish this exactly, bring me the result and I’ll give you Root Cause #2.)
+
+⸻
+
+Subject: Root Cause 1 — Normalize TypeScript target & iteration settings (fix TS2802/Iterable issues)
+
+Do this now. Don’t come back until it’s fully done and verified. No partial work.
+
+Objective (non-negotiable)
+
+Unify our TypeScript compilation target across the repo and enable proper iteration over Map/Set and other ES iterables. This must remove all TS2802 errors and any “cannot find iterator” issues.
+
+Why this matters
+
+We are seeing errors like:
+
+error TS2802: Type 'Map<...>' can only be iterated when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+
+These come from a misconfigured tsconfig (target too low and/or missing downlevelIteration and proper ES libs). Fixing the config eliminates these errors without touching app code.
+
+Step-by-step
+	1.	Inventory every tsconfig in the repo.
+List them (paths + extends):
+	•	Root: tsconfig.json
+	•	Server: server/tsconfig.json (if exists)
+	•	Client: client/tsconfig.json (if exists)
+	•	Test/build configs: tsconfig.*.json
+Return this list verbatim in your report.
+	2.	Create/confirm a single base config.
+Add tsconfig.base.json at repo root with at least:
+
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2019", "DOM"],
+    "downlevelIteration": true,
+    "moduleResolution": "Node",
+    "skipLibCheck": true,
+    "strict": true
+  }
+}
+
+	•	Do not change module / bundler integrations (Vite, tsx, etc.).
+	•	If this is a pure Node server package, DOM can remain; it’s harmless and keeps shared types compiling. If you prefer, use ["ES2019"] for server-only packages, but keep client configs with DOM.
+
+	3.	Make all other tsconfigs extend the base.
+Example server/tsconfig.json:
+
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../dist/server"
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}
+
+Example client/tsconfig.json:
+
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
+
+	•	Remove duplicated target/lib/downlevelIteration from child configs so the base rules actually apply.
+	•	If there are multiple independent packages, each should extends the base.
+
+	4.	Prove the compiler is picking up the right settings.
+	•	Run: npx tsc --showConfig > /tmp/ts-show.json
+	•	In your report, paste the values you read for:
+	•	compilerOptions.target
+	•	compilerOptions.downlevelIteration
+	•	compilerOptions.lib
+	5.	Rebuild & measure.
+	•	Before/after counts for TS2802 and any iterator-related errors.
+	•	Commands you ran (e.g., npx tsc --noEmit 2>&1 | tee /tmp/ts.log and a grep count for TS2802).
+
+Acceptance criteria
+	•	All tsconfig.*.json extend a single tsconfig.base.json (list them).
+	•	Effective settings are target: ES2019+ and downlevelIteration: true with lib including ES2015+ (we use ES2019).
+	•	Zero remaining TS2802 errors.
+	•	No increase in other TS error counts.
+	•	App still builds and runs.
+
+Deliverables
+	•	The inventory list of tsconfig files and their extends chains.
+	•	A diff (or bullet list) of the exact changes made.
+	•	The --showConfig excerpts proving target/lib/iteration values.
+	•	Error counts before/after for TS2802.
+
+Do not return until all acceptance criteria are met and verified.
