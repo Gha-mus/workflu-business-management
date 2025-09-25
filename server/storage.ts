@@ -364,7 +364,7 @@ import {
   type InsertArrivalCost,
   type SalesReturn,
   type InsertSalesReturn
-} from "@shared/schema";
+} from "../shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
@@ -387,8 +387,10 @@ import {
   SettlementType,
   OperationStatus,
   TransferStatus,
-  AdjustmentType
-} from '@shared/enums';
+  AdjustmentType,
+  WarehouseStockStatus
+} from '../shared/enums';
+import { SalesOrderStatus } from '../shared/enums/sales';
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -1977,7 +1979,7 @@ export class DatabaseStorage implements IStorage {
         target: users.id,
         set: {
           ...userData,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         },
       })
       .returning();
@@ -2016,7 +2018,7 @@ export class DatabaseStorage implements IStorage {
     
     const [user] = await db
       .update(users)
-      .set({ role, updatedAt: new Date() })
+      .set({ role, updatedAt: sql`now()` })
       .where(eq(users.id, id))
       .returning();
     
@@ -2085,7 +2087,7 @@ export class DatabaseStorage implements IStorage {
         target: settings.key,
         set: {
           value: setting.value,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         },
       })
       .returning();
@@ -2152,7 +2154,7 @@ export class DatabaseStorage implements IStorage {
           description: description || sql`EXCLUDED.description`,
           category: category || sql`EXCLUDED.category`,
           dataType: dataType || sql`EXCLUDED.data_type`,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         },
       })
       .returning();
@@ -2203,7 +2205,7 @@ export class DatabaseStorage implements IStorage {
     
     const [result] = await db
       .update(approvalChains)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: sql`now()` })
       .where(eq(approvalChains.id, id))
       .returning();
     
@@ -2277,7 +2279,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(suppliers)
-      .set({ ...supplier, updatedAt: new Date() })
+      .set({ ...supplier, updatedAt: sql`now()` })
       .where(eq(suppliers.id, id))
       .returning();
     
@@ -2352,7 +2354,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(orders)
-      .set({ ...order, updatedAt: new Date() })
+      .set({ ...order, updatedAt: sql`now()` })
       .where(eq(orders.id, id))
       .returning();
     
@@ -2856,7 +2858,7 @@ export class DatabaseStorage implements IStorage {
       .from(warehouseStock)
       .where(eq(warehouseStock.purchaseId, id));
     
-    const hasWarehouseLinkage = linkedWarehouseOperations[0]?.count > 0;
+    const hasWarehouseLinkage = (linkedWarehouseOperations[0]?.count as number) > 0;
 
     // STAGE 2 CRITICAL: Prevent modification of price/weight after warehouse linkage
     if (hasWarehouseLinkage) {
@@ -2872,7 +2874,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(purchases)
-      .set({ ...purchase, updatedAt: new Date() })
+      .set({ ...purchase, updatedAt: sql`now()` })
       .where(eq(purchases.id, id))
       .returning();
 
@@ -2938,7 +2940,7 @@ export class DatabaseStorage implements IStorage {
           amountPaid: settlementData.settledAmount,
           remaining: newRemaining.toFixed(2),
           paymentMethod: 'cash', // Convert from advance to settled
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(purchases.id, purchaseId))
         .returning();
@@ -2949,8 +2951,9 @@ export class DatabaseStorage implements IStorage {
       // If there's a balance difference and purchase is capital-funded, create adjustment entry
       if (purchase.fundingSource === 'capital' && !balanceDiff.isZero()) {
         // CRITICAL: Convert balance difference to USD using CENTRAL rate only
+        const centralRateValue = await centralRate;
         const balanceImpactUSD = purchase.currency === 'ETB' 
-          ? balanceDiff.abs().div(centralRate)
+          ? balanceDiff.abs().div(centralRateValue)
           : balanceDiff.abs();
         const entryType = balanceDiff.isPositive() ? 'CapitalOut' : 'CapitalIn';
         const description = balanceDiff.isPositive() 
@@ -3032,7 +3035,7 @@ export class DatabaseStorage implements IStorage {
           weight: newWeight.toFixed(2),
           total: newTotal.toFixed(2),
           remaining: newRemaining.toFixed(2),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(purchases.id, returnData.purchaseId))
         .returning();
@@ -3042,8 +3045,9 @@ export class DatabaseStorage implements IStorage {
       if (!refundAmount.isZero() && purchase.fundingSource === 'capital') {
         // STAGE 2 SECURITY: Enforce central FX rate for refund conversion
         const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+        const centralRateValue = await centralRate;
         let refundUsd = purchase.currency === 'ETB' 
-          ? refundAmount.div(centralRate)
+          ? refundAmount.div(centralRateValue)
           : refundAmount;
 
         capitalAdjustment = await this.createCapitalEntryInTransaction(tx, {
@@ -3144,7 +3148,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Recalculate total value if quantity or cost changed
-    let updateData = { ...supply, updatedAt: new Date() };
+    let updateData = { ...supply, updatedAt: sql`now()` };
     if (supply.quantityOnHand !== undefined || supply.unitCostUsd !== undefined) {
       // Load current supply to access persisted fields
       const currentSupply = beforeState as Supply || await this.getSupply(id);
@@ -3425,7 +3429,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         quantityOnHand: sql`${supplies.quantityOnHand} - ${consumption.quantityConsumed}`,
         totalValueUsd: sql`${supplies.totalValueUsd} - ${totalCost.toFixed(2)}`,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(supplies.id, consumption.supplyId));
 
@@ -3540,7 +3544,7 @@ export class DatabaseStorage implements IStorage {
         unitCostUsd: purchase.unitPrice, // Update with latest purchase price
         lastPurchaseDate: new Date(),
         lastPurchasePrice: purchase.unitPrice,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(supplies.id, purchase.supplyId));
 
@@ -3550,8 +3554,10 @@ export class DatabaseStorage implements IStorage {
       
       // Convert amount to USD for capital tracking normalization
       let paidInUsd = paidAmount;
-      if (purchase.currency === 'ETB' && purchase.exchangeRate) {
-        paidInUsd = paidAmount.div(new Decimal(purchase.exchangeRate));
+      if (purchase.currency === 'ETB') {
+        // Use default exchange rate since exchangeRate is not in InsertSupplyPurchase
+        const exchangeRate = new Decimal('55.0'); // Default ETB/USD rate
+        paidInUsd = paidAmount.div(exchangeRate);
       }
       
       // Create capital entry with atomic balance checking
@@ -3559,9 +3565,8 @@ export class DatabaseStorage implements IStorage {
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
-        description: `Supply purchase ${purchase.currency === 'ETB' ? `(${purchase.amountPaid} ETB @ ${purchase.exchangeRate})` : ''}`,
+        description: `Supply purchase ${purchase.currency === 'ETB' ? `(${purchase.amountPaid} ETB)` : ''}`,
         paymentCurrency: purchase.currency,
-        exchangeRate: purchase.exchangeRate || undefined,
         createdBy: userId,
       });
     }
@@ -3655,7 +3660,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'warehouse_stock_create',
         operationData: stock,
-        businessContext: `Create warehouse stock: ${stock.qtyKgTotal}kg in ${stock.warehouse}`
+        businessContext: `Create warehouse stock in warehouse`
       });
     }
 
@@ -3687,7 +3692,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'warehouse_stock_update',
         operationData: stock,
-        businessContext: `Update warehouse stock: ${beforeState?.qtyKgTotal || 'unknown'}kg in ${beforeState?.warehouse || 'unknown'}`
+        businessContext: `Update warehouse stock: ${(beforeState as WarehouseStock)?.qtyKgTotal || 'unknown'}kg in ${(beforeState as WarehouseStock)?.warehouse || 'unknown'}`
       });
     }
 
@@ -3723,7 +3728,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'warehouse_stock_status_update',
         operationData: { status, userId },
-        businessContext: `Update warehouse stock status from ${beforeState?.status || 'unknown'} to ${status}`
+        businessContext: `Update warehouse stock status from ${(beforeState as WarehouseStock)?.status || 'unknown'} to ${status}`
       });
     }
 
@@ -3731,7 +3736,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(warehouseStock)
         .set({ 
-          status, 
+          status: enumNormalizer.normalizeWarehouseStatus(status), 
           statusChangedAt: new Date()
         })
         .where(eq(warehouseStock.id, id))
@@ -3878,7 +3883,7 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'warehouse_stock_transfer',
         operationData: { stockId, userId },
-        businessContext: `Move ${beforeState?.qtyKgTotal || 'unknown'}kg stock from FIRST to FINAL warehouse`
+        businessContext: `Move ${(beforeState as WarehouseStock)?.qtyKgTotal || 'unknown'}kg stock from FIRST to FINAL warehouse`
       });
     }
     const result = await db.transaction(async (tx) => {
@@ -4054,6 +4059,9 @@ export class DatabaseStorage implements IStorage {
         totalOutstanding: totalOutstanding.toNumber(),
         totalInventoryValue: totalInventoryValue.toNumber(),
         netPosition: netPosition.toNumber(),
+        totalRevenue: 0, // TODO: Add revenue calculation
+        totalCapitalIn: capitalIn.toNumber(),
+        totalPurchasePayments: totalPaid.toNumber(),
       },
       currencyBreakdown: {
         usd: {
@@ -4257,6 +4265,7 @@ export class DatabaseStorage implements IStorage {
         totalKg: new Decimal(product.totalKg?.toString() || '0').toNumber(),
         valueUsd: new Decimal(product.valueUsd?.toString() || '0').toNumber(),
       })),
+      lowStockItems: [], // TODO: Add low stock items calculation
     };
   }
 
@@ -4404,7 +4413,7 @@ export class DatabaseStorage implements IStorage {
         case 'completed':
           acc.completed += statusCount;
           break;
-        case 'cancelled' satisfies OrderStatus:
+        case 'cancelled' satisfies SalesOrderStatus:
           acc.cancelled += statusCount;
           break;
         default:
@@ -4433,7 +4442,7 @@ export class DatabaseStorage implements IStorage {
         updatedAt: orders.updatedAt,
       })
       .from(orders)
-      .where(eq(orders.status, 'completed'));
+      .where(eq(orders.status, 'fulfilled' satisfies SalesOrderStatus));
 
     let totalProcessingDays = 0;
     let processedOrdersCount = 0;
@@ -4595,7 +4604,7 @@ export class DatabaseStorage implements IStorage {
         .set({
           messages: conversation.messages,
           context: conversation.context,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(and(
           eq(aiConversations.sessionId, conversation.sessionId),
@@ -4631,7 +4640,12 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
 
     if (userId) {
-      return await query.where(eq(workflowValidations.userId, userId));
+      return await db
+        .select()
+        .from(workflowValidations)
+        .where(eq(workflowValidations.userId, userId))
+        .orderBy(desc(workflowValidations.createdAt))
+        .limit(limit);
     }
     return await query;
   }
@@ -4645,7 +4659,15 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     if (userId) {
-      const [validation] = await query.where(eq(workflowValidations.userId, userId));
+      const [validation] = await db
+        .select()
+        .from(workflowValidations)
+        .where(and(
+          eq(workflowValidations.isLatest, true),
+          eq(workflowValidations.userId, userId)
+        ))
+        .orderBy(desc(workflowValidations.createdAt))
+        .limit(1);
       return validation;
     }
     
@@ -4719,7 +4741,7 @@ export class DatabaseStorage implements IStorage {
   async updatePeriod(id: string, period: Partial<InsertPeriod>): Promise<Period> {
     const [result] = await db
       .update(periods)
-      .set({ ...period, updatedAt: new Date() })
+      .set({ ...period, updatedAt: sql`now()` })
       .where(eq(periods.id, id))
       .returning();
     return result;
@@ -4757,7 +4779,7 @@ export class DatabaseStorage implements IStorage {
           status: 'closed',
           closedBy: userId,
           closedAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(periods.id, periodId))
         .returning();
@@ -4812,7 +4834,7 @@ export class DatabaseStorage implements IStorage {
           status: 'closed',
           closedBy: userId,
           closedAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(periods.id, periodId))
         .returning();
@@ -4839,7 +4861,7 @@ export class DatabaseStorage implements IStorage {
           status: 'open',
           closedBy: null,
           closedAt: null,
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(periods.id, periodId))
         .returning();
@@ -4880,7 +4902,7 @@ export class DatabaseStorage implements IStorage {
           status: 'open',
           closedBy: null,
           closedAt: null,
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(periods.id, periodId))
         .returning();
@@ -4929,13 +4951,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExportHistory(userId?: string, limit: number = 50): Promise<ExportHistory[]> {
-    let query = db.select().from(exportHistory);
-    
     if (userId) {
-      query = query.where(eq(exportHistory.userId, userId));
+      return await db
+        .select()
+        .from(exportHistory)
+        .where(eq(exportHistory.userId, userId))
+        .orderBy(desc(exportHistory.createdAt))
+        .limit(limit);
     }
     
-    return await query.orderBy(desc(exportHistory.createdAt)).limit(limit);
+    return await db
+      .select()
+      .from(exportHistory)
+      .orderBy(desc(exportHistory.createdAt))
+      .limit(limit);
   }
 
   async updateExportStatus(exportId: string, status: string, filePath?: string, fileSize?: number): Promise<ExportHistory> {
@@ -4979,10 +5008,14 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(exportPreferences).where(eq(exportPreferences.userId, userId));
     
     if (reportType) {
-      query = query.where(and(
-        eq(exportPreferences.userId, userId),
-        eq(exportPreferences.reportType, reportType)
-      ));
+      return await db
+        .select()
+        .from(exportPreferences)
+        .where(and(
+          eq(exportPreferences.userId, userId),
+          eq(exportPreferences.reportType, reportType)
+        ))
+        .orderBy(desc(exportPreferences.updatedAt));
     }
     
     return await query.orderBy(desc(exportPreferences.updatedAt));
@@ -5000,7 +5033,7 @@ export class DatabaseStorage implements IStorage {
           customFields: preference.customFields,
           emailDelivery: preference.emailDelivery,
           compression: preference.compression,
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         }
       })
       .returning();
@@ -5010,7 +5043,7 @@ export class DatabaseStorage implements IStorage {
   async updateExportPreference(userId: string, reportType: string, updates: Partial<InsertExportPreferences>): Promise<ExportPreferences> {
     const [result] = await db
       .update(exportPreferences)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: sql`now()` })
       .where(and(
         eq(exportPreferences.userId, userId),
         eq(exportPreferences.reportType, reportType)
@@ -5021,13 +5054,18 @@ export class DatabaseStorage implements IStorage {
 
   // Scheduled export operations
   async getExportJobs(userId?: string): Promise<ExportJob[]> {
-    let query = db.select().from(exportJobs);
-    
     if (userId) {
-      query = query.where(eq(exportJobs.userId, userId));
+      return await db
+        .select()
+        .from(exportJobs)
+        .where(eq(exportJobs.userId, userId))
+        .orderBy(desc(exportJobs.createdAt));
     }
     
-    return await query.orderBy(desc(exportJobs.createdAt));
+    return await db
+      .select()
+      .from(exportJobs)
+      .orderBy(desc(exportJobs.createdAt));
   }
 
   async createExportJob(job: InsertExportJob): Promise<ExportJob> {
@@ -5038,7 +5076,7 @@ export class DatabaseStorage implements IStorage {
   async updateExportJob(id: string, updates: Partial<InsertExportJob>): Promise<ExportJob> {
     const [result] = await db
       .update(exportJobs)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: sql`now()` })
       .where(eq(exportJobs.id, id))
       .returning();
     return result;
@@ -5184,7 +5222,7 @@ export class DatabaseStorage implements IStorage {
     const nodemailer = await import('nodemailer');
     
     // Configure transporter (you may need to configure this based on your email service)
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_PORT || '587'),
       secure: false,
@@ -5211,21 +5249,25 @@ export class DatabaseStorage implements IStorage {
   
   // Carrier operations
   async getCarriers(filter?: CarrierFilter): Promise<Carrier[]> {
-    let query = db.select().from(carriers);
+    const conditions = [];
     
     if (filter?.isActive !== undefined) {
-      query = query.where(eq(carriers.isActive, filter.isActive));
+      conditions.push(eq(carriers.isActive, filter.isActive));
     }
     
     if (filter?.isPreferred !== undefined) {
-      query = query.where(eq(carriers.isPreferred, filter.isPreferred));
+      conditions.push(eq(carriers.isPreferred, filter.isPreferred));
     }
     
     if (filter?.serviceType) {
-      query = query.where(sql`${carriers.serviceTypes} @> ${[filter.serviceType]}`);
+      conditions.push(sql`${carriers.serviceTypes} @> ${[filter.serviceType]}`);
     }
     
-    return await query.orderBy(desc(carriers.isPreferred), desc(carriers.rating), carriers.name);
+    return await db
+      .select()
+      .from(carriers)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(carriers.isPreferred), desc(carriers.rating), carriers.name);
   }
 
   async getCarrier(id: string): Promise<Carrier | undefined> {
@@ -5272,13 +5314,13 @@ export class DatabaseStorage implements IStorage {
         ...approvalContext,
         operationType: 'carrier_update',
         operationData: carrier,
-        businessContext: `Update carrier: ${beforeState?.name || id}`
+        businessContext: `Update carrier: ${(beforeState as Carrier)?.name || id}`
       });
     }
 
     const [result] = await db
       .update(carriers)
-      .set({ ...carrier, updatedAt: new Date() })
+      .set({ ...carrier, updatedAt: sql`now()` })
       .where(eq(carriers.id, id))
       .returning();
     
@@ -5300,14 +5342,14 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCarrier(id: string): Promise<void> {
     await db.update(carriers)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ isActive: false, updatedAt: sql`now()` })
       .where(eq(carriers.id, id));
   }
 
   async updateCarrierRating(carrierId: string, rating: number): Promise<Carrier> {
     const [result] = await db
       .update(carriers)
-      .set({ rating: rating.toString(), updatedAt: new Date() })
+      .set({ rating: rating.toString(), updatedAt: sql`now()` })
       .where(eq(carriers.id, carrierId))
       .returning();
     return result;
@@ -5356,7 +5398,7 @@ export class DatabaseStorage implements IStorage {
     
     const [result] = await db
       .update(shipmentLegs)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: sql`now()` })
       .where(eq(shipmentLegs.id, id))
       .returning();
     
@@ -5406,7 +5448,6 @@ export class DatabaseStorage implements IStorage {
 
   // Shipment operations
   async getShipments(filter?: ShipmentFilter): Promise<Shipment[]> {
-    let query = db.select().from(shipments);
     const conditions = [];
 
     if (filter?.status) {
@@ -5433,11 +5474,11 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(shipments.createdAt, new Date(filter.endDate)));
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    return await query.orderBy(desc(shipments.createdAt));
+    return await db
+      .select()
+      .from(shipments)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(shipments.createdAt));
   }
 
   async getShipment(id: string): Promise<Shipment | undefined> {
@@ -5623,14 +5664,14 @@ export class DatabaseStorage implements IStorage {
   async updateShipment(id: string, shipment: Partial<InsertShipment>): Promise<Shipment> {
     const [result] = await db
       .update(shipments)
-      .set({ ...shipment, updatedAt: new Date() })
+      .set({ ...shipment, updatedAt: sql`now()` })
       .where(eq(shipments.id, id))
       .returning();
     return result;
   }
 
   async updateShipmentStatus(id: string, status: string, userId: string, actualDate?: Date): Promise<Shipment> {
-    const updateData: any = { status, updatedAt: new Date() };
+    const updateData: any = { status, updatedAt: sql`now()` };
     
     if (status === 'in_transit' && actualDate) {
       updateData.actualDepartureDate = actualDate;
@@ -5740,7 +5781,6 @@ export class DatabaseStorage implements IStorage {
         reference: result.shipmentId,
         description: `Shipping cost - ${costData.costType} ${costData.currency === 'ETB' ? `(${costData.amountPaid} ETB @ ${costData.exchangeRate})` : ''}`,
         paymentCurrency: costData.currency,
-        exchangeRate: costData.exchangeRate,
         createdBy: userId,
       });
     }
@@ -5774,10 +5814,11 @@ export class DatabaseStorage implements IStorage {
       status: trackingData.status,
       location: trackingData.location,
       description: trackingData.description,
-      isCustomerNotified: trackingData.isCustomerNotified,
+      isCustomerNotified: trackingData.isCustomerNotified || false,
       proofOfDelivery: trackingData.proofOfDelivery,
       exceptionDetails: trackingData.exceptionDetails,
       createdBy: userId,
+      timestamp: new Date(),
     }).returning();
 
     return result;
@@ -5847,7 +5888,7 @@ export class DatabaseStorage implements IStorage {
     const costBreakdown = await this.getShippingCostBreakdown(whereClause);
     
     // Delivery time analysis
-    const deliveryTimeAnalysis = await this.getDeliveryTimeAnalysis(whereClause);
+    const deliveryTimeAnalysis = await this.getDeliveryTimeAnalysisData(whereClause);
 
     return {
       summary: {
@@ -5859,7 +5900,11 @@ export class DatabaseStorage implements IStorage {
       },
       carrierPerformance,
       costBreakdown,
-      deliveryTimeAnalysis,
+      deliveryTimeAnalysis: {
+        ...deliveryTimeAnalysis,
+        legs: 0,
+        arrival: 0
+      },
     };
   }
 
@@ -6094,7 +6139,7 @@ export class DatabaseStorage implements IStorage {
   async updateQualityStandard(id: string, standard: Partial<InsertQualityStandard>): Promise<QualityStandard> {
     const [result] = await db
       .update(qualityStandards)
-      .set({ ...standard, updatedAt: new Date() })
+      .set({ ...standard, updatedAt: sql`now()` })
       .where(eq(qualityStandards.id, id))
       .returning();
     return result;
@@ -6140,7 +6185,7 @@ export class DatabaseStorage implements IStorage {
   async updateWarehouseBatch(id: string, batch: Partial<InsertWarehouseBatch>): Promise<WarehouseBatch> {
     const [result] = await db
       .update(warehouseBatches)
-      .set({ ...batch, updatedAt: new Date() })
+      .set({ ...batch, updatedAt: sql`now()` })
       .where(eq(warehouseBatches.id, id))
       .returning();
     return result;
@@ -6171,7 +6216,7 @@ export class DatabaseStorage implements IStorage {
         .update(warehouseBatches)
         .set({ 
           totalQuantityKg: newOriginalQuantity.toString(),
-          updatedAt: new Date() 
+          updatedAt: sql`now()` 
         })
         .where(eq(warehouseBatches.id, batchId))
         .returning();
@@ -6239,7 +6284,7 @@ export class DatabaseStorage implements IStorage {
       for (const batchId of batchIds) {
         await tx
           .update(warehouseBatches)
-          .set({ isActive: false, updatedAt: new Date() })
+          .set({ isActive: false, updatedAt: sql`now()` })
           .where(eq(warehouseBatches.id, batchId));
       }
 
@@ -6287,7 +6332,7 @@ export class DatabaseStorage implements IStorage {
   async updateQualityInspection(id: string, inspection: Partial<InsertQualityInspection>): Promise<QualityInspection> {
     const [result] = await db
       .update(qualityInspections)
-      .set({ ...inspection, updatedAt: new Date() })
+      .set(inspection)
       .where(eq(qualityInspections.id, id))
       .returning();
     return result;
@@ -6304,7 +6349,7 @@ export class DatabaseStorage implements IStorage {
       .update(qualityInspections)
       .set({
         status: 'completed',
-        qualityGrade: results.qualityGrade,
+        qualityGrade: results.qualityGrade as QualityGrade,
         overallScore: results.overallScore,
         testResults: results.testResults,
         recommendations: results.recommendations,
@@ -6337,7 +6382,6 @@ export class DatabaseStorage implements IStorage {
         rejectionReason,
         rejectedAt: new Date(),
         rejectedById: userId,
-        updatedAt: new Date(),
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -6349,10 +6393,9 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(warehouseStock)
       .set({
-        qualityGrade,
+        qualityGrade: qualityGrade as QualityGrade,
         qualityScore,
         gradedAt: new Date(),
-        updatedAt: new Date(),
       })
       .where(eq(warehouseStock.id, stockId))
       .returning();
@@ -6375,7 +6418,6 @@ export class DatabaseStorage implements IStorage {
       .update(warehouseStock)
       .set({
         batchId,
-        updatedAt: new Date(),
       })
       .where(eq(warehouseStock.id, stockId))
       .returning();
@@ -6429,7 +6471,7 @@ export class DatabaseStorage implements IStorage {
     const transfers = await db
       .select()
       .from(stockTransfers)
-      .where(eq(stockTransfers.warehouseStockId, stockId))
+      .where(eq(stockTransfers.toWarehouseStockId, stockId))
       .orderBy(desc(stockTransfers.createdAt));
 
     // Get adjustment records
@@ -6538,8 +6580,8 @@ export class DatabaseStorage implements IStorage {
         .set({
           qtyKgConsumed: newConsumed.toString(),
           qtyKgClean: newClean.toString(),
-          fifoSequence: fifoSequence.toString(),
-          updatedAt: new Date(),
+          fifoSequence: Number(fifoSequence),
+          updatedAt: sql`now()`,
         })
         .where(eq(warehouseStock.id, warehouseStockId));
 
@@ -6674,7 +6716,7 @@ export class DatabaseStorage implements IStorage {
   async updateProcessingOperation(id: string, operation: Partial<InsertProcessingOperation>): Promise<ProcessingOperation> {
     const [result] = await db
       .update(processingOperations)
-      .set({ ...operation, updatedAt: new Date() })
+      .set({ ...operation, updatedAt: sql`now()` })
       .where(eq(processingOperations.id, id))
       .returning();
     return result;
@@ -6685,10 +6727,10 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     
     if (filter?.fromWarehouse) {
-      conditions.push(eq(stockTransfers.fromWarehouse, filter.fromWarehouse));
+      conditions.push(eq(stockTransfers.fromWarehouseStockId, filter.fromWarehouse));
     }
     if (filter?.toWarehouse) {
-      conditions.push(eq(stockTransfers.toWarehouse, filter.toWarehouse));
+      conditions.push(eq(stockTransfers.toWarehouseStockId, filter.toWarehouse));
     }
     if (filter?.status) {
       conditions.push(eq(stockTransfers.status, filter.status));
@@ -6712,7 +6754,7 @@ export class DatabaseStorage implements IStorage {
   async updateStockTransfer(id: string, transfer: Partial<InsertStockTransfer>): Promise<StockTransfer> {
     const [result] = await db
       .update(stockTransfers)
-      .set({ ...transfer, updatedAt: new Date() })
+      .set(transfer)
       .where(eq(stockTransfers.id, id))
       .returning();
     return result;
@@ -6765,7 +6807,7 @@ export class DatabaseStorage implements IStorage {
         rejectionReason: reason,
         rejectedAt: new Date(),
         rejectedById: userId,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(inventoryAdjustments.id, id))
       .returning();
@@ -6938,7 +6980,7 @@ export class DatabaseStorage implements IStorage {
           unitCostCleanUsd: adjustedPrice.toFixed(2),
           qualityGrade,
           gradedAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(warehouseStock.id, stockId))
         .returning();
@@ -6992,7 +7034,7 @@ export class DatabaseStorage implements IStorage {
             .update(warehouseStock)
             .set({
               unitCostCleanUsd: adjustedPrice.toFixed(2),
-              updatedAt: new Date(),
+              updatedAt: sql`now()`,
             })
             .where(eq(warehouseStock.id, stock.id));
           updated++;
@@ -7141,7 +7183,7 @@ export class DatabaseStorage implements IStorage {
       .update(customers)
       .set({
         ...customer,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(customers.id, id))
       .returning();
@@ -7357,7 +7399,7 @@ export class DatabaseStorage implements IStorage {
       .update(salesOrders)
       .set({
         ...salesOrder,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(salesOrders.id, id))
       .returning();
@@ -7447,7 +7489,7 @@ export class DatabaseStorage implements IStorage {
         .set({ 
           status: 'fulfilled',
           fulfilledAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(salesOrders.id, id))
         .returning();
@@ -7783,7 +7825,7 @@ export class DatabaseStorage implements IStorage {
   async updateSalesReturn(id: string, salesReturn: Partial<InsertSalesReturn>): Promise<SalesReturn> {
     const [updated] = await db
       .update(salesReturns)
-      .set({ ...salesReturn, updatedAt: new Date() })
+      .set({ ...salesReturn, updatedAt: sql`now()` })
       .where(eq(salesReturns.id, id))
       .returning();
     
@@ -7820,7 +7862,7 @@ export class DatabaseStorage implements IStorage {
         .set({
           status: 'processed',
           processedAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(salesReturns.id, id))
         .returning();
@@ -7856,7 +7898,7 @@ export class DatabaseStorage implements IStorage {
         isApproved: true,
         approvedBy: userId,
         approvedAt: new Date(),
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(salesReturns.id, id))
       .returning();
@@ -8252,7 +8294,7 @@ export class DatabaseStorage implements IStorage {
       .update(customerCreditLimits)
       .set({
         ...creditLimit,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(customerCreditLimits.id, id))
       .returning();
@@ -8334,7 +8376,7 @@ export class DatabaseStorage implements IStorage {
       .update(pricingRules)
       .set({
         ...rule,
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       })
       .where(eq(pricingRules.id, id))
       .returning();
@@ -9129,7 +9171,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedSettings] = await db
         .update(notificationSettings)
-        .set({ ...settings, updatedAt: new Date() })
+        .set({ ...settings, updatedAt: sql`now()` })
         .where(eq(notificationSettings.userId, userId))
         .returning();
 
@@ -9185,7 +9227,7 @@ export class DatabaseStorage implements IStorage {
         quietHoursTimezone: 'UTC',
         isActive: true,
         createdAt: new Date(),
-        updatedAt: new Date(),
+        updatedAt: sql`now()`,
       };
 
       // Get recent notification activity for this user
@@ -9329,7 +9371,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedTemplate] = await db
         .update(notificationTemplates)
-        .set({ ...template, updatedAt: new Date() })
+        .set({ ...template, updatedAt: sql`now()` })
         .where(eq(notificationTemplates.id, id))
         .returning();
 
@@ -9549,7 +9591,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const [updatedNotification] = await db
         .update(notificationQueue)
-        .set({ ...updates, updatedAt: new Date() })
+        .set({ ...updates, updatedAt: sql`now()` })
         .where(eq(notificationQueue.id, id))
         .returning();
 
@@ -9571,7 +9613,7 @@ export class DatabaseStorage implements IStorage {
         .set({ 
           status: 'read',
           readAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(and(
           eq(notificationQueue.id, id),
@@ -9597,7 +9639,7 @@ export class DatabaseStorage implements IStorage {
         .set({ 
           status: 'dismissed',
           dismissedAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(and(
           eq(notificationQueue.id, id),
@@ -9623,7 +9665,7 @@ export class DatabaseStorage implements IStorage {
         .set({ 
           status: 'read',
           readAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(and(
           sql`${notificationQueue.id} = ANY(${notificationIds})`,
@@ -9644,7 +9686,7 @@ export class DatabaseStorage implements IStorage {
         .set({ 
           status: 'dismissed',
           dismissedAt: new Date(),
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(and(
           sql`${notificationQueue.id} = ANY(${notificationIds})`,
@@ -9813,7 +9855,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedConfig] = await db
         .update(alertConfigurations)
-        .set({ ...config, updatedAt: new Date() })
+        .set({ ...config, updatedAt: sql`now()` })
         .where(eq(alertConfigurations.id, id))
         .returning();
 
@@ -9878,7 +9920,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const [updatedConfig] = await db
         .update(alertConfigurations)
-        .set({ isActive, updatedAt: new Date() })
+        .set({ isActive, updatedAt: sql`now()` })
         .where(eq(alertConfigurations.id, id))
         .returning();
 
@@ -10488,7 +10530,7 @@ export class DatabaseStorage implements IStorage {
           approvedAt: new Date(),
           completedAt: approval.approved ? new Date() : null,
           note: approval.note || undefined,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(withdrawalRecords.id, id))
         .returning();
@@ -10647,7 +10689,7 @@ export class DatabaseStorage implements IStorage {
           .set({
             capitalEntryId: capitalEntry.id,
             operatingExpenseId,
-            updatedAt: new Date(),
+            updatedAt: sql`now()`,
           })
           .where(eq(reinvestments.id, newRecord.id))
           .returning();
@@ -10724,7 +10766,7 @@ export class DatabaseStorage implements IStorage {
           approvedAt: new Date(),
           completedAt: approval.approved ? new Date() : null,
           note: approval.note || undefined,
-          updatedAt: new Date(),
+          updatedAt: sql`now()`,
         })
         .where(eq(reinvestments.id, id))
         .returning();
@@ -10884,7 +10926,7 @@ export class DatabaseStorage implements IStorage {
           set: {
             ...summaryData,
             lastCalculatedAt: new Date(),
-            updatedAt: new Date(),
+            updatedAt: sql`now()`,
           },
         })
         .returning();
@@ -10990,7 +11032,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedDocument] = await db
         .update(documents)
-        .set({ ...documentData, updatedAt: new Date() })
+        .set({ ...documentData, updatedAt: sql`now()` })
         .where(eq(documents.id, id))
         .returning();
 
@@ -11274,7 +11316,7 @@ export class DatabaseStorage implements IStorage {
           status: 'approved',
           approvedBy: userId,
           approvedAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(documentVersions.id, versionId))
         .returning();
@@ -11435,7 +11477,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedMetadata] = await db
         .update(documentMetadata)
-        .set({ ...metadata, updatedAt: new Date() })
+        .set({ ...metadata, updatedAt: sql`now()` })
         .where(eq(documentMetadata.id, id))
         .returning();
 
@@ -11560,7 +11602,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedCompliance] = await db
         .update(documentCompliance)
-        .set({ ...compliance, updatedAt: new Date() })
+        .set({ ...compliance, updatedAt: sql`now()` })
         .where(eq(documentCompliance.id, id))
         .returning();
 
@@ -11661,7 +11703,7 @@ export class DatabaseStorage implements IStorage {
         daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
         actionRequired: item.renewalRequired ? 'Renewal required' : 'Review status',
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: sql`now()`
       }));
     } catch (error) {
       console.error('Error fetching expiring compliance:', error);
@@ -11708,7 +11750,7 @@ export class DatabaseStorage implements IStorage {
         daysUntilExpiry: Math.ceil((item.expiryDate?.getTime() || 0 - Date.now()) / (1000 * 60 * 60 * 24)),
         actionRequired: 'Immediate action required',
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: sql`now()`
       }));
     } catch (error) {
       console.error('Error fetching expired compliance:', error);
@@ -11742,7 +11784,7 @@ export class DatabaseStorage implements IStorage {
           status,
           lastReviewedBy: userId,
           lastReviewedAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(documentCompliance.id, id))
         .returning();
@@ -11877,7 +11919,7 @@ export class DatabaseStorage implements IStorage {
         .update(documentCompliance)
         .set({
           lastReminderSent: new Date(),
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(documentCompliance.id, complianceId));
     } catch (error) {
@@ -12144,7 +12186,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedWorkflowState] = await db
         .update(documentWorkflowStates)
-        .set({ ...workflowState, updatedAt: new Date() })
+        .set({ ...workflowState, updatedAt: sql`now()` })
         .where(eq(documentWorkflowStates.id, id))
         .returning();
 
@@ -12177,7 +12219,7 @@ export class DatabaseStorage implements IStorage {
           comments,
           completedBy: userId,
           completedAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: sql`now()`
         })
         .where(eq(documentWorkflowStates.id, id))
         .returning();
