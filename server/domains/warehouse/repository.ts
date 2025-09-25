@@ -199,7 +199,6 @@ export class FilterRecordRepository extends BaseRepository<FilterRecord, InsertF
       return { filterRecord, updatedStock };
     });
   }
-}
 
   // Transaction-aware method for cross-domain operations
   async createWarehouseStockWithTransaction(tx: any, stockData: any): Promise<void> {
