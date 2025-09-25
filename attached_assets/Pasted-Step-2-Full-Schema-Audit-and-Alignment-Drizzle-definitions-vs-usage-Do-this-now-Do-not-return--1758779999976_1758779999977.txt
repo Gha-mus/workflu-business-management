@@ -1,0 +1,87 @@
+Step 2 — Full Schema Audit and Alignment (Drizzle definitions vs usage)
+
+Do this now. Do not return until this step is fully complete, TypeScript is clean, and schema definitions exactly match usage. No any, no @ts-ignore, no partial work.
+
+⸻
+
+Objectives (non-negotiable)
+	1.	Eliminate all schema/property mismatches between Drizzle definitions and application code.
+	2.	Ensure schema is the single source of truth for all DB fields.
+	3.	Standardize property naming across schema, services, and routes.
+	4.	Achieve zero TypeScript errors caused by missing/unknown/mismatched properties.
+
+⸻
+
+Target End State (must match exactly)
+	•	All Drizzle schema definitions in shared/schema.ts (or sub-schemas) align 1:1 with usage in:
+	•	server/domains/*/repository.ts
+	•	server/domains/*/service.ts
+	•	server/routes/*
+	•	React forms and API contracts
+	•	No extra fields exist in schema that are unused.
+	•	No missing fields in schema that are required in services/routes.
+	•	All property names standardized (e.g. auditLogs not auditLog, expenseNumber must exist everywhere or nowhere).
+	•	No duplicate schema definitions.
+
+⸻
+
+Implementation Rules
+	•	Schema is canonical. If code references a property not in schema, either:
+	•	Add it to schema (if valid DB column), OR
+	•	Remove/rename the usage in code (if invalid).
+	•	No workaround with type casting, any, or ts-ignore. All mismatches must be fixed at source.
+	•	Each schema entity should reflect the actual DB structure; no phantom fields.
+	•	Services and repositories must consume schema types directly (no redeclaration).
+	•	DTOs (data transfer objects) must extend schema types, not diverge from them.
+
+⸻
+
+Mechanical Steps
+	1.	Inventory all entities in schema (capital, warehouse, sales, purchases, users, etc.).
+	2.	For each entity, search across the codebase for references to its fields.
+	•	Identify missing properties in schema.
+	•	Identify unused properties in schema.
+	•	Identify naming mismatches (auditLog vs auditLogs, updatedAt phantom field, etc.).
+	3.	Fix schema definitions and update code references accordingly.
+	4.	Normalize enums (Drizzle enums must exactly match usage, no raw strings).
+	5.	Run:
+
+npx tsc --noEmit
+
+→ Must return 0 errors.
+
+	6.	Run full build:
+
+npm run build
+
+→ Must succeed with no schema-related warnings.
+
+⸻
+
+Acceptance Criteria
+	•	No remaining TS2339 (Property does not exist) errors.
+	•	No TS2740 (Type missing properties) errors.
+	•	No TS2353 (Object literal unknown properties) errors.
+	•	Schema definitions and application code are 100% aligned.
+	•	App compiles, builds, and runs with no schema-related runtime issues.
+
+⸻
+
+Deliverables (PRs)
+	•	PR 1: Schema inventory and report of mismatches (list of added/removed/renamed fields).
+	•	PR 2+: Fixes applied domain by domain (capital, warehouse, purchases, etc.).
+	•	Final PR: Confirmed clean build, 0 errors, and final schema alignment report.
+
+⸻
+
+Do not return until
+	•	All schema mismatches are resolved.
+	•	TypeScript is fully clean.
+	•	The schema is the single source of truth with no phantom/missing fields.
+	•	You provide a before/after summary:
+	•	Fields added
+	•	Fields removed
+	•	Fields renamed
+	•	Errors eliminated
+
+Proceed.
