@@ -1,0 +1,144 @@
+Step 2 — Consolidate Storage Layer into Domain Repositories (retire server/storage.ts & server/core/storage.ts)
+
+Do this now. Don’t come back until this step is fully complete and the build is clean. No any, no @ts-ignore, no partial work.
+
+Objectives (non-negotiable)
+
+Eliminate duplication between server/storage.ts and server/core/storage.ts.
+
+Split by domain into small, focused repositories + services.
+
+Keep API behavior identical (no route/contract changes).
+
+Zero TypeScript errors introduced by this refactor.
+
+Target End State (must match exactly)
+server/
+  domains/
+    capital/
+      repository.ts
+      service.ts
+      routes.ts            (already exists, only update imports if needed)
+    warehouse/
+      repository.ts
+      service.ts
+    sales/
+      repository.ts
+      service.ts
+    purchases/
+      repository.ts
+      service.ts
+    inventory/
+      repository.ts
+      service.ts
+    approvals/
+      repository.ts
+      service.ts
+    notifications/
+      repository.ts
+      scheduler.ts         (migrate scheduler-specific DB calls here)
+    users/
+      repository.ts
+      service.ts
+    documents/
+      repository.ts
+      service.ts
+    shipping/
+      repository.ts
+      service.ts
+    analytics/
+      repository.ts
+      service.ts
+  shared/
+    base/
+      BaseRepository.ts    (common CRUD + audit hooks)
+      BaseService.ts       (common patterns: validation, audit, tx)
+
+
+Delete server/storage.ts and server/core/storage.ts after migration (or leave a temporary index.ts that only re-exports the new repositories during the transition, then remove it in this same step).
+
+Domain mapping (what goes where)
+
+capital: capital entries, adjustments, number generation for capital, capital queries.
+
+warehouse: stock, movements, transfers, counts, warehouse scoping.
+
+inventory: items, SKUs, units, catalogs/attributes.
+
+purchases: POs, receipts/GRNs, suppliers, number generation.
+
+sales: orders, invoices, returns, customers, price lists.
+
+shipping: shipments, legs, tracking, carriers, costs.
+
+approvals: approval requests, statuses, transitions, queues.
+
+notifications: notifications, templates, schedules (move scheduler DB ops here).
+
+users: users, roles, warehouse scopes (no auth provider logic here).
+
+documents: uploads, attachments, metadata.
+
+analytics: heavy read/report queries only (no writes).
+
+Implementation rules
+
+Single source of truth for DB schema: keep using shared/schema.ts (or its submodules if you’ve already split). Do not duplicate types.
+
+Repositories = DB access only (Drizzle queries, no business branching).
+
+Services = business logic, validation, audit, transactions, calling repositories.
+
+BaseRepository: implement findById, list, create, update, delete, softDelete, with optional before/after audit hooks.
+
+No behavior changes in routes/controllers. Update imports only.
+
+No any, no @ts-ignore, no silencing. Use real types and fix real mismatches.
+
+Audit & approvals: centralize shared helpers; do not duplicate across domains.
+
+Mechanical steps
+
+Create structure under server/domains/* exactly as above.
+
+Extract functions from server/storage.ts and server/core/storage.ts into the correct domain repository.ts (DB) and service.ts (logic).
+
+Update imports in all consumers (routes/services) to point to the new domain files.
+
+Remove dead code from the old storage files as you migrate each section.
+
+When 100% of references are moved, delete server/storage.ts and server/core/storage.ts.
+
+Build & type-check: npx tsc --noEmit must be 0 errors; npm run build must pass.
+
+Acceptance criteria
+
+No remaining imports of server/storage.ts or server/core/storage.ts anywhere in the repo.
+
+All domain repositories/services exist and cover the previous functionality.
+
+npx tsc --noEmit → 0 errors.
+
+npm run build → succeeds.
+
+App boots and main flows work (PO create, stock movement, sales order create, shipment create, approval submit).
+
+Deliverables (PRs)
+
+PR 1: Scaffolding server/domains/*, BaseRepository.ts, BaseService.ts.
+
+PR 2+ (one per domain): Move repository/service code, update imports, delete migrated sections from old storage.
+
+Final PR: Delete server/storage.ts + server/core/storage.ts, repo-wide import cleanup, final build check.
+
+Do not return until
+
+Both legacy storage files are gone.
+
+Build is clean.
+
+Routes behave the same (no API contract changes).
+
+You provide the list of updated imports (search/replace summary) and the list of deleted symbols from the old files.
+
+Proceed.
