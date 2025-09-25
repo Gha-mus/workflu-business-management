@@ -15,4 +15,3 @@ export * from './approvals';
 
 // Quality exports (avoiding QualityGrade conflict with warehouse)
 export { InspectionType, InspectionStatus } from './quality';
-export type { InspectionType, InspectionStatus } from './quality';

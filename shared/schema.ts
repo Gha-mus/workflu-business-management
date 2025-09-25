@@ -18,6 +18,18 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import Decimal from "decimal.js";
 
+// Import typed enums
+import { UserRole, AuthProvider, PermissionScope } from './enums/users';
+import { PurchaseStatus, PaymentMethod, FundingSource } from './enums/purchases';
+import { CustomerCategory, SalesOrderStatus, PaymentTerms } from './enums/sales';
+import { WarehouseStockStatus, QualityGrade, SupplyType, ExpenseCategory } from './enums/warehouse';
+import { CapitalEntryType, RevenueEntryType, ReinvestmentAllocationPolicy, PeriodStatus } from './enums/capital';
+import { InspectionType, InspectionStatus } from './enums/quality';
+import { NotificationStatus, NotificationChannel, NotificationPriority, AlertType, AlertCategory, NotificationFrequency } from './enums/notifications';
+import { ShipmentMethod, ShipmentStatus, CostType } from './enums/shipping';
+import { ExportStatus, DocumentCategory, DocumentStatus, ComplianceStatus, DocumentAccessLevel } from './enums/analytics';
+import { ApprovalStatus, ApprovalOperationType, AuditAction } from './enums/approvals';
+
 // Session storage table (mandatory for Replit Auth)
 export const sessions = pgTable(
   "sessions",
@@ -30,7 +42,7 @@ export const sessions = pgTable(
 );
 
 // User roles enum
-export const userRoleEnum = pgEnum('user_role', ['admin', 'finance', 'purchasing', 'warehouse', 'sales', 'worker']);
+export const userRoleEnum = pgEnum('user_role', UserRole);
 export type AllowedRole = 'admin' | 'finance' | 'purchasing' | 'warehouse' | 'sales' | 'worker';
 
 // User role update schema for role change operations
@@ -39,57 +51,39 @@ export const userRoleUpdateSchema = z.object({
 });
 
 // Quality grades enum for coffee grading
-export const qualityGradeEnum = pgEnum('quality_grade', ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded']);
+export const qualityGradeEnum = pgEnum('quality_grade', QualityGrade);
 
 // Approval system enums
-export const approvalStatusEnum = pgEnum('approval_status', ['pending', 'approved', 'rejected', 'cancelled', 'escalated']);
-export const approvalOperationTypeEnum = pgEnum('approval_operation_type', [
-  'capital_entry', 'purchase', 'sale_order', 'warehouse_operation', 'shipping_operation', 
-  'financial_adjustment', 'user_role_change', 'system_setting_change', 'system_startup', 'system_diagnostics',
-  'operating_expense', 'supply_purchase', 'supply_create', 'supply_consumption', 'expense_category_create',
-  'revenue_management', 'notification_delivery', 'monitoring_check', 'hourly_stats', 'notification_configuration'
-]);
+export const approvalStatusEnum = pgEnum('approval_status', ApprovalStatus);
+export const approvalOperationTypeEnum = pgEnum('approval_operation_type', ApprovalOperationType);
 
 // Capital entry types enum for Stage 1 Working Capital
-export const capitalEntryTypeEnum = pgEnum('capital_entry_type', [
-  'CapitalIn', 'CapitalOut', 'Reverse', 'Reclass', 'Opening'
-]);
+export const capitalEntryTypeEnum = pgEnum('capital_entry_type', CapitalEntryType);
 
 // Revenue entry types enum for Stage 7 Revenue Management
-export const revenueEntryTypeEnum = pgEnum('revenue_entry_type', [
-  'customer_receipt', 'customer_refund', 'withdrawal', 'reinvest_out', 'transfer_fee', 'reclass', 'reverse'
-]);
+export const revenueEntryTypeEnum = pgEnum('revenue_entry_type', RevenueEntryType);
 
 // Reinvestment allocation policy enum
-export const reinvestmentAllocationPolicyEnum = pgEnum('reinvestment_allocation_policy', [
-  'aggregate', 'pro_rata', 'specified'
-]);
-export const auditActionEnum = pgEnum('audit_action', [
-  'create', 'update', 'delete', 'view', 'approve', 'reject', 'login', 'logout', 'export', 'import', 'validate', 'auto_correct', 'password_reset_failed'
-]);
-export const permissionScopeEnum = pgEnum('permission_scope', [
-  'system', 'module', 'operation', 'record', 'field'
-]);
+export const reinvestmentAllocationPolicyEnum = pgEnum('reinvestment_allocation_policy', ReinvestmentAllocationPolicy);
+export const auditActionEnum = pgEnum('audit_action', AuditAction);
+export const permissionScopeEnum = pgEnum('permission_scope', PermissionScope);
 
 // Auth provider enum for user authentication method
-export const authProviderEnum = pgEnum('auth_provider', ['replit', 'supabase']);
+export const authProviderEnum = pgEnum('auth_provider', AuthProvider);
 
 // Payment and funding enums for financial operations
-export const paymentMethodEnum = pgEnum('payment_method', ['cash', 'advance', 'credit', 'bank_transfer', 'check']);
-export const fundingSourceEnum = pgEnum('funding_source', ['capital', 'external', 'credit_line', 'retained_earnings']);
+export const paymentMethodEnum = pgEnum('payment_method', PaymentMethod);
+export const fundingSourceEnum = pgEnum('funding_source', FundingSource);
 
 // Purchase status enum
-export const purchaseStatusEnum = pgEnum('purchase_status', ['pending', 'partial', 'paid', 'cancelled', 'on_hold']);
+export const purchaseStatusEnum = pgEnum('purchase_status', PurchaseStatus);
 
 // Warehouse stock status enum
-export const warehouseStockStatusEnum = pgEnum('warehouse_stock_status', [
-  'AWAITING_DECISION', 'FILTERING', 'FILTERED', 'PACKED', 'RESERVED', 'CONSUMED',
-  'READY_TO_SHIP', 'NON_CLEAN', 'READY_FOR_SALE', 'AWAITING_FILTER'
-]);
+export const warehouseStockStatusEnum = pgEnum('warehouse_stock_status', WarehouseStockStatus);
 
 // Shipment method and status enums
-export const shipmentMethodEnum = pgEnum('shipment_method', ['air', 'sea', 'land', 'rail', 'multimodal']);
-export const shipmentStatusEnum = pgEnum('shipment_status', ['pending', 'in_transit', 'delivered', 'cancelled', 'delayed']);
+export const shipmentMethodEnum = pgEnum('shipment_method', ShipmentMethod);
+export const shipmentStatusEnum = pgEnum('shipment_status', ShipmentStatus);
 
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
