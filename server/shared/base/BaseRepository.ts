@@ -1,8 +1,7 @@
 import { db } from "../../core/db";
 import { auditService } from "../../auditService";
-import type { AuditContext } from "../../auditService";
+import type { AuditContext, ChangeRecord } from "../../auditService";
 import { eq, and, isNull, sql } from "drizzle-orm";
-import type { PgTable } from "drizzle-orm/pg-core";
 
 export interface BaseEntity {
   id: string;
@@ -21,17 +20,15 @@ export interface AuditHooks<TEntity> {
 }
 
 export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
-  protected abstract table: PgTable;
+  protected abstract table: any; // Use any to avoid complex PgTable typing issues
+  protected abstract tableName: string; // Explicit table name for audit logging
   protected abstract auditHooks?: AuditHooks<TEntity>;
 
   async findById(id: string): Promise<TEntity | undefined> {
     const results = await db
       .select()
       .from(this.table)
-      .where(and(
-        eq(this.table.id, id),
-        isNull(this.table.deletedAt)
-      ))
+      .where(eq(this.table.id, id))
       .limit(1);
     
     return results[0] as TEntity | undefined;
@@ -40,32 +37,29 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
   async findAll(): Promise<TEntity[]> {
     const results = await db
       .select()
-      .from(this.table)
-      .where(isNull(this.table.deletedAt));
+      .from(this.table);
     
     return results as TEntity[];
   }
 
   async create(data: TInsert, auditContext?: AuditContext): Promise<TEntity> {
-    await this.auditHooks?.beforeCreate?.(data as TEntity, auditContext);
+    await this.auditHooks?.beforeCreate?.(data as unknown as TEntity, auditContext);
 
     const [created] = await db
       .insert(this.table)
-      .values(data)
+      .values(data as any)
       .returning();
 
     const entity = created as TEntity;
 
     if (auditContext) {
-      await auditService.logActivity({
-        userId: auditContext.userId,
+      await auditService.logOperation(auditContext, {
+        entityType: this.tableName,
+        entityId: entity.id,
         action: 'create',
-        resource: this.table._.name,
-        resourceId: entity.id,
-        details: { created: data },
-        userRole: auditContext.userRole,
-        ipAddress: auditContext.ipAddress,
-        userAgent: auditContext.userAgent
+        newValues: data as any,
+        description: `Created ${this.tableName}`,
+        businessContext: `${this.tableName} creation`
       });
     }
 
@@ -77,34 +71,33 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
   async update(id: string, updates: Partial<TInsert>, auditContext?: AuditContext): Promise<TEntity> {
     await this.auditHooks?.beforeUpdate?.(id, updates as Partial<TEntity>, auditContext);
 
+    // Get old values for audit
+    const [oldEntity] = await db.select().from(this.table).where(eq(this.table.id, id));
+
     const [updated] = await db
       .update(this.table)
       .set({
         ...updates,
         updatedAt: new Date()
-      })
-      .where(and(
-        eq(this.table.id, id),
-        isNull(this.table.deletedAt)
-      ))
+      } as any)
+      .where(eq(this.table.id, id))
       .returning();
 
     if (!updated) {
-      throw new Error(`${this.table._.name} with id ${id} not found`);
+      throw new Error(`${this.tableName} with id ${id} not found`);
     }
 
     const entity = updated as TEntity;
 
     if (auditContext) {
-      await auditService.logActivity({
-        userId: auditContext.userId,
+      await auditService.logOperation(auditContext, {
+        entityType: this.tableName,
+        entityId: id,
         action: 'update',
-        resource: this.table._.name,
-        resourceId: id,
-        details: { updates },
-        userRole: auditContext.userRole,
-        ipAddress: auditContext.ipAddress,
-        userAgent: auditContext.userAgent
+        oldValues: oldEntity,
+        newValues: updates as any,
+        description: `Updated ${this.tableName}`,
+        businessContext: `${this.tableName} update`
       });
     }
 
@@ -116,69 +109,28 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
   async delete(id: string, auditContext?: AuditContext): Promise<TEntity> {
     await this.auditHooks?.beforeDelete?.(id, auditContext);
 
+    // Get entity for audit before deletion
+    const [entityToDelete] = await db.select().from(this.table).where(eq(this.table.id, id));
+
     const [deleted] = await db
       .delete(this.table)
-      .where(and(
-        eq(this.table.id, id),
-        isNull(this.table.deletedAt)
-      ))
+      .where(eq(this.table.id, id))
       .returning();
 
     if (!deleted) {
-      throw new Error(`${this.table._.name} with id ${id} not found`);
+      throw new Error(`${this.tableName} with id ${id} not found`);
     }
 
     const entity = deleted as TEntity;
 
     if (auditContext) {
-      await auditService.logActivity({
-        userId: auditContext.userId,
+      await auditService.logOperation(auditContext, {
+        entityType: this.tableName,
+        entityId: id,
         action: 'delete',
-        resource: this.table._.name,
-        resourceId: id,
-        details: { deleted: entity },
-        userRole: auditContext.userRole,
-        ipAddress: auditContext.ipAddress,
-        userAgent: auditContext.userAgent
-      });
-    }
-
-    await this.auditHooks?.afterDelete?.(entity, auditContext);
-
-    return entity;
-  }
-
-  async softDelete(id: string, auditContext?: AuditContext): Promise<TEntity> {
-    await this.auditHooks?.beforeDelete?.(id, auditContext);
-
-    const [deleted] = await db
-      .update(this.table)
-      .set({
-        deletedAt: new Date(),
-        updatedAt: new Date()
-      })
-      .where(and(
-        eq(this.table.id, id),
-        isNull(this.table.deletedAt)
-      ))
-      .returning();
-
-    if (!deleted) {
-      throw new Error(`${this.table._.name} with id ${id} not found`);
-    }
-
-    const entity = deleted as TEntity;
-
-    if (auditContext) {
-      await auditService.logActivity({
-        userId: auditContext.userId,
-        action: 'soft_delete',
-        resource: this.table._.name,
-        resourceId: id,
-        details: { soft_deleted: entity },
-        userRole: auditContext.userRole,
-        ipAddress: auditContext.ipAddress,
-        userAgent: auditContext.userAgent
+        oldValues: entityToDelete,
+        description: `Deleted ${this.tableName}`,
+        businessContext: `${this.tableName} deletion`
       });
     }
 
@@ -190,14 +142,13 @@ export abstract class BaseRepository<TEntity extends BaseEntity, TInsert> {
   async count(): Promise<number> {
     const [result] = await db
       .select({ count: sql`count(*)` })
-      .from(this.table)
-      .where(isNull(this.table.deletedAt));
+      .from(this.table);
     
     return Number(result.count);
   }
 
   protected async runInTransaction<T>(
-    callback: (tx: typeof db) => Promise<T>
+    callback: (tx: any) => Promise<T>
   ): Promise<T> {
     return await db.transaction(callback);
   }
