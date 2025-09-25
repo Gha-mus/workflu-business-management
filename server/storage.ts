@@ -2565,20 +2565,18 @@ export class DatabaseStorage implements IStorage {
         // STAGE 2 SECURITY: Convert amount to USD using central exchange rate (never trust client)
         let amountInUsd = amountPaid;
         if (purchaseData.currency === 'ETB') {
-          // Use central exchange rate - purchaseData.exchangeRate is already set by routes validation
-          const centralRate = new Decimal(purchaseData.exchangeRate as string);
-          amountInUsd = amountPaid.div(centralRate);
+          // Use central exchange rate (Stage 1 Compliance: never trust client rates)
+          const centralRate = ConfigurationService.getInstance().getCentralExchangeRate();
+          amountInUsd = amountPaid.div(new Decimal(centralRate.toString()));
         }
         
         // Create capital entry with atomic balance checking
         await this.createCapitalEntryInTransaction(tx, {
-          entryId: `PUR-${purchase.id}`,
           amount: amountInUsd.toFixed(2),
           type: 'CapitalOut',
           reference: purchase.id,
-          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ ${purchaseData.exchangeRate})` : ''}`,
+          description: `Purchase payment - ${purchaseData.weight}kg ${purchaseData.currency === 'ETB' ? `(${purchaseData.amountPaid} ETB @ central rate)` : ''}`,
           paymentCurrency: purchaseData.currency,
-          exchangeRate: purchaseData.exchangeRate || undefined,
           createdBy: userId,
         });
       }
@@ -2587,7 +2585,7 @@ export class DatabaseStorage implements IStorage {
       const pricePerKg = new Decimal(purchaseData.pricePerKg);
       const unitCostCleanUsd = purchaseData.currency === 'USD' 
         ? purchaseData.pricePerKg 
-        : pricePerKg.div(new Decimal(purchaseData.exchangeRate as string)).toFixed(4);
+        : pricePerKg.div(new Decimal(ConfigurationService.getInstance().getCentralExchangeRate().toString())).toFixed(4);
 
       await tx.insert(warehouseStock).values({
         purchaseId: purchase.id,
@@ -2845,7 +2843,6 @@ export class DatabaseStorage implements IStorage {
           : `Advance settlement - credit refund (${purchase.purchaseNumber})`;
 
         await this.createCapitalEntryInTransaction(tx, {
-          entryId: `ADV-${purchase.id}-${Date.now()}`,
           amount: balanceImpactUSD.toFixed(2),
           type: entryType,
           reference: purchase.id,
@@ -2935,7 +2932,6 @@ export class DatabaseStorage implements IStorage {
           : refundAmount;
 
         capitalAdjustment = await this.createCapitalEntryInTransaction(tx, {
-          entryId: `RET-${purchase.id}-${Date.now()}`,
           amount: refundUsd.toFixed(2),
           type: 'CapitalIn',
           reference: purchase.id,
@@ -3222,13 +3218,11 @@ export class DatabaseStorage implements IStorage {
       
       // Create capital entry with atomic balance checking
       await this.createCapitalEntryInTransaction(tx, {
-        entryId: `EXP-${result.id}`,
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
         description: `Operating expense - ${expense.description} ${expense.currency === 'ETB' ? `(${expense.amountPaid} ETB @ ${expense.exchangeRate})` : ''}`,
         paymentCurrency: expense.currency,
-        exchangeRate: expense.exchangeRate || undefined,
         createdBy: userId,
       });
     }
@@ -3440,7 +3434,6 @@ export class DatabaseStorage implements IStorage {
       
       // Create capital entry with atomic balance checking
       await this.createCapitalEntryInTransaction(tx, {
-        entryId: `SPU-${result.id}`,
         amount: paidInUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.id,
@@ -5618,7 +5611,6 @@ export class DatabaseStorage implements IStorage {
     // If paid from capital, create capital entry
     if (costData.fundingSource === 'capital' && costData.amountPaid && parseFloat(costData.amountPaid) > 0) {
       await this.createCapitalEntryWithConcurrencyProtection({
-        entryId: `SHP-${result.id}`,
         amount: amountUsd.toFixed(2),
         type: 'CapitalOut',
         reference: result.shipmentId,
@@ -11024,8 +11016,8 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(documents)
         .where(and(
-          eq(documents.entityType, entityType),
-          eq(documents.entityId, entityId)
+          eq(documents.relatedEntityType, entityType),
+          eq(documents.relatedEntityId, entityId)
         ))
         .orderBy(desc(documents.createdAt));
     } catch (error) {

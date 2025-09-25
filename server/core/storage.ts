@@ -6045,7 +6045,7 @@ export class DatabaseStorage implements IStorage {
     const nodemailer = await import('nodemailer');
     
     // Configure transporter (you may need to configure this based on your email service)
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_PORT || '587'),
       secure: false,
@@ -13940,31 +13940,6 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getKpiDashboardData(periodId?: string): Promise<{
-    revenue: { current: number; previous: number; growth: number };
-    grossMargin: { amount: number; percentage: number; trend: string };
-    operatingMargin: { amount: number; percentage: number; trend: string };
-    netProfit: { amount: number; percentage: number; trend: string };
-    workingCapital: { amount: number; ratio: number; trend: string };
-    inventoryTurnover: { ratio: number; days: number; trend: string };
-    cashFlow: { operating: number; total: number; runway: number };
-  }> {
-    try {
-      // Placeholder implementation - would calculate real KPIs
-      return {
-        revenue: { current: 0, previous: 0, growth: 0 },
-        grossMargin: { amount: 0, percentage: 0, trend: 'stable' },
-        operatingMargin: { amount: 0, percentage: 0, trend: 'stable' },
-        netProfit: { amount: 0, percentage: 0, trend: 'stable' },
-        workingCapital: { amount: 0, ratio: 0, trend: 'stable' },
-        inventoryTurnover: { ratio: 0, days: 0, trend: 'stable' },
-        cashFlow: { operating: 0, total: 0, runway: 0 }
-      };
-    } catch (error) {
-      console.error('Error fetching KPI dashboard data:', error);
-      throw new Error('Failed to fetch KPI dashboard data');
-    }
-  }
 
   // Profit & Loss operations - required by IStorage interface
   async generateProfitLossStatement(periodId: string, statementType: string, userId: string): Promise<ProfitLossStatement> {
@@ -14078,59 +14053,6 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getCashFlowForecast(days: number): Promise<{
-    projections: Array<{
-      date: string;
-      inflows: number;
-      outflows: number;
-      netFlow: number;
-      cumulativeBalance: number;
-    }>;
-    summary: {
-      totalInflows: number;
-      totalOutflows: number;
-      netCashFlow: number;
-      runwayDays: number;
-      liquidityRatio: number;
-    };
-    risks: Array<{
-      type: string;
-      description: string;
-      impact: number;
-      mitigation: string;
-    }>;
-  }> {
-    try {
-      // Placeholder implementation - would calculate real forecast
-      const projections = [];
-      for (let i = 0; i < days; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() + i);
-        projections.push({
-          date: date.toISOString().split('T')[0],
-          inflows: 0,
-          outflows: 0,
-          netFlow: 0,
-          cumulativeBalance: 0
-        });
-      }
-      
-      return {
-        projections,
-        summary: {
-          totalInflows: 0,
-          totalOutflows: 0,
-          netCashFlow: 0,
-          runwayDays: 0,
-          liquidityRatio: 0
-        },
-        risks: []
-      };
-    } catch (error) {
-      console.error('Error generating cash flow forecast:', error);
-      throw new Error('Failed to generate cash flow forecast');
-    }
-  }
 
   // Additional missing methods to complete IStorage interface
   async getCashFlowAnalysis(id: string): Promise<CashFlowAnalysis | undefined> {
