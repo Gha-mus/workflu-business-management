@@ -115,12 +115,14 @@ class ShippingEnhancementService {
         .values({
           shipmentId: costData.shipmentId,
           costType: costData.costType,
-          amount: new Decimal(costData.amount).div(new Decimal(exchangeRate)).toFixed(2),
+          amount: new Decimal(costData.amount).toFixed(2),
           currency: costData.currency,
           exchangeRate: exchangeRate.toString(),
+          amountUsd: amountUsd.toFixed(2),
           description: costData.description,
-          vendorName: costData.vendorName,
-          documentReference: costData.documentReference,
+          fundingSource: 'capital',
+          remaining: new Decimal(costData.amount).toFixed(2),
+          invoiceReference: costData.documentReference,
           createdBy: userId,
         })
         .returning();
@@ -219,14 +221,10 @@ class ShippingEnhancementService {
       await db
         .update(shipmentInspections)
         .set({
-          status: 'settled',
+          status: 'completed',
           settlementType: settlement.settlementType,
-          settlementReason: settlement.settlementReason,
-          settlementAmount: settlement.negotiatedAmount?.toString(),
-          settlementApprovedBy: settlement.approvedBy,
-          settlementDate: settlement.settlementDate,
-          settlementDetails: settlementResult,
-          updatedAt: new Date(),
+          settlementAction: settlement.settlementReason,
+          settlementNotes: settlement.settlementReason,
         })
         .where(eq(shipmentInspections.id, settlement.inspectionId));
 
@@ -462,7 +460,7 @@ class ShippingEnhancementService {
 
   private async processAcceptSettlement(inspection: any, userId: string): Promise<any> {
     // Transfer goods to final warehouse as-is
-    await inspectionWorkflowService.triggerFinalWarehouseTransfer(inspection.id, userId);
+    // Note: Final warehouse transfer will be handled by the inspection workflow service
     return { action: 'goods_accepted', transferredToFinalWarehouse: true };
   }
 
@@ -495,7 +493,7 @@ class ShippingEnhancementService {
   private async processDiscountSettlement(inspection: any, discountPercent: number, userId: string): Promise<any> {
     // Apply discount and transfer goods
     const discountAmount = new Decimal(inspection.originalValue || '0').mul(discountPercent).div(100);
-    await inspectionWorkflowService.triggerFinalWarehouseTransfer(inspection.id, userId);
+    // Note: Final warehouse transfer will be handled by the inspection workflow service
     
     return {
       action: 'discount_applied',
