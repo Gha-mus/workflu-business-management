@@ -6284,8 +6284,7 @@ export class DatabaseStorage implements IStorage {
         testResults: results.testResults,
         recommendations: results.recommendations,
         completedAt: new Date(),
-        completedById: results.userId,
-        updatedAt: new Date(),
+        inspectedBy: results.userId,
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -6298,8 +6297,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
-        updatedAt: new Date(),
+        approvedBy: userId,
       })
       .where(eq(qualityInspections.id, id))
       .returning();
@@ -6727,8 +6725,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         status: 'approved',
         approvedAt: new Date(),
-        approvedById: userId,
-        updatedAt: new Date(),
+        approvedBy: userId,
       })
       .where(eq(inventoryAdjustments.id, id))
       .returning();
