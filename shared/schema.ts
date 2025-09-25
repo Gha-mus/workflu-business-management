@@ -21,8 +21,8 @@ import Decimal from "decimal.js";
 // Import typed enums
 import { UserRole, AuthProvider, PermissionScope } from './enums/users';
 import { PurchaseStatus, PaymentMethod, FundingSource } from './enums/purchases';
-import { CustomerCategory, SalesOrderStatus, PaymentTerms } from './enums/sales';
-import { WarehouseStockStatus, QualityGrade, SupplyType, ExpenseCategory } from './enums/warehouse';
+import { CustomerCategory, SalesOrderStatus, PaymentTerms, TransactionStatus } from './enums/sales';
+import { WarehouseStockStatus, QualityGrade, SupplyType, ExpenseCategory, TransferStatus } from './enums/warehouse';
 import { CapitalEntryType, RevenueEntryType, ReinvestmentAllocationPolicy, PeriodStatus } from './enums/capital';
 import { InspectionType, InspectionStatus } from './enums/quality';
 import { NotificationStatus, NotificationChannel, NotificationPriority, AlertType, AlertCategory, NotificationFrequency } from './enums/notifications';
@@ -80,10 +80,26 @@ export const purchaseStatusEnum = pgEnum('purchase_status', PurchaseStatus);
 
 // Warehouse stock status enum
 export const warehouseStockStatusEnum = pgEnum('warehouse_stock_status', WarehouseStockStatus);
+export const transferStatusEnum = pgEnum('transfer_status', TransferStatus);
 
 // Shipment method and status enums
 export const shipmentMethodEnum = pgEnum('shipment_method', ShipmentMethod);
 export const shipmentStatusEnum = pgEnum('shipment_status', ShipmentStatus);
+
+// Sales order status enum
+export const salesOrderStatusEnum = pgEnum('sales_order_status', SalesOrderStatus);
+export const transactionStatusEnum = pgEnum('transaction_status', TransactionStatus);
+
+// Notification system enums
+export const notificationStatusEnum = pgEnum('notification_status', NotificationStatus);
+export const notificationChannelEnum = pgEnum('notification_channel', NotificationChannel);
+
+// Inspection status enum
+export const inspectionStatusEnum = pgEnum('inspection_status', InspectionStatus);
+
+// Export and document status enums
+export const exportStatusEnum = pgEnum('export_status', ExportStatus);
+export const documentStatusEnum = pgEnum('document_status', DocumentStatus);
 
 // User storage table (mandatory for Replit Auth)
 export const users = pgTable("users", {
@@ -220,7 +236,7 @@ export const supplierQualityAssessments = pgTable("supplier_quality_assessments"
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderNumber: varchar("order_number").notNull().unique(),
-  status: varchar("status").notNull().default('draft'),
+  status: salesOrderStatusEnum("status").notNull().default('draft'),
   totalValueUsd: decimal("total_value_usd", { precision: 12, scale: 2 }),
   currency: varchar("currency").default('USD'),
   exchangeRate: decimal("exchange_rate", { precision: 10, scale: 4 }),
@@ -534,7 +550,7 @@ export const shipmentInspections = pgTable("shipment_inspections", {
   damagedWeightKg: decimal("damaged_weight_kg", { precision: 10, scale: 2 }).notNull(), // Damaged/loss
   
   // Inspection status and actions
-  status: varchar("status").notNull().default('pending'), // pending, completed, requires_settlement
+  status: inspectionStatusEnum("status").notNull().default('pending'), // pending, completed, requires_settlement
   inspectionDate: timestamp("inspection_date").notNull().defaultNow(),
   
   // Settlement options per workflow_reference.json lines 597-600
@@ -643,7 +659,7 @@ export const qualityInspections = pgTable("quality_inspections", {
   warehouseStockId: varchar("warehouse_stock_id").references(() => warehouseStock.id),
   shipmentId: varchar("shipment_id").references(() => shipments.id),
   inspectionType: varchar("inspection_type").notNull(), // incoming, processing, outgoing, quality_control
-  status: varchar("status").notNull().default('pending'), // pending, in_progress, completed, failed, approved, rejected
+  status: inspectionStatusEnum("status").notNull().default('pending'), // pending, in_progress, completed, failed, approved, rejected
   qualityGrade: qualityGradeEnum("quality_grade"),
   overallScore: decimal("overall_score", { precision: 5, scale: 2 }),
   moistureContent: decimal("moisture_content", { precision: 5, scale: 2 }),
@@ -718,7 +734,7 @@ export const stockTransfers = pgTable("stock_transfers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   transferNumber: varchar("transfer_number").notNull().unique().$defaultFn(() => `XFER-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   transferType: varchar("transfer_type").notNull(), // warehouse_to_warehouse, location_to_location, batch_split, batch_merge
-  status: varchar("status").notNull().default('pending'), // pending, in_transit, completed, cancelled
+  status: transferStatusEnum("status").notNull().default('pending'), // pending, in_transit, completed, cancelled
   fromWarehouseStockId: varchar("from_warehouse_stock_id").references(() => warehouseStock.id),
   toWarehouseStockId: varchar("to_warehouse_stock_id").references(() => warehouseStock.id),
   fromBatchId: varchar("from_batch_id").references(() => warehouseBatches.id),
@@ -737,7 +753,7 @@ export const inventoryAdjustments = pgTable("inventory_adjustments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   adjustmentNumber: varchar("adjustment_number").notNull().unique().$defaultFn(() => `ADJ-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`),
   adjustmentType: varchar("adjustment_type").notNull(), // cycle_count, reconciliation, correction, write_off
-  status: varchar("status").notNull().default('pending'), // pending, approved, rejected
+  status: approvalStatusEnum("status").notNull().default('pending'), // pending, approved, rejected
   warehouseStockId: varchar("warehouse_stock_id").notNull().references(() => warehouseStock.id),
   batchId: varchar("batch_id").references(() => warehouseBatches.id),
   quantityBefore: decimal("quantity_before", { precision: 10, scale: 2 }).notNull(),
@@ -932,10 +948,7 @@ export const documentCategoryEnum = pgEnum('document_category', [
   'audit_document', 'insurance_policy', 'license', 'permit', 'regulation_document'
 ]);
 
-// Document status enum
-export const documentStatusEnum = pgEnum('document_status', [
-  'draft', 'under_review', 'approved', 'final', 'expired', 'archived', 'rejected', 'cancelled'
-]);
+// Document status enum (using imported constants)
 
 // Compliance status enum
 export const complianceStatusEnum = pgEnum('compliance_status', [
@@ -1224,8 +1237,7 @@ export const documentWorkflowStates = pgTable("document_workflow_states", {
 // ===============================================
 
 // Notification system enums
-export const notificationStatusEnum = pgEnum('notification_status', ['pending', 'sent', 'failed', 'read', 'dismissed']);
-export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'sms', 'webhook']);
+// Notification enums (using imported constants above)
 export const notificationPriorityEnum = pgEnum('notification_priority', ['low', 'medium', 'high', 'critical']);
 export const alertTypeEnum = pgEnum('alert_type', [
   'threshold_alert', 'business_alert', 'system_alert', 'compliance_alert', 
@@ -1536,7 +1548,7 @@ export const notificationHistory = pgTable("notification_history", {
 export const customerCategoryEnum = pgEnum('customer_category', ['retail', 'wholesale', 'export', 'domestic', 'distributor', 'processor']);
 
 // Sales order status enum
-export const salesOrderStatusEnum = pgEnum('sales_order_status', ['draft', 'confirmed', 'in_progress', 'fulfilled', 'delivered', 'cancelled', 'on_hold']);
+// Sales order status enum (using imported constants above)
 
 // Payment terms enum
 export const paymentTermsEnum = pgEnum('payment_terms', ['net_15', 'net_30', 'net_45', 'net_60', 'cash_on_delivery', 'advance_payment', 'credit']);
@@ -1932,7 +1944,7 @@ export const salesReturns = pgTable("sales_returns", {
   restockingFee: decimal("restocking_fee", { precision: 12, scale: 2 }).default('0'),
   
   // Status and processing
-  status: varchar("status").notNull().default('pending'), // pending, approved, processed, rejected
+  status: approvalStatusEnum("status").notNull().default('pending'), // pending, approved, processed, rejected
   processedAt: timestamp("processed_at"),
   
   // Approval tracking
@@ -2007,7 +2019,7 @@ export const revenueTransactions = pgTable("revenue_transactions", {
   grossMarginPercent: decimal("gross_margin_percent", { precision: 5, scale: 2 }),
   
   // Status and approvals
-  status: varchar("status").notNull().default('pending'), // pending, confirmed, cancelled, reversed
+  status: transactionStatusEnum("status").notNull().default('pending'), // pending, confirmed, cancelled, reversed
   approvedBy: varchar("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   
@@ -4113,7 +4125,7 @@ export const periodAdjustments = pgTable("period_adjustments", {
 // Export Management Tables
 
 // Export status enum  
-export const exportStatusEnum = pgEnum('export_status', ['queued', 'processing', 'completed', 'failed', 'cancelled']);
+// Export status enum (using imported constants above)
 
 // Export history table for tracking all exports
 export const exportHistory = pgTable("export_history", {

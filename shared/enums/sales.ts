@@ -8,3 +8,6 @@ export type SalesOrderStatus = typeof SalesOrderStatus[number];
 
 export const PaymentTerms = ['net_15', 'net_30', 'net_45', 'net_60', 'cash_on_delivery', 'advance_payment', 'credit'] as const;
 export type PaymentTerms = typeof PaymentTerms[number];
+
+export const TransactionStatus = ['pending', 'confirmed', 'cancelled', 'reversed'] as const;
+export type TransactionStatus = typeof TransactionStatus[number];
