@@ -31,14 +31,12 @@ type ExportPreferencesInsert = typeof exportPreferences.$inferInsert;
 type ExportPreferencesSelect = typeof exportPreferences.$inferSelect;
 type ExportJobsInsert = typeof exportJobs.$inferInsert;
 type ExportJobsSelect = typeof exportJobs.$inferSelect;
-type NotificationQueueInsert = typeof notificationQueue.$inferInsert;
-type NotificationQueueSelect = typeof notificationQueue.$inferSelect;
+type NotificationInsert = typeof notifications.$inferInsert;
+type NotificationSelect = typeof notifications.$inferSelect;
 type QualityInspectionsInsert = typeof qualityInspections.$inferInsert;
 type QualityInspectionsSelect = typeof qualityInspections.$inferSelect;
 type DocumentsInsert = typeof documents.$inferInsert;
 type DocumentsSelect = typeof documents.$inferSelect;
-type RevenueLedgerInsert = typeof revenueLedger.$inferInsert;
-type RevenueLedgerSelect = typeof revenueLedger.$inferSelect;
 type WithdrawalRecordsInsert = typeof withdrawalRecords.$inferInsert;
 type WithdrawalRecordsSelect = typeof withdrawalRecords.$inferSelect;
 
@@ -336,58 +334,24 @@ import {
   shipmentLegs,
   salesReturns,
   arrivalCosts,
-  // Missing filter types for storage.ts
-  type RevenueLedgerFilter,
-  type WithdrawalRecordFilter,
-  type ReinvestmentFilter,
-  // Missing approval and receipt types for storage.ts
-  type CustomerReceipt,
-  type CustomerRefund,
-  type WithdrawalApproval,
-  type ReinvestmentApproval,
   customers,
-  salesOrders,
-  salesOrderItems,
   customerCommunications,
   revenueTransactions,
   salesPerformanceMetrics,
   customerCreditLimits,
   pricingRules,
-  // Stage 5 Operating Expenses tables
-  supplies,
-  operatingExpenseCategories,
-  operatingExpenses,
-  supplyConsumption,
-  supplyPurchases,
   documents,
-  documentVersions,
-  documentMetadata,
-  documentCompliance,
-  documentAccessLogs,
-  documentWorkflowStates,
   // Notification system tables
-  notificationSettings,
-  notificationTemplates,
-  notificationQueue,
-  alertConfigurations,
-  notificationHistory,
+  notifications,
   // Missing approval and reporting tables
   approvalChains,
   approvalRequests,
-  approvalGuards,
   auditLogs,
-  financialPeriods,
-  profitLossStatements,
-  cashFlowAnalysis,
-  marginAnalysis,
-  budgetTracking,
   // Stage 7 Revenue Management tables
-  revenueLedger,
   withdrawalRecords,
   reinvestments,
-  revenueBalanceSummary,
   type User,
-  type UpsertUser,
+  type InsertUser,
   type Supplier,
   type InsertSupplier,
   type Order,
@@ -446,10 +410,6 @@ import {
   type InsertInventoryAdjustment,
   type Customer,
   type InsertCustomer,
-  type SalesOrder,
-  type InsertSalesOrder,
-  type SalesOrderItem,
-  type InsertSalesOrderItem,
   type CustomerCommunication,
   type InsertCustomerCommunication,
   type RevenueTransaction,
@@ -460,116 +420,25 @@ import {
   type InsertCustomerCreditLimit,
   type PricingRule,
   type InsertPricingRule,
-  // Stage 5 Operating Expenses types
-  type Supply,
-  type InsertSupply,
-  type OperatingExpenseCategory,
-  type InsertOperatingExpenseCategory,
-  type OperatingExpense,
-  type InsertOperatingExpense,
-  type SupplyConsumption,
-  type InsertSupplyConsumption,
-  type SupplyPurchase,
-  type InsertSupplyPurchase,
-  type ShipmentWithDetailsResponse,
-  type ShippingAnalyticsResponse,
-  type CreateShipmentFromStock,
-  type AddShippingCost,
-  type AddDeliveryTracking,
-  type ShipmentFilter,
-  type CarrierFilter,
   type FinancialSummaryResponse,
-  type CashFlowResponse,
   type InventoryAnalyticsResponse,
   type SupplierPerformanceResponse,
   type TradingActivityResponse,
-  type DateRangeFilter,
   type Document,
   type InsertDocument,
-  type DocumentVersion,
-  type InsertDocumentVersion,
-  type DocumentMetadata,
-  type InsertDocumentMetadata,
-  type DocumentCompliance,
-  type InsertDocumentCompliance,
-  type DocumentAccessLog,
-  type InsertDocumentAccessLog,
-  type DocumentWorkflowState,
-  type InsertDocumentWorkflowState,
-  type DocumentWithMetadata,
-  type DocumentSearchResponse,
-  type DocumentVersionHistory,
-  type ComplianceAlert,
-  type ComplianceDashboard,
-  type DocumentAnalytics,
-  type DocumentSearchRequest,
-  type DocumentUploadRequest,
-  type DocumentUpdateRequest,
-  type DocumentVersionCreateRequest,
-  type DocumentComplianceUpdateRequest,
-  type ComplianceFilterRequest,
-  // Notification system types
-  type NotificationSetting,
-  type InsertNotificationSetting,
-  type UpdateNotificationSetting,
-  type NotificationSettingFilter,
-  type NotificationTemplate,
-  type InsertNotificationTemplate,
-  type UpdateNotificationTemplate,
-  type NotificationTemplateFilter,
-  type NotificationQueue,
-  type InsertNotificationQueue,
-  type UpdateNotificationQueue,
-  type NotificationQueueFilter,
-  type CreateNotification,
-  type AlertConfiguration,
-  type InsertAlertConfiguration,
-  type UpdateAlertConfiguration,
-  type AlertConfigurationFilter,
-  type NotificationHistory,
-  type NotificationHistoryFilter,
-  type NotificationCenterResponse,
-  type NotificationSettingsResponse,
-  type AlertMonitoringDashboard,
-  type NotificationAnalytics,
-  type NotificationDeliveryStatus,
-  // Missing approval and reporting types
+  // Basic types that exist
   type ApprovalChain,
   type InsertApprovalChain,
   type ApprovalRequest,
   type InsertApprovalRequest,
-  type ApprovalGuard,
-  type InsertApprovalGuard,
   type AuditLog,
   type InsertAuditLog,
-  type FinancialPeriod,
-  type InsertFinancialPeriod,
-  type ProfitLossStatement,
-  type InsertProfitLossStatement,
-  type CashFlowAnalysis,
-  type InsertCashFlowAnalysis,
-  type MarginAnalysis,
-  type InsertMarginAnalysis,
-  type BudgetTracking,
-  type InsertBudgetTracking,
-  // Stage 7 Revenue Management types
-  type RevenueLedger,
-  type InsertRevenueLedger,
   type WithdrawalRecord,
   type InsertWithdrawalRecord,
   type Reinvestment,
   type InsertReinvestment,
-  type RevenueBalanceSummary,
-  type InsertRevenueBalanceSummary,
-  // Missing types that were causing compilation errors
-  type FinancialMetric,
-  type InsertFinancialMetric,
-  type ShipmentLeg,
-  type InsertShipmentLeg,
-  type ArrivalCost,
-  type InsertArrivalCost,
-  type SalesReturn,
-  type InsertSalesReturn
+  type Notification,
+  type InsertNotification,
 } from "../shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray, asc, ilike, or } from "drizzle-orm";
@@ -577,28 +446,6 @@ import Decimal from "decimal.js";
 import { auditService } from "./auditService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
 import { ConfigurationService } from "./configurationService";
-import { 
-  UserRole, 
-  PurchaseStatus, 
-  ShipmentStatus, 
-  ApprovalStatus,
-  ApprovalOperationType,
-  QualityGrade,
-  InspectionStatus,
-  DocumentStatus,
-  WarehouseAccessLevel,
-  SupplyType,
-  CapitalEntryType,
-  DeliveryTrackingStatus,
-  SettlementType,
-  OperationStatus,
-  TransferStatus,
-  AdjustmentType,
-  WarehouseStockStatus,
-  PeriodStatus,
-  TransactionStatus
-} from '../shared/enums';
-import { SalesOrderStatus } from '../shared/enums/sales';
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary

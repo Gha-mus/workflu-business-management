@@ -147,6 +147,10 @@ import {
   type InsertNotification,
   type ShipmentLeg,
   type InsertShipmentLeg,
+  type OrderItem,
+  type InsertOrderItem,
+  type SalesReturn,
+  type InsertSalesReturn,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, asc, ilike, or } from "drizzle-orm";
@@ -301,6 +305,194 @@ interface ShipmentFilter {
 interface CarrierFilter {
   isActive?: boolean;
   name?: string;
+}
+
+interface AddDeliveryTracking {
+  shipmentId: string;
+  status: string;
+  location?: string;
+  notes?: string;
+  estimatedDelivery?: string;
+}
+
+// Sales Order types (aliasing existing Order types)
+type SalesOrder = Order;
+type InsertSalesOrder = InsertOrder;
+type SalesOrderItem = OrderItem;
+type InsertSalesOrderItem = InsertOrderItem;
+
+// Document-related types
+interface DocumentWithMetadata {
+  document: Document;
+  metadata?: any;
+  versions?: any[];
+}
+
+interface DocumentSearchRequest {
+  query?: string;
+  type?: string;
+  status?: string;
+  tags?: string[];
+  dateRange?: DateRangeFilter;
+}
+
+interface DocumentSearchResponse {
+  documents: DocumentWithMetadata[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+interface DocumentVersion {
+  id: string;
+  documentId: string;
+  version: number;
+  filePath: string;
+  fileName: string;
+  fileSize: number;
+  checksum: string;
+  changeDescription?: string;
+  createdBy: string;
+  createdAt: Date;
+}
+
+interface InsertDocumentVersion {
+  documentId: string;
+  version: number;
+  filePath: string;
+  fileName: string;
+  fileSize: number;
+  checksum: string;
+  changeDescription?: string;
+  createdBy: string;
+}
+
+interface DocumentVersionHistory {
+  versions: DocumentVersion[];
+  total: number;
+}
+
+interface DocumentMetadata {
+  id: string;
+  documentId: string;
+  metadataKey: string;
+  metadataValue: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertDocumentMetadata {
+  documentId: string;
+  metadataKey: string;
+  metadataValue: string;
+}
+
+interface DocumentCompliance {
+  id: string;
+  documentId: string;
+  complianceType: string;
+  status: string;
+  dueDate?: string;
+  completedDate?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertDocumentCompliance {
+  documentId: string;
+  complianceType: string;
+  status: string;
+  dueDate?: string;
+  notes?: string;
+}
+
+interface DocumentAccessLog {
+  id: string;
+  documentId: string;
+  userId: string;
+  action: string;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: Date;
+}
+
+interface InsertDocumentAccessLog {
+  documentId: string;
+  userId: string;
+  action: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+interface ComplianceAlert {
+  id: string;
+  documentId: string;
+  alertType: string;
+  message: string;
+  severity: string;
+  isResolved: boolean;
+  createdAt: Date;
+}
+
+interface ComplianceDashboard {
+  totalDocuments: number;
+  compliantDocuments: number;
+  pendingCompliance: number;
+  overdueCompliance: number;
+  alerts: ComplianceAlert[];
+}
+
+interface ComplianceFilterRequest {
+  status?: string;
+  type?: string;
+  dueDate?: DateRangeFilter;
+}
+
+interface DocumentWorkflowState {
+  id: string;
+  documentId: string;
+  workflowName: string;
+  currentStep: string;
+  status: string;
+  assignedTo?: string;
+  dueDate?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertDocumentWorkflowState {
+  documentId: string;
+  workflowName: string;
+  currentStep: string;
+  status: string;
+  assignedTo?: string;
+  dueDate?: string;
+}
+
+interface DocumentAnalytics {
+  totalDocuments: number;
+  documentsByType: { type: string; count: number }[];
+  recentActivity: { action: string; count: number; date: string }[];
+  storageUsage: number;
+  complianceRate: number;
+}
+
+interface NotificationSetting {
+  id: string;
+  userId: string;
+  settingKey: string;
+  settingValue: string;
+  isEnabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertNotificationSetting {
+  userId: string;
+  settingKey: string;
+  settingValue: string;
+  isEnabled?: boolean;
 }
 import { QualityGrade, OperationStatus, TransferStatus, AdjustmentType } from "@shared/enums/warehouse";
 
