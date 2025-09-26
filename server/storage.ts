@@ -66,41 +66,34 @@ const toDecimalString = (v: number | string | null | undefined): string | null =
 function toExportPreferencesInsert(data: any): ExportPreferencesInsert {
   return {
     userId: data.userId,
-    reportType: data.reportType,
+    entityType: data.reportType || data.entityType,
     preferredFormat: data.preferredFormat,
-    defaultDateRange: data.defaultDateRange,
     customFields: data.customFields || null,
-    emailDelivery: data.emailDelivery || false,
-    emailRecipients: toNullableStringArray(data.emailRecipients) || [],
-    compression: data.compression || false,
   };
 }
 
 function toExportJobsInsert(data: any): ExportJobsInsert {
   return {
-    userId: data.userId,
-    jobName: data.jobName,
-    exportType: data.exportType,
-    format: data.format,
-    schedule: data.schedule,
+    name: data.jobName || data.name,
+    type: data.exportType || data.type,
     parameters: data.parameters || null,
-    emailRecipients: toNullableStringArray(data.emailRecipients) || null,
-    isActive: data.isActive !== undefined ? data.isActive : true,
+    createdBy: data.userId || data.createdBy,
   };
 }
 
 function toCarriersInsert(data: any): CarriersInsert {
   return {
     name: data.name,
-    contactPerson: data.contactPerson || null,
-    email: data.email || null,
-    phone: data.phone || null,
-    address: data.address || null,
+    code: data.code || data.name.toLowerCase().replace(/\s+/g, '_'),
+    contactInfo: {
+      contactPerson: data.contactPerson,
+      email: data.email,
+      phone: data.phone,
+      address: data.address
+    },
     serviceTypes: toNullableStringArray(data.serviceTypes) || null,
     rating: toDecimalString(data.rating) || null,
-    isPreferred: data.isPreferred !== undefined ? data.isPreferred : false,
     isActive: data.isActive !== undefined ? data.isActive : true,
-    notes: data.notes || null,
   };
 }
 
@@ -109,69 +102,39 @@ function toAuditLogsInsert(data: any): AuditLogsInsert {
     action: data.action,
     entityType: data.entityType,
     entityId: data.entityId || null,
-    operationType: data.operationType || null,
     oldValues: data.oldValues || null,
     newValues: data.newValues || null,
-    changedFields: toNullableStringArray(data.changedFields) || null,
-    description: data.description,
-    businessContext: data.businessContext || null,
-    correlationId: data.correlationId || null,
-    sessionId: data.sessionId || null,
-    financialImpact: toDecimalString(data.financialImpact) || null,
-    currency: data.currency || 'USD',
     userId: data.userId || null,
-    userName: data.userName || null,
-    userRole: data.userRole || null,
     ipAddress: data.ipAddress || null,
     userAgent: data.userAgent || null,
-    approvalRequestId: data.approvalRequestId || null,
-    approvalStatus: data.approvalStatus || null,
-    approverComments: data.approverComments || null,
-    source: data.source || 'system',
-    severity: data.severity || 'info',
-    checksum: data.checksum,
   };
 }
 
 function toApprovalChainsInsert(data: any): ApprovalChainsInsert {
   return {
-    name: data.name,
-    operationType: data.operationType,
-    minAmount: toDecimalString(data.minAmount) || null,
-    maxAmount: toDecimalString(data.maxAmount) || null,
-    currency: data.currency || 'USD',
-    requiredRoles: toStringArray(data.requiredRoles),
+    entityType: data.operationType || data.entityType || 'general',
+    sequence: data.sequence || data.priority || 1,
+    requiredRole: data.requiredRoles?.[0] || data.requiredRole || 'admin',
+    minimumAmount: toDecimalString(data.minAmount) || null,
+    maximumAmount: toDecimalString(data.maxAmount) || null,
     isActive: data.isActive !== undefined ? data.isActive : true,
-    priority: data.priority || 0,
-    timeoutHours: data.timeoutHours || null,
-    requiresAllApprovers: data.requiresAllApprovers || false,
-    allowSelfApproval: data.allowSelfApproval || false,
-    autoApproveSameUser: data.autoApproveSameUser || false,
-    steps: data.steps || null,
-    conditions: data.conditions || null,
-    escalationRules: data.escalationRules || null,
-    metadata: data.metadata || null,
-    workflowTemplate: data.workflowTemplate || null,
-    businessRules: data.businessRules || null,
-    approvalMatrix: data.approvalMatrix || null,
-    maxConsumptions: data.maxConsumptions || null,
-    createdBy: data.createdBy,
   };
 }
 
 function toSuppliersInsert(data: any): SuppliersInsert {
   return {
+    code: data.code || data.name.toLowerCase().replace(/\s+/g, '_'),
     name: data.name,
-    tradeName: data.tradeName || null,
+    contactPerson: data.contactPerson || null,
+    email: data.email || null,
+    phone: data.phone || null,
+    address: data.address || null,
+    city: data.city || null,
     country: data.country || null,
-    notes: data.notes || null,
-    qualityGrading: data.qualityGrading || 'ungraded',
-    qualityScore: toDecimalString(data.qualityScore) || null,
-    advanceBalance: toDecimalString(data.advanceBalance) || '0',
-    creditBalance: toDecimalString(data.creditBalance) || '0',
-    lastAdvanceDate: data.lastAdvanceDate || null,
-    paymentTerms: data.paymentTerms || 'cash',
+    paymentTerms: data.paymentTerms || 30,
+    creditLimit: toDecimalString(data.creditLimit) || null,
     isActive: data.isActive !== undefined ? data.isActive : true,
+    rating: toDecimalString(data.qualityScore || data.rating) || null,
   };
 }
 
@@ -440,6 +403,15 @@ import {
   type Notification,
   type InsertNotification,
 } from "../shared/schema";
+
+// Missing type definitions for server/storage.ts
+interface DateRangeFilter {
+  startDate?: string;
+  endDate?: string;
+}
+
+type ApprovalOperationType = 'purchase' | 'capital_entry' | 'expense' | 'transfer' | 'payment' | 'withdrawal' | 'general';
+
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
@@ -945,7 +917,7 @@ class StorageApprovalGuard {
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser, auditContext?: AuditContext): Promise<User>;
+  upsertUser(user: InsertUser, auditContext?: AuditContext): Promise<User>;
   getAllUsers(): Promise<User[]>;
   countAdminUsers(): Promise<number>;
   updateUserRole(id: string, role: User['role'], auditContext?: AuditContext): Promise<User>;
@@ -2026,7 +1998,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(userWarehouseScopes).where(eq(userWarehouseScopes.userId, userId));
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
+  async upsertUser(userData: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
       .values(userData)
