@@ -309,6 +309,15 @@ import {
   documentCompliance,
   documentAccessLogs,
   documentWorkflowStates,
+  // Additional missing tables
+  salesOrders,
+  salesOrderItems,
+  revenueLedger,
+  alertConfigurations,
+  notificationTemplates,
+  supplies,
+  notificationQueue,
+  notificationSettings,
   // Notification system tables
   notifications,
   // Missing approval and reporting tables
@@ -410,6 +419,17 @@ import {
   type InsertDocumentAccessLog,
   type DocumentWorkflowState,
   type InsertDocumentWorkflowState,
+  // Additional types
+  type NotificationQueue,
+  type InsertNotificationQueue,
+  type NotificationSettings,
+  type InsertNotificationSettings,
+  type NotificationTemplate,
+  type InsertNotificationTemplate,
+  type RevenueLedger,
+  type InsertRevenueLedger,
+  type AlertConfiguration,
+  type InsertAlertConfiguration,
   // Basic types that exist
   type ApprovalChain,
   type InsertApprovalChain,
@@ -566,6 +586,10 @@ enum ExportStatus {
 }
 
 type ApprovalOperationType = 'purchase' | 'capital_entry' | 'expense' | 'transfer' | 'payment' | 'withdrawal' | 'general';
+
+// Type aliases for different contexts
+type SalesOrder = Order;
+type SalesOrderItem = OrderItem;
 
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray, asc, ilike, or } from "drizzle-orm";
