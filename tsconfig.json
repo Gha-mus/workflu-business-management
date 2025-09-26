@@ -1,14 +1,14 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "include": ["client/src/**/*", "shared/**/*", "server/**/*", "*.ts", "*.tsx"],
+  "exclude": ["node_modules", "build", "dist", "**/node_modules/**", "**/*.test.ts", "**/*.spec.ts"],
   "compilerOptions": {
     "incremental": true,
-    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "tsBuildInfoFile": "./node_modules/.cache/typescript/tsbuildinfo",
     "noEmit": true,
     "module": "ESNext",
-    "lib": ["ES2019", "DOM", "DOM.iterable"],
-    "jsx": "preserve",
+    "lib": ["ES2020", "DOM", "DOM.iterable"],
+    "jsx": "react-jsx",
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
@@ -16,7 +16,12 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./client/src/*"],
-      "@shared/*": ["./shared/*"]
-    }
+      "@shared/*": ["./shared/*"],
+      "@assets/*": ["./attached_assets/*"]
+    },
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
   }
 }

@@ -1,16 +1,26 @@
-// Capital and financial related enums
+/**
+ * Capital entry enums and constants
+ */
 
-export const CapitalEntryType = ['CapitalIn', 'CapitalOut', 'Reverse', 'Reclass', 'Opening'] as const;
-export type CapitalEntryType = typeof CapitalEntryType[number];
+export enum CapitalEntryType {
+  INVESTMENT = 'investment',
+  LOAN = 'loan',
+  GRANT = 'grant',
+  PROFIT_RETENTION = 'profit_retention',
+  WITHDRAWAL = 'withdrawal'
+}
 
-export const RevenueEntryType = [
-  'revenue_in', 'revenue_out', 'transfer', 'adjustment', 'reversal',
-  'customer_refund', 'withdrawal', 'reinvest_out'
-] as const;
-export type RevenueEntryType = typeof RevenueEntryType[number];
+export const CAPITAL_ENTRY_TYPE = CapitalEntryType;
 
-export const ReinvestmentAllocationPolicy = ['aggregate', 'pro_rata', 'specified'] as const;
-export type ReinvestmentAllocationPolicy = typeof ReinvestmentAllocationPolicy[number];
+export const capitalEntryTypeLabels: Record<CapitalEntryType, string> = {
+  [CapitalEntryType.INVESTMENT]: 'Investment',
+  [CapitalEntryType.LOAN]: 'Loan',
+  [CapitalEntryType.GRANT]: 'Grant',
+  [CapitalEntryType.PROFIT_RETENTION]: 'Profit Retention',
+  [CapitalEntryType.WITHDRAWAL]: 'Withdrawal'
+};
 
-export const PeriodStatus = ['open', 'pending_close', 'closed', 'locked'] as const;
-export type PeriodStatus = typeof PeriodStatus[number];
+export const capitalEntryTypeOptions = Object.entries(capitalEntryTypeLabels).map(([value, label]) => ({
+  value,
+  label
+}));

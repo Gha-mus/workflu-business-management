@@ -1,24 +1,37 @@
-// Shipping and logistics related enums
+/**
+ * Shipping and delivery enums and constants
+ */
 
-export const ShipmentMethod = ['air', 'sea', 'land', 'rail', 'multimodal'] as const;
-export type ShipmentMethod = typeof ShipmentMethod[number];
+export enum DeliveryTrackingStatus {
+  PENDING = 'pending',
+  PICKED_UP = 'picked_up',
+  IN_TRANSIT = 'in_transit',
+  DELIVERED = 'delivered',
+  DELAYED = 'delayed',
+  FAILED = 'failed'
+}
 
-export const ShipmentStatus = ['pending', 'in_transit', 'delivered', 'cancelled', 'delayed'] as const;
-export type ShipmentStatus = typeof ShipmentStatus[number];
+export const DELIVERY_TRACKING_STATUS = DeliveryTrackingStatus;
 
-export const CostType = ['broker', 'delivery', 'customs', 'inspection', 'handling', 'other'] as const;
-export type CostType = typeof CostType[number];
+export const deliveryStatusLabels: Record<DeliveryTrackingStatus, string> = {
+  [DeliveryTrackingStatus.PENDING]: 'Pending',
+  [DeliveryTrackingStatus.PICKED_UP]: 'Picked Up',
+  [DeliveryTrackingStatus.IN_TRANSIT]: 'In Transit',
+  [DeliveryTrackingStatus.DELIVERED]: 'Delivered',
+  [DeliveryTrackingStatus.DELAYED]: 'Delayed',
+  [DeliveryTrackingStatus.FAILED]: 'Failed'
+};
 
-export const DeliveryTrackingStatus = ['pending', 'in_transit', 'out_for_delivery', 'delivered', 'failed', 'returned'] as const;
-export type DeliveryTrackingStatus = typeof DeliveryTrackingStatus[number];
+export const deliveryStatusOptions = Object.entries(deliveryStatusLabels).map(([value, label]) => ({
+  value,
+  label
+}));
 
-export const SettlementType = ['accept', 'claim', 'return', 'discount'] as const;
-export type SettlementType = typeof SettlementType[number];
-
-// Enum constants for use in code
-export const SETTLEMENT_TYPE = {
-  ACCEPT: 'accept' as const,
-  CLAIM: 'claim' as const,
-  RETURN: 'return' as const,
-  DISCOUNT: 'discount' as const
-} as const;
+export const deliveryStatusColors: Record<DeliveryTrackingStatus, string> = {
+  [DeliveryTrackingStatus.PENDING]: 'orange',
+  [DeliveryTrackingStatus.PICKED_UP]: 'blue',
+  [DeliveryTrackingStatus.IN_TRANSIT]: 'purple',
+  [DeliveryTrackingStatus.DELIVERED]: 'green',
+  [DeliveryTrackingStatus.DELAYED]: 'yellow',
+  [DeliveryTrackingStatus.FAILED]: 'red'
+};

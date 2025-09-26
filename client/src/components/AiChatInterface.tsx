@@ -42,6 +42,16 @@ interface AiChatResponse {
   conversationId: string;
 }
 
+interface ContextualHelpResponse {
+  help: string;
+  suggestions?: string[];
+  quickActions?: Array<{
+    label: string;
+    action: string;
+    type: string;
+  }>;
+}
+
 interface AiInsightsProps {
   page: string;
   data?: any;
@@ -415,10 +425,10 @@ interface ContextualHelpProps {
 }
 
 export function ContextualHelp({ currentPage, userRole, className }: ContextualHelpProps) {
-  const { data: help, isLoading } = useQuery({
+  const { data: help, isLoading } = useQuery<ContextualHelpResponse>({
     queryKey: ['/api/ai/contextual-help', currentPage, userRole],
-    queryFn: async () => {
-      return await apiRequestJson('POST', '/api/ai/contextual-help', {
+    queryFn: async (): Promise<ContextualHelpResponse> => {
+      return await apiRequestJson<ContextualHelpResponse>('POST', '/api/ai/contextual-help', {
         currentPage,
         userRole,
         currentData: {}

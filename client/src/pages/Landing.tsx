@@ -1,41 +1,35 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useLocation } from "wouter";
+/**
+ * Landing page component
+ */
 
 export default function Landing() {
-  const [, setLocation] = useLocation();
-
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardContent className="pt-6 text-center space-y-6">
-          <div className="flex justify-center">
-            <div className="w-16 h-16 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-2xl" data-testid="logo">W</span>
-            </div>
-          </div>
-          
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2" data-testid="app-title">WorkFlu</h1>
-            <p className="text-muted-foreground">Business Management System</p>
-          </div>
-
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Manage your trading operations with comprehensive tools for working capital, 
-              purchases, inventory tracking, and financial reporting.
-            </p>
-            
-            <Button 
-              className="w-full"
-              onClick={() => setLocation('/auth/login')}
-              data-testid="login-button"
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center">
+          <h1 className="text-5xl font-bold text-gray-900 mb-6">
+            WorkFlu Business Management
+          </h1>
+          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            Comprehensive business management system for handling capital, purchases, 
+            warehouse operations, shipping, and more.
+          </p>
+          <div className="space-x-4">
+            <a
+              href="/login"
+              className="inline-block px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
             >
-              Sign In
-            </Button>
+              Get Started
+            </a>
+            <a
+              href="/dashboard"
+              className="inline-block px-8 py-3 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-semibold"
+            >
+              View Demo
+            </a>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

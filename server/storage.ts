@@ -31,14 +31,12 @@ type ExportPreferencesInsert = typeof exportPreferences.$inferInsert;
 type ExportPreferencesSelect = typeof exportPreferences.$inferSelect;
 type ExportJobsInsert = typeof exportJobs.$inferInsert;
 type ExportJobsSelect = typeof exportJobs.$inferSelect;
-type NotificationQueueInsert = typeof notificationQueue.$inferInsert;
-type NotificationQueueSelect = typeof notificationQueue.$inferSelect;
+type NotificationInsert = typeof notifications.$inferInsert;
+type NotificationSelect = typeof notifications.$inferSelect;
 type QualityInspectionsInsert = typeof qualityInspections.$inferInsert;
 type QualityInspectionsSelect = typeof qualityInspections.$inferSelect;
 type DocumentsInsert = typeof documents.$inferInsert;
 type DocumentsSelect = typeof documents.$inferSelect;
-type RevenueLedgerInsert = typeof revenueLedger.$inferInsert;
-type RevenueLedgerSelect = typeof revenueLedger.$inferSelect;
 type WithdrawalRecordsInsert = typeof withdrawalRecords.$inferInsert;
 type WithdrawalRecordsSelect = typeof withdrawalRecords.$inferSelect;
 
@@ -68,41 +66,34 @@ const toDecimalString = (v: number | string | null | undefined): string | null =
 function toExportPreferencesInsert(data: any): ExportPreferencesInsert {
   return {
     userId: data.userId,
-    reportType: data.reportType,
+    entityType: data.reportType || data.entityType,
     preferredFormat: data.preferredFormat,
-    defaultDateRange: data.defaultDateRange,
     customFields: data.customFields || null,
-    emailDelivery: data.emailDelivery || false,
-    emailRecipients: toNullableStringArray(data.emailRecipients) || [],
-    compression: data.compression || false,
   };
 }
 
 function toExportJobsInsert(data: any): ExportJobsInsert {
   return {
-    userId: data.userId,
-    jobName: data.jobName,
-    exportType: data.exportType,
-    format: data.format,
-    schedule: data.schedule,
+    name: data.jobName || data.name,
+    type: data.exportType || data.type,
     parameters: data.parameters || null,
-    emailRecipients: toNullableStringArray(data.emailRecipients) || null,
-    isActive: data.isActive !== undefined ? data.isActive : true,
+    createdBy: data.userId || data.createdBy,
   };
 }
 
 function toCarriersInsert(data: any): CarriersInsert {
   return {
     name: data.name,
-    contactPerson: data.contactPerson || null,
-    email: data.email || null,
-    phone: data.phone || null,
-    address: data.address || null,
+    code: data.code || data.name.toLowerCase().replace(/\s+/g, '_'),
+    contactInfo: {
+      contactPerson: data.contactPerson,
+      email: data.email,
+      phone: data.phone,
+      address: data.address
+    },
     serviceTypes: toNullableStringArray(data.serviceTypes) || null,
     rating: toDecimalString(data.rating) || null,
-    isPreferred: data.isPreferred !== undefined ? data.isPreferred : false,
     isActive: data.isActive !== undefined ? data.isActive : true,
-    notes: data.notes || null,
   };
 }
 
@@ -111,69 +102,39 @@ function toAuditLogsInsert(data: any): AuditLogsInsert {
     action: data.action,
     entityType: data.entityType,
     entityId: data.entityId || null,
-    operationType: data.operationType || null,
     oldValues: data.oldValues || null,
     newValues: data.newValues || null,
-    changedFields: toNullableStringArray(data.changedFields) || null,
-    description: data.description,
-    businessContext: data.businessContext || null,
-    correlationId: data.correlationId || null,
-    sessionId: data.sessionId || null,
-    financialImpact: toDecimalString(data.financialImpact) || null,
-    currency: data.currency || 'USD',
     userId: data.userId || null,
-    userName: data.userName || null,
-    userRole: data.userRole || null,
     ipAddress: data.ipAddress || null,
     userAgent: data.userAgent || null,
-    approvalRequestId: data.approvalRequestId || null,
-    approvalStatus: data.approvalStatus || null,
-    approverComments: data.approverComments || null,
-    source: data.source || 'system',
-    severity: data.severity || 'info',
-    checksum: data.checksum,
   };
 }
 
 function toApprovalChainsInsert(data: any): ApprovalChainsInsert {
   return {
-    name: data.name,
-    operationType: data.operationType,
-    minAmount: toDecimalString(data.minAmount) || null,
-    maxAmount: toDecimalString(data.maxAmount) || null,
-    currency: data.currency || 'USD',
-    requiredRoles: toStringArray(data.requiredRoles),
+    entityType: data.operationType || data.entityType || 'general',
+    sequence: data.sequence || data.priority || 1,
+    requiredRole: data.requiredRoles?.[0] || data.requiredRole || 'admin',
+    minimumAmount: toDecimalString(data.minAmount) || null,
+    maximumAmount: toDecimalString(data.maxAmount) || null,
     isActive: data.isActive !== undefined ? data.isActive : true,
-    priority: data.priority || 0,
-    timeoutHours: data.timeoutHours || null,
-    requiresAllApprovers: data.requiresAllApprovers || false,
-    allowSelfApproval: data.allowSelfApproval || false,
-    autoApproveSameUser: data.autoApproveSameUser || false,
-    steps: data.steps || null,
-    conditions: data.conditions || null,
-    escalationRules: data.escalationRules || null,
-    metadata: data.metadata || null,
-    workflowTemplate: data.workflowTemplate || null,
-    businessRules: data.businessRules || null,
-    approvalMatrix: data.approvalMatrix || null,
-    maxConsumptions: data.maxConsumptions || null,
-    createdBy: data.createdBy,
   };
 }
 
 function toSuppliersInsert(data: any): SuppliersInsert {
   return {
+    code: data.code || data.name.toLowerCase().replace(/\s+/g, '_'),
     name: data.name,
-    tradeName: data.tradeName || null,
+    contactPerson: data.contactPerson || null,
+    email: data.email || null,
+    phone: data.phone || null,
+    address: data.address || null,
+    city: data.city || null,
     country: data.country || null,
-    notes: data.notes || null,
-    qualityGrading: data.qualityGrading || 'ungraded',
-    qualityScore: toDecimalString(data.qualityScore) || null,
-    advanceBalance: toDecimalString(data.advanceBalance) || '0',
-    creditBalance: toDecimalString(data.creditBalance) || '0',
-    lastAdvanceDate: data.lastAdvanceDate || null,
-    paymentTerms: data.paymentTerms || 'cash',
+    paymentTerms: data.paymentTerms || 30,
+    creditLimit: toDecimalString(data.creditLimit) || null,
     isActive: data.isActive !== undefined ? data.isActive : true,
+    rating: toDecimalString(data.qualityScore || data.rating) || null,
   };
 }
 
@@ -336,58 +297,44 @@ import {
   shipmentLegs,
   salesReturns,
   arrivalCosts,
-  // Missing filter types for storage.ts
-  type RevenueLedgerFilter,
-  type WithdrawalRecordFilter,
-  type ReinvestmentFilter,
-  // Missing approval and receipt types for storage.ts
-  type CustomerReceipt,
-  type CustomerRefund,
-  type WithdrawalApproval,
-  type ReinvestmentApproval,
   customers,
-  salesOrders,
-  salesOrderItems,
   customerCommunications,
   revenueTransactions,
   salesPerformanceMetrics,
   customerCreditLimits,
   pricingRules,
-  // Stage 5 Operating Expenses tables
-  supplies,
-  operatingExpenseCategories,
-  operatingExpenses,
-  supplyConsumption,
-  supplyPurchases,
   documents,
   documentVersions,
   documentMetadata,
   documentCompliance,
   documentAccessLogs,
   documentWorkflowStates,
-  // Notification system tables
-  notificationSettings,
-  notificationTemplates,
-  notificationQueue,
+  // Additional missing tables
+  salesOrders,
+  salesOrderItems,
+  revenueLedger,
   alertConfigurations,
-  notificationHistory,
+  notificationTemplates,
+  supplies,
+  notificationQueue,
+  notificationSettings,
+  // Notification system tables
+  notifications,
   // Missing approval and reporting tables
   approvalChains,
   approvalRequests,
-  approvalGuards,
   auditLogs,
+  // Financial tables
   financialPeriods,
+  financialMetrics,
   profitLossStatements,
   cashFlowAnalysis,
-  marginAnalysis,
-  budgetTracking,
+  operatingExpenseCategories,
   // Stage 7 Revenue Management tables
-  revenueLedger,
   withdrawalRecords,
   reinvestments,
-  revenueBalanceSummary,
   type User,
-  type UpsertUser,
+  type InsertUser,
   type Supplier,
   type InsertSupplier,
   type Order,
@@ -446,10 +393,6 @@ import {
   type InsertInventoryAdjustment,
   type Customer,
   type InsertCustomer,
-  type SalesOrder,
-  type InsertSalesOrder,
-  type SalesOrderItem,
-  type InsertSalesOrderItem,
   type CustomerCommunication,
   type InsertCustomerCommunication,
   type RevenueTransaction,
@@ -460,30 +403,10 @@ import {
   type InsertCustomerCreditLimit,
   type PricingRule,
   type InsertPricingRule,
-  // Stage 5 Operating Expenses types
-  type Supply,
-  type InsertSupply,
-  type OperatingExpenseCategory,
-  type InsertOperatingExpenseCategory,
-  type OperatingExpense,
-  type InsertOperatingExpense,
-  type SupplyConsumption,
-  type InsertSupplyConsumption,
-  type SupplyPurchase,
-  type InsertSupplyPurchase,
-  type ShipmentWithDetailsResponse,
-  type ShippingAnalyticsResponse,
-  type CreateShipmentFromStock,
-  type AddShippingCost,
-  type AddDeliveryTracking,
-  type ShipmentFilter,
-  type CarrierFilter,
   type FinancialSummaryResponse,
-  type CashFlowResponse,
   type InventoryAnalyticsResponse,
   type SupplierPerformanceResponse,
   type TradingActivityResponse,
-  type DateRangeFilter,
   type Document,
   type InsertDocument,
   type DocumentVersion,
@@ -496,109 +419,184 @@ import {
   type InsertDocumentAccessLog,
   type DocumentWorkflowState,
   type InsertDocumentWorkflowState,
-  type DocumentWithMetadata,
-  type DocumentSearchResponse,
-  type DocumentVersionHistory,
-  type ComplianceAlert,
-  type ComplianceDashboard,
-  type DocumentAnalytics,
-  type DocumentSearchRequest,
-  type DocumentUploadRequest,
-  type DocumentUpdateRequest,
-  type DocumentVersionCreateRequest,
-  type DocumentComplianceUpdateRequest,
-  type ComplianceFilterRequest,
-  // Notification system types
-  type NotificationSetting,
-  type InsertNotificationSetting,
-  type UpdateNotificationSetting,
-  type NotificationSettingFilter,
-  type NotificationTemplate,
-  type InsertNotificationTemplate,
-  type UpdateNotificationTemplate,
-  type NotificationTemplateFilter,
+  // Additional types
   type NotificationQueue,
   type InsertNotificationQueue,
-  type UpdateNotificationQueue,
-  type NotificationQueueFilter,
-  type CreateNotification,
+  type NotificationSettings,
+  type InsertNotificationSettings,
+  type NotificationTemplate,
+  type InsertNotificationTemplate,
+  type RevenueLedger,
+  type InsertRevenueLedger,
   type AlertConfiguration,
   type InsertAlertConfiguration,
-  type UpdateAlertConfiguration,
-  type AlertConfigurationFilter,
-  type NotificationHistory,
-  type NotificationHistoryFilter,
-  type NotificationCenterResponse,
-  type NotificationSettingsResponse,
-  type AlertMonitoringDashboard,
-  type NotificationAnalytics,
-  type NotificationDeliveryStatus,
-  // Missing approval and reporting types
+  // Basic types that exist
   type ApprovalChain,
   type InsertApprovalChain,
   type ApprovalRequest,
   type InsertApprovalRequest,
-  type ApprovalGuard,
-  type InsertApprovalGuard,
   type AuditLog,
   type InsertAuditLog,
+  type WithdrawalRecord,
+  type InsertWithdrawalRecord,
+  type Reinvestment,
+  type InsertReinvestment,
+  type Notification,
+  type InsertNotification,
+  // Financial types
   type FinancialPeriod,
   type InsertFinancialPeriod,
   type ProfitLossStatement,
   type InsertProfitLossStatement,
   type CashFlowAnalysis,
   type InsertCashFlowAnalysis,
-  type MarginAnalysis,
-  type InsertMarginAnalysis,
-  type BudgetTracking,
-  type InsertBudgetTracking,
-  // Stage 7 Revenue Management types
-  type RevenueLedger,
-  type InsertRevenueLedger,
-  type WithdrawalRecord,
-  type InsertWithdrawalRecord,
-  type Reinvestment,
-  type InsertReinvestment,
-  type RevenueBalanceSummary,
-  type InsertRevenueBalanceSummary,
-  // Missing types that were causing compilation errors
-  type FinancialMetric,
-  type InsertFinancialMetric,
-  type ShipmentLeg,
-  type InsertShipmentLeg,
-  type ArrivalCost,
-  type InsertArrivalCost,
-  type SalesReturn,
-  type InsertSalesReturn
 } from "../shared/schema";
+
+// Missing type definitions for server/storage.ts
+interface DateRangeFilter {
+  startDate?: string;
+  endDate?: string;
+}
+
+interface CashFlowResponse {
+  inflow: number;
+  outflow: number;
+  netFlow: number;
+  period: string;
+}
+
+interface DocumentWithMetadata extends Document {
+  metadata?: DocumentMetadata[];
+  compliance?: DocumentCompliance[];
+  versions?: DocumentVersion[];
+}
+
+interface DocumentSearchRequest {
+  query?: string;
+  category?: string;
+  status?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface DocumentSearchResponse {
+  documents: Document[];
+  total: number;
+  page: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+interface ComplianceAlert {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  alertType: string;
+  alertCategory: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  message: string;
+  complianceType: string;
+  expiryDate: Date | null;
+  status: string;
+  renewalRequired: boolean;
+  issuingAuthority: string | null;
+  daysUntilExpiry: number;
+  actionRequired: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ComplianceDashboard {
+  summary: {
+    total: number;
+    active: number;
+    expired: number;
+    expiringSoon: number;
+    pendingReview: number;
+    complianceRate: number;
+  };
+  alerts: ComplianceAlert[];
+  recentActivity: any[];
+  upcomingRenewals: ComplianceAlert[];
+  criticalItems: ComplianceAlert[];
+  complianceByType: any[];
+  lastUpdated: Date;
+}
+
+interface ComplianceFilterRequest {
+  status?: string;
+  complianceType?: string;
+  expiryDateFrom?: string;
+  expiryDateTo?: string;
+}
+
+interface DocumentAnalytics {
+  summary: {
+    totalDocuments: number;
+    totalSizeBytes: number;
+    averageSizeBytes: number;
+    documentsByCategory: Array<{ category: string; count: number; percentage: number }>;
+    documentsByStatus: Array<{ status: string; count: number; percentage: number }>;
+    documentsByType: Array<{ type: string; count: number; percentage: number }>;
+  };
+  usage: {
+    totalAccesses: number;
+    uniqueAccessors: number;
+    mostAccessedDocuments: Array<{ documentId: string; accessCount: number; uniqueUsers: number }>;
+    averageAccessesPerDocument: number;
+  };
+  trends: {
+    documentsCreatedInPeriod: number;
+    growthRate: number;
+    popularCategories: Array<{ category: string; count: number }>;
+  };
+  compliance: {
+    totalComplianceItems: number;
+    activeCompliance: number;
+    expiredCompliance: number;
+    complianceRate: number;
+  };
+  storage: {
+    totalStorageUsed: number;
+    storageByCategory: Array<{ category: string; sizeBytes: number; documentCount: number }>;
+    largestDocuments: Array<{ documentId: string; title: string; sizeBytes: number; category: string }>;
+  };
+  periodStart: Date;
+  periodEnd: Date;
+  generatedAt: Date;
+}
+
+// Document status enum  
+enum DocumentStatus {
+  draft = 'draft',
+  active = 'active',
+  archived = 'archived',
+  deleted = 'deleted',
+  completed = 'completed'
+}
+
+// Export status enum for workflow states
+enum ExportStatus {
+  pending = 'pending',
+  processing = 'processing',
+  completed = 'completed',
+  failed = 'failed'
+}
+
+type ApprovalOperationType = 'purchase' | 'capital_entry' | 'expense' | 'transfer' | 'payment' | 'withdrawal' | 'general';
+
+// Type aliases for different contexts
+type SalesOrder = Order;
+type SalesOrderItem = OrderItem;
+
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, inArray, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
 import { auditService } from "./auditService";
 import { approvalWorkflowService } from "./approvalWorkflowService";
 import { ConfigurationService } from "./configurationService";
-import { 
-  UserRole, 
-  PurchaseStatus, 
-  ShipmentStatus, 
-  ApprovalStatus,
-  ApprovalOperationType,
-  QualityGrade,
-  InspectionStatus,
-  DocumentStatus,
-  WarehouseAccessLevel,
-  SupplyType,
-  CapitalEntryType,
-  DeliveryTrackingStatus,
-  SettlementType,
-  OperationStatus,
-  TransferStatus,
-  AdjustmentType,
-  WarehouseStockStatus,
-  PeriodStatus,
-  TransactionStatus
-} from '../shared/enums';
-import { SalesOrderStatus } from '../shared/enums/sales';
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
@@ -1098,7 +1096,7 @@ class StorageApprovalGuard {
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser, auditContext?: AuditContext): Promise<User>;
+  upsertUser(user: InsertUser, auditContext?: AuditContext): Promise<User>;
   getAllUsers(): Promise<User[]>;
   countAdminUsers(): Promise<number>;
   updateUserRole(id: string, role: User['role'], auditContext?: AuditContext): Promise<User>;
@@ -2179,7 +2177,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(userWarehouseScopes).where(eq(userWarehouseScopes.userId, userId));
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
+  async upsertUser(userData: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
       .values(userData)

@@ -1,42 +1,130 @@
-// Warehouse and inventory related enums
+/**
+ * Warehouse operation enums and constants
+ */
 
-export const WarehouseStockStatus = [
-  'AWAITING_DECISION', 'FILTERING', 'FILTERED', 'PACKED', 'RESERVED', 
-  'CONSUMED', 'READY_TO_SHIP', 'NON_CLEAN', 'READY_FOR_SALE', 'AWAITING_FILTER'
-] as const;
-export type WarehouseStockStatus = typeof WarehouseStockStatus[number];
+export enum QualityGrade {
+  A = 'A',
+  B = 'B',
+  C = 'C',
+  D = 'D',
+  REJECTED = 'rejected'
+}
 
-export const QualityGrade = ['grade_1', 'grade_2', 'grade_3', 'specialty', 'commercial', 'ungraded'] as const;
-export type QualityGrade = typeof QualityGrade[number];
+export enum OperationStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+  FAILED = 'failed'
+}
 
-export const SupplyType = ['cartons_8kg', 'cartons_20kg', 'labels', 'wraps', 'other'] as const;
-export type SupplyType = typeof SupplyType[number];
+export enum TransferStatus {
+  PENDING = 'pending',
+  IN_TRANSIT = 'in_transit',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled'
+}
 
-export const AdjustmentType = ['cycle_count', 'reconciliation', 'correction', 'write_off'] as const;
-export type AdjustmentType = typeof AdjustmentType[number];
+export enum AdjustmentType {
+  INCREASE = 'increase',
+  DECREASE = 'decrease',
+  CORRECTION = 'correction',
+  DAMAGE = 'damage',
+  EXPIRE = 'expire'
+}
 
-export const TransferType = ['warehouse_to_warehouse', 'location_to_location', 'batch_split', 'batch_merge'] as const;
-export type TransferType = typeof TransferType[number];
+export enum WarehouseAccessLevel {
+  VIEW_ONLY = 'view_only',
+  OPERATOR = 'operator',
+  MANAGER = 'manager',
+  ADMIN = 'admin'
+}
 
-export const OperationType = ['washing', 'drying', 'hulling', 'sorting', 'milling'] as const;
-export type OperationType = typeof OperationType[number];
+// Export constants for backward compatibility
+export const QUALITY_GRADE = QualityGrade;
+export const OPERATION_STATUS = OperationStatus;
+export const TRANSFER_STATUS = TransferStatus;
+export const ADJUSTMENT_TYPE = AdjustmentType;
+export const WAREHOUSE_ACCESS_LEVEL = WarehouseAccessLevel;
 
-export const WarehouseAccessLevel = ['read', 'write', 'transfer', 'admin'] as const;
-export type WarehouseAccessLevel = typeof WarehouseAccessLevel[number];
+// Labels for UI display
+export const qualityGradeLabels: Record<QualityGrade, string> = {
+  [QualityGrade.A]: 'Grade A (Premium)',
+  [QualityGrade.B]: 'Grade B (Good)',
+  [QualityGrade.C]: 'Grade C (Average)',
+  [QualityGrade.D]: 'Grade D (Below Average)',
+  [QualityGrade.REJECTED]: 'Rejected'
+};
 
-// Enum constants for use in code
-export const WAREHOUSE_ACCESS_LEVEL = {
-  READ: 'read' as const,
-  WRITE: 'write' as const,
-  TRANSFER: 'transfer' as const,
-  ADMIN: 'admin' as const
-} as const;
+export const operationStatusLabels: Record<OperationStatus, string> = {
+  [OperationStatus.PENDING]: 'Pending',
+  [OperationStatus.IN_PROGRESS]: 'In Progress',
+  [OperationStatus.COMPLETED]: 'Completed',
+  [OperationStatus.CANCELLED]: 'Cancelled',
+  [OperationStatus.FAILED]: 'Failed'
+};
 
-export const ExpenseCategory = ['wages', 'rent', 'utilities', 'supplies', 'transfer_fees', 'other'] as const;
-export type ExpenseCategory = typeof ExpenseCategory[number];
+export const transferStatusLabels: Record<TransferStatus, string> = {
+  [TransferStatus.PENDING]: 'Pending',
+  [TransferStatus.IN_TRANSIT]: 'In Transit',
+  [TransferStatus.COMPLETED]: 'Completed',
+  [TransferStatus.CANCELLED]: 'Cancelled'
+};
 
-export const TransferStatus = ['pending', 'in_transit', 'completed', 'cancelled'] as const;
-export type TransferStatus = typeof TransferStatus[number];
+export const adjustmentTypeLabels: Record<AdjustmentType, string> = {
+  [AdjustmentType.INCREASE]: 'Increase',
+  [AdjustmentType.DECREASE]: 'Decrease',
+  [AdjustmentType.CORRECTION]: 'Correction',
+  [AdjustmentType.DAMAGE]: 'Damage',
+  [AdjustmentType.EXPIRE]: 'Expired'
+};
 
-export const OperationStatus = ['planned', 'in_progress', 'completed', 'cancelled'] as const;
-export type OperationStatus = typeof OperationStatus[number];
+export const warehouseAccessLevelLabels: Record<WarehouseAccessLevel, string> = {
+  [WarehouseAccessLevel.VIEW_ONLY]: 'View Only',
+  [WarehouseAccessLevel.OPERATOR]: 'Operator',
+  [WarehouseAccessLevel.MANAGER]: 'Manager',
+  [WarehouseAccessLevel.ADMIN]: 'Administrator'
+};
+
+// Options arrays for dropdowns
+export const qualityGradeOptions = Object.entries(qualityGradeLabels).map(([value, label]) => ({
+  value,
+  label
+}));
+
+export const operationStatusOptions = Object.entries(operationStatusLabels).map(([value, label]) => ({
+  value,
+  label
+}));
+
+export const transferStatusOptions = Object.entries(transferStatusLabels).map(([value, label]) => ({
+  value,
+  label
+}));
+
+export const adjustmentTypeOptions = Object.entries(adjustmentTypeLabels).map(([value, label]) => ({
+  value,
+  label
+}));
+
+export const warehouseAccessLevelOptions = Object.entries(warehouseAccessLevelLabels).map(([value, label]) => ({
+  value,
+  label
+}));
+
+// Color mappings for status displays
+export const qualityGradeColors: Record<QualityGrade, string> = {
+  [QualityGrade.A]: 'green',
+  [QualityGrade.B]: 'blue',
+  [QualityGrade.C]: 'yellow',
+  [QualityGrade.D]: 'orange',
+  [QualityGrade.REJECTED]: 'red'
+};
+
+export const operationStatusColors: Record<OperationStatus, string> = {
+  [OperationStatus.PENDING]: 'orange',
+  [OperationStatus.IN_PROGRESS]: 'blue',
+  [OperationStatus.COMPLETED]: 'green',
+  [OperationStatus.CANCELLED]: 'gray',
+  [OperationStatus.FAILED]: 'red'
+};
