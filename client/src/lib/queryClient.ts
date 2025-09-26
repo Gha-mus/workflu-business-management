@@ -25,12 +25,31 @@ export const queryClient = new QueryClient({
 });
 
 /**
- * API request helper function
+ * API request helper function - supports both overloads
  */
 export async function apiRequestJson<T>(
-  url: string, 
-  options: RequestInit = {}
+  methodOrUrl: string,
+  urlOrOptions?: string | RequestInit,
+  bodyData?: any
 ): Promise<T> {
+  let url: string;
+  let options: RequestInit;
+
+  // Handle two-parameter overload: apiRequestJson(url, options)
+  if (typeof urlOrOptions === 'object' || urlOrOptions === undefined) {
+    url = methodOrUrl;
+    options = urlOrOptions as RequestInit || {};
+  }
+  // Handle three-parameter overload: apiRequestJson(method, url, data)
+  else {
+    const method = methodOrUrl;
+    url = urlOrOptions as string;
+    options = {
+      method,
+      body: bodyData ? JSON.stringify(bodyData) : undefined,
+    };
+  }
+
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
