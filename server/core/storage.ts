@@ -29,59 +29,35 @@ import {
   qualityStandards,
   warehouseBatches,
   qualityInspections,
-  supplierQualityAssessments,
+
   inventoryConsumption,
   processingOperations,
   stockTransfers,
   inventoryAdjustments,
   customers,
-  salesOrders,
-  salesOrderItems,
+
   customerCommunications,
   revenueTransactions,
   salesPerformanceMetrics,
   customerCreditLimits,
   pricingRules,
   financialMetrics,
-  // Stage 5 Operating Expenses tables
-  supplies,
-  operatingExpenseCategories,
-  operatingExpenses,
-  supplyConsumption,
-  supplyPurchases,
+
   documents,
-  documentVersions,
-  documentMetadata,
-  documentCompliance,
-  documentAccessLogs,
-  documentWorkflowStates,
+
   // Notification system tables
-  notificationSettings,
-  notificationTemplates,
-  notificationQueue,
-  alertConfigurations,
-  notificationHistory,
+  notifications,
   // Missing approval and reporting tables
   approvalChains,
   approvalRequests,
-  approvalGuards,
   auditLogs,
-  financialPeriods,
-  profitLossStatements,
-  cashFlowAnalysis,
-  marginAnalysis,
-  budgetTracking,
   // Stage 7 Revenue Management tables
-  revenueLedger,
   withdrawalRecords,
   reinvestments,
-  revenueBalanceSummary,
   type User,
-  type UpsertUser,
+  type InsertUser,
   type Supplier,
   type InsertSupplier,
-  type SupplierQualityAssessment,
-  type InsertSupplierQualityAssessment,
   type Order,
   type InsertOrder,
   type Purchase,
@@ -140,10 +116,6 @@ import {
   type InsertInventoryAdjustment,
   type Customer,
   type InsertCustomer,
-  type SalesOrder,
-  type InsertSalesOrder,
-  type SalesOrderItem,
-  type InsertSalesOrderItem,
   type CustomerCommunication,
   type InsertCustomerCommunication,
   type RevenueTransaction,
@@ -154,139 +126,28 @@ import {
   type InsertCustomerCreditLimit,
   type PricingRule,
   type InsertPricingRule,
-  // Stage 5 Operating Expenses types
-  type Supply,
-  type InsertSupply,
-  type OperatingExpenseCategory,
-  type InsertOperatingExpenseCategory,
-  type OperatingExpense,
-  type InsertOperatingExpense,
-  type SupplyConsumption,
-  type InsertSupplyConsumption,
-  type SupplyPurchase,
-  type InsertSupplyPurchase,
-  type ShipmentWithDetailsResponse,
-  type ShippingAnalyticsResponse,
-  type CreateShipmentFromStock,
-  type AddShippingCost,
-  type AddDeliveryTracking,
-  type ShipmentFilter,
-  type CarrierFilter,
   type FinancialSummaryResponse,
-  type CashFlowResponse,
   type InventoryAnalyticsResponse,
   type SupplierPerformanceResponse,
   type TradingActivityResponse,
-  type DateRangeFilter,
   type Document,
   type InsertDocument,
-  type DocumentVersion,
-  type InsertDocumentVersion,
-  type DocumentMetadata,
-  type InsertDocumentMetadata,
-  type DocumentCompliance,
-  type InsertDocumentCompliance,
-  type DocumentAccessLog,
-  type InsertDocumentAccessLog,
-  type DocumentWorkflowState,
-  type InsertDocumentWorkflowState,
-  type DocumentWithMetadata,
-  type DocumentSearchResponse,
-  type DocumentVersionHistory,
-  type ComplianceAlert,
-  type ComplianceDashboard,
-  type DocumentAnalytics,
-  type DocumentSearchRequest,
-  type DocumentUploadRequest,
-  type DocumentUpdateRequest,
-  type DocumentVersionCreateRequest,
-  type DocumentComplianceUpdateRequest,
-  type ComplianceFilterRequest,
-  // Notification system types
-  type NotificationSetting,
-  type InsertNotificationSetting,
-  type UpdateNotificationSetting,
-  type NotificationSettingFilter,
-  type NotificationTemplate,
-  type InsertNotificationTemplate,
-  type UpdateNotificationTemplate,
-  type NotificationTemplateFilter,
-  type NotificationQueue,
-  type InsertNotificationQueue,
-  type UpdateNotificationQueue,
-  type NotificationQueueFilter,
-  type CreateNotification,
-  type AlertConfiguration,
-  type InsertAlertConfiguration,
-  type UpdateAlertConfiguration,
-  type AlertConfigurationFilter,
-  type NotificationHistory,
-  type NotificationHistoryFilter,
-  type NotificationCenterResponse,
-  type NotificationSettingsResponse,
-  type AlertMonitoringDashboard,
-  type NotificationAnalytics,
-  type NotificationDeliveryStatus,
-  // Missing approval and reporting types
+  // Basic types we know exist
   type ApprovalChain,
   type InsertApprovalChain,
   type ApprovalRequest,
   type InsertApprovalRequest,
-  type ApprovalGuard,
-  type InsertApprovalGuard,
   type AuditLog,
   type InsertAuditLog,
-  type FinancialPeriod,
-  type InsertFinancialPeriod,
-  type ProfitLossStatement,
-  type InsertProfitLossStatement,
-  type CashFlowAnalysis,
-  type InsertCashFlowAnalysis,
-  type MarginAnalysis,
-  type InsertMarginAnalysis,
-  type BudgetTracking,
-  type InsertBudgetTracking,
-  // Stage 7 Revenue Management types
-  type RevenueLedger,
-  type InsertRevenueLedger,
   type WithdrawalRecord,
   type InsertWithdrawalRecord,
   type Reinvestment,
   type InsertReinvestment,
-  type RevenueBalanceSummary,
-  type InsertRevenueBalanceSummary,
-  // Missing types that were causing errors
-  type FinancialMetric,
+  type Notification,
+  type InsertNotification,
   type ShipmentLeg,
   type InsertShipmentLeg,
-  type ArrivalCost,
-  type InsertArrivalCost,
-  type SalesReturn,
-  type InsertSalesReturn,
-  // Missing enums causing errors
-  warehouseStockStatusEnum,
-  // Missing filter types causing errors
-  type RevenueLedgerFilter,
-  type WithdrawalRecordFilter,
-  type ReinvestmentFilter,
-  // Missing approval and receipt types
-  type CustomerReceipt,
-  type CustomerRefund,
-  type WithdrawalApproval,
-  type ReinvestmentApproval,
 } from "@shared/schema";
-// Import typed enums to replace string literals  
-import { 
-  SalesOrderStatus, 
-  NotificationStatus, 
-  InspectionStatus, 
-  PeriodStatus,
-  ApprovalStatus,
-  WarehouseStockStatus,
-  ExportStatus,
-  ShipmentStatus,
-  TransactionStatus,
-} from '@shared/enums';
 import { db } from "./db";
 import { eq, desc, and, sum, sql, gte, lte, count, avg, isNotNull, asc, ilike, or } from "drizzle-orm";
 import Decimal from "decimal.js";
@@ -297,6 +158,150 @@ import { ConfigurationService } from "../configurationService";
 import { guardSystemUser } from "./systemUserGuard";
 import { CapitalEntryType } from "@shared/enums/capital";
 import { DeliveryTrackingStatus } from "@shared/enums/shipping";
+
+// Missing type definitions
+interface DateRangeFilter {
+  startDate?: string;
+  endDate?: string;
+}
+
+interface CashFlowResponse {
+  inflow: number;
+  outflow: number;
+  netFlow: number;
+  period: string;
+}
+
+interface FinancialPeriod {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertFinancialPeriod {
+  name: string;
+  startDate: string;
+  endDate: string;
+  status?: string;
+  createdBy: string;
+}
+
+interface ShippingAnalyticsResponse {
+  totalShipments: number;
+  averageDeliveryTime: number;
+  onTimeDeliveryRate: number;
+  carrierPerformance: any[];
+}
+
+interface FinancialMetric {
+  id: string;
+  periodId?: string;
+  metricName: string;
+  value: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ProfitLossStatement {
+  id: string;
+  periodId: string;
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CashFlowAnalysis {
+  id: string;
+  periodId: string;
+  cashInflow: number;
+  cashOutflow: number;
+  netCashFlow: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface MarginAnalysis {
+  id: string;
+  periodId: string;
+  grossMargin: number;
+  netMargin: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface BudgetTracking {
+  id: string;
+  periodId: string;
+  budgetedAmount: number;
+  actualAmount: number;
+  variance: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertBudgetTracking {
+  periodId: string;
+  budgetedAmount: number;
+  actualAmount: number;
+  variance: number;
+}
+
+interface ArrivalCost {
+  id: string;
+  shipmentId: string;
+  costType: string;
+  amount: number;
+  currency: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InsertArrivalCost {
+  shipmentId: string;
+  costType: string;
+  amount: number;
+  currency: string;
+}
+
+interface AddShippingCost {
+  shipmentId: string;
+  costName: string;
+  amount: number;
+  currency?: string;
+}
+
+interface CreateShipmentFromStock {
+  warehouseStockIds: string[];
+  carrierId: string;
+  destination: string;
+  estimatedDepartureDate: string;
+}
+
+interface ShipmentWithDetailsResponse {
+  shipment: any;
+  items: any[];
+  costs: any[];
+  tracking: any[];
+}
+
+interface ShipmentFilter {
+  status?: string;
+  carrierId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+interface CarrierFilter {
+  isActive?: boolean;
+  name?: string;
+}
 import { QualityGrade, OperationStatus, TransferStatus, AdjustmentType } from "@shared/enums/warehouse";
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
@@ -727,7 +732,7 @@ class StorageApprovalGuard {
    */
   static isSignificantSalesOrderChange(beforeState: any, changes: any): boolean {
     // Check for status changes that require approval
-    const significantStatusChanges = ['confirmed' satisfies SalesOrderStatus, 'fulfilled' satisfies SalesOrderStatus, 'delivered' satisfies SalesOrderStatus, 'cancelled' satisfies SalesOrderStatus];
+    const significantStatusChanges = ['confirmed', 'fulfilled', 'delivered', 'cancelled'];
     if (changes.status && significantStatusChanges.includes(changes.status)) {
       return true;
     }
@@ -762,7 +767,7 @@ class StorageApprovalGuard {
    */
   static isSignificantRevenueTransactionChange(beforeState: any, changes: any): boolean {
     // Check for status changes that require approval
-    const significantStatusChanges = ['approved' satisfies ApprovalStatus, 'confirmed' satisfies TransactionStatus, 'reversed' satisfies TransactionStatus];
+    const significantStatusChanges = ['approved', 'confirmed', 'reversed'];
     if (changes.status && significantStatusChanges.includes(changes.status)) {
       return true;
     }
@@ -796,7 +801,7 @@ class StorageApprovalGuard {
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser, auditContext?: AuditContext): Promise<User>;
+  upsertUser(user: InsertUser, auditContext?: AuditContext): Promise<User>;
   getAllUsers(): Promise<User[]>;
   countAdminUsers(): Promise<number>;
   updateUserRole(id: string, role: User['role'], auditContext?: AuditContext): Promise<User>;
@@ -1942,7 +1947,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(userWarehouseScopes).where(eq(userWarehouseScopes.userId, userId));
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
+  async upsertUser(userData: InsertUser): Promise<User> {
     // CRITICAL: Prevent modification of system user data
     if (userData.id) {
       guardSystemUser(userData.id, 'modified');
@@ -5268,10 +5273,10 @@ export class DatabaseStorage implements IStorage {
       acc.total += statusCount;
       
       switch (stat.status) {
-        case 'fulfilled' satisfies SalesOrderStatus:
+        case 'fulfilled':
           acc.completed += statusCount;
           break;
-        case 'cancelled' satisfies SalesOrderStatus:
+        case 'cancelled':
           acc.cancelled += statusCount;
           break;
         default:
@@ -7253,7 +7258,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: 'approved' satisfies ApprovalStatus,
+        status: 'approved',
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -7684,7 +7689,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: 'approved' satisfies ApprovalStatus,
+        status: 'approved',
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -8363,7 +8368,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'fulfilled' satisfies SalesOrderStatus },
+      operationData: { ...existingOrder, status: 'fulfilled' },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order fulfillment with inventory reservation - ${existingOrder.salesOrderNumber}`
@@ -8386,7 +8391,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedOrder] = await tx
         .update(salesOrders)
         .set({ 
-          status: 'fulfilled' satisfies SalesOrderStatus,
+          status: 'fulfilled',
           fulfilledAt: new Date(),
           updatedAt: new Date(),
         })
@@ -8431,7 +8436,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingOrder, status: 'cancelled' satisfies SalesOrderStatus, notes: reason },
+      operationData: { ...existingOrder, status: 'cancelled', notes: reason },
       amount: orderAmount,
       currency: existingOrder.currency || 'USD',
       businessContext: `Sales order cancellation - ${existingOrder.salesOrderNumber}: ${reason}`
@@ -8440,7 +8445,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(cancellationContext);
 
     return await this.updateSalesOrder(id, { 
-      status: 'cancelled' satisfies SalesOrderStatus,
+      status: 'cancelled',
       cancelledAt: new Date(),
       notes: reason,
     }, auditContext, approvalContext);
@@ -11444,7 +11449,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedRecord] = await db
         .update(withdrawalRecords)
         .set({
-          status: approval.approved ? 'approved' satisfies ApprovalStatus : 'cancelled' satisfies ApprovalStatus,
+          status: approval.approved ? 'approved' : 'cancelled' satisfies ApprovalStatus,
           approvedBy: auditContext.userId,
           approvedAt: new Date(),
           completedAt: approval.approved ? new Date() : null,
@@ -11680,7 +11685,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedRecord] = await db
         .update(reinvestments)
         .set({
-          status: approval.approved ? 'approved' satisfies ApprovalStatus : 'cancelled' satisfies ApprovalStatus,
+          status: approval.approved ? 'approved' : 'cancelled' satisfies ApprovalStatus,
           approvedBy: auditContext.userId,
           approvedAt: new Date(),
           completedAt: approval.approved ? new Date() : null,
@@ -12218,7 +12223,7 @@ export class DatabaseStorage implements IStorage {
       const [updatedVersion] = await db
         .update(documentVersions)
         .set({
-          status: 'approved' satisfies ApprovalStatus,
+          status: 'approved',
           approvedBy: userId,
           approvedAt: new Date(),
           updatedAt: new Date()
