@@ -304,12 +304,23 @@ import {
   customerCreditLimits,
   pricingRules,
   documents,
+  documentVersions,
+  documentMetadata,
+  documentCompliance,
+  documentAccessLogs,
+  documentWorkflowStates,
   // Notification system tables
   notifications,
   // Missing approval and reporting tables
   approvalChains,
   approvalRequests,
   auditLogs,
+  // Financial tables
+  financialPeriods,
+  financialMetrics,
+  profitLossStatements,
+  cashFlowAnalysis,
+  operatingExpenseCategories,
   // Stage 7 Revenue Management tables
   withdrawalRecords,
   reinvestments,
@@ -389,6 +400,16 @@ import {
   type TradingActivityResponse,
   type Document,
   type InsertDocument,
+  type DocumentVersion,
+  type InsertDocumentVersion,
+  type DocumentMetadata,
+  type InsertDocumentMetadata,
+  type DocumentCompliance,
+  type InsertDocumentCompliance,
+  type DocumentAccessLog,
+  type InsertDocumentAccessLog,
+  type DocumentWorkflowState,
+  type InsertDocumentWorkflowState,
   // Basic types that exist
   type ApprovalChain,
   type InsertApprovalChain,
@@ -402,12 +423,146 @@ import {
   type InsertReinvestment,
   type Notification,
   type InsertNotification,
+  // Financial types
+  type FinancialPeriod,
+  type InsertFinancialPeriod,
+  type ProfitLossStatement,
+  type InsertProfitLossStatement,
+  type CashFlowAnalysis,
+  type InsertCashFlowAnalysis,
 } from "../shared/schema";
 
 // Missing type definitions for server/storage.ts
 interface DateRangeFilter {
   startDate?: string;
   endDate?: string;
+}
+
+interface CashFlowResponse {
+  inflow: number;
+  outflow: number;
+  netFlow: number;
+  period: string;
+}
+
+interface DocumentWithMetadata extends Document {
+  metadata?: DocumentMetadata[];
+  compliance?: DocumentCompliance[];
+  versions?: DocumentVersion[];
+}
+
+interface DocumentSearchRequest {
+  query?: string;
+  category?: string;
+  status?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+}
+
+interface DocumentSearchResponse {
+  documents: Document[];
+  total: number;
+  page: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+interface ComplianceAlert {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  alertType: string;
+  alertCategory: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  message: string;
+  complianceType: string;
+  expiryDate: Date | null;
+  status: string;
+  renewalRequired: boolean;
+  issuingAuthority: string | null;
+  daysUntilExpiry: number;
+  actionRequired: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ComplianceDashboard {
+  summary: {
+    total: number;
+    active: number;
+    expired: number;
+    expiringSoon: number;
+    pendingReview: number;
+    complianceRate: number;
+  };
+  alerts: ComplianceAlert[];
+  recentActivity: any[];
+  upcomingRenewals: ComplianceAlert[];
+  criticalItems: ComplianceAlert[];
+  complianceByType: any[];
+  lastUpdated: Date;
+}
+
+interface ComplianceFilterRequest {
+  status?: string;
+  complianceType?: string;
+  expiryDateFrom?: string;
+  expiryDateTo?: string;
+}
+
+interface DocumentAnalytics {
+  summary: {
+    totalDocuments: number;
+    totalSizeBytes: number;
+    averageSizeBytes: number;
+    documentsByCategory: Array<{ category: string; count: number; percentage: number }>;
+    documentsByStatus: Array<{ status: string; count: number; percentage: number }>;
+    documentsByType: Array<{ type: string; count: number; percentage: number }>;
+  };
+  usage: {
+    totalAccesses: number;
+    uniqueAccessors: number;
+    mostAccessedDocuments: Array<{ documentId: string; accessCount: number; uniqueUsers: number }>;
+    averageAccessesPerDocument: number;
+  };
+  trends: {
+    documentsCreatedInPeriod: number;
+    growthRate: number;
+    popularCategories: Array<{ category: string; count: number }>;
+  };
+  compliance: {
+    totalComplianceItems: number;
+    activeCompliance: number;
+    expiredCompliance: number;
+    complianceRate: number;
+  };
+  storage: {
+    totalStorageUsed: number;
+    storageByCategory: Array<{ category: string; sizeBytes: number; documentCount: number }>;
+    largestDocuments: Array<{ documentId: string; title: string; sizeBytes: number; category: string }>;
+  };
+  periodStart: Date;
+  periodEnd: Date;
+  generatedAt: Date;
+}
+
+// Document status enum  
+enum DocumentStatus {
+  draft = 'draft',
+  active = 'active',
+  archived = 'archived',
+  deleted = 'deleted',
+  completed = 'completed'
+}
+
+// Export status enum for workflow states
+enum ExportStatus {
+  pending = 'pending',
+  processing = 'processing',
+  completed = 'completed',
+  failed = 'failed'
 }
 
 type ApprovalOperationType = 'purchase' | 'capital_entry' | 'expense' | 'transfer' | 'payment' | 'withdrawal' | 'general';
