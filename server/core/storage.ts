@@ -721,12 +721,14 @@ interface AuditContext {
   severity?: 'info' | 'warning' | 'error' | 'critical';
 }
 
-// Type declaration for Node.js process
+// Type declaration for Node.js process (avoid global process dependency)
+interface ProcessEnv {
+  INTERNAL_SYSTEM_TOKEN?: string;
+  [key: string]: string | undefined;
+}
+
 declare const process: {
-  env: {
-    INTERNAL_SYSTEM_TOKEN?: string;
-    [key: string]: string | undefined;
-  };
+  env: ProcessEnv;
 };
 
 class StorageApprovalGuard {
@@ -747,6 +749,10 @@ class StorageApprovalGuard {
     'warehouse_operation', // May be skipped for automated inventory management
     'shipping_operation'   // May be skipped for routine shipping updates
   ]);
+
+  // SECURITY: Internal token for skipApproval verification
+  private static readonly INTERNAL_SYSTEM_TOKEN = (typeof globalThis !== 'undefined' && 
+    (globalThis as any).process?.env?.INTERNAL_SYSTEM_TOKEN) || 'internal_system_token_dev';
 
   /**
    * Enforce approval requirement at storage level - CRITICAL SECURITY BOUNDARY
