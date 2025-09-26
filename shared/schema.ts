@@ -454,6 +454,252 @@ export const aiInsightsCache = pgTable('ai_insights_cache', {
   lastAccessed: timestamp('last_accessed').defaultNow().notNull(),
 });
 
+// AI conversations table
+export const aiConversations = pgTable('ai_conversations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  title: varchar('title', { length: 255 }),
+  conversationData: json('conversation_data'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Periods table for financial periods
+export const periods = pgTable('periods', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  startDate: timestamp('start_date').notNull(),
+  endDate: timestamp('end_date').notNull(),
+  status: operationStatusEnum('status').notNull().default('pending'),
+  isClosed: boolean('is_closed').notNull().default(false),
+  closedBy: uuid('closed_by').references(() => users.id),
+  closedAt: timestamp('closed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Period closing logs table
+export const periodClosingLogs = pgTable('period_closing_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  periodId: uuid('period_id').notNull().references(() => periods.id),
+  action: varchar('action', { length: 50 }).notNull(),
+  description: text('description'),
+  performedBy: uuid('performed_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Period adjustments table
+export const periodAdjustments = pgTable('period_adjustments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  periodId: uuid('period_id').notNull().references(() => periods.id),
+  adjustmentType: varchar('adjustment_type', { length: 50 }).notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  description: text('description'),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Export history table
+export const exportHistory = pgTable('export_history', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  exportType: exportTypeEnum('export_type').notNull(),
+  entityType: varchar('entity_type', { length: 50 }),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  filePath: varchar('file_path', { length: 500 }).notNull(),
+  fileSize: integer('file_size'),
+  parameters: json('parameters'),
+  recordCount: integer('record_count'),
+  status: operationStatusEnum('status').notNull().default('pending'),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+  downloadCount: integer('download_count').default(0),
+  expiresAt: timestamp('expires_at'),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+});
+
+// Export preferences table
+export const exportPreferences = pgTable('export_preferences', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  entityType: varchar('entity_type', { length: 50 }).notNull(),
+  preferredFormat: exportTypeEnum('preferred_format').notNull().default('excel'),
+  includeHeaders: boolean('include_headers').notNull().default(true),
+  dateFormat: varchar('date_format', { length: 20 }).default('YYYY-MM-DD'),
+  customFields: json('custom_fields'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Workflow validations table
+export const workflowValidations = pgTable('workflow_validations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  workflowType: varchar('workflow_type', { length: 50 }).notNull(),
+  validationRules: json('validation_rules').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  priority: integer('priority').default(0),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Carriers table
+export const carriers = pgTable('carriers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  contactInfo: json('contact_info'),
+  serviceTypes: json('service_types'),
+  isActive: boolean('is_active').notNull().default(true),
+  rating: decimal('rating', { precision: 3, scale: 2 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Shipment items table
+export const shipmentItems = pgTable('shipment_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  shipmentId: uuid('shipment_id').notNull().references(() => shipments.id, { onDelete: 'cascade' }),
+  orderItemId: uuid('order_item_id').references(() => orderItems.id),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  quantity: decimal('quantity', { precision: 15, scale: 2 }).notNull(),
+  weight: decimal('weight', { precision: 10, scale: 3 }),
+  dimensions: json('dimensions'), // {length, width, height}
+  packageType: varchar('package_type', { length: 50 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Arrival costs table
+export const arrivalCosts = pgTable('arrival_costs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  shipmentId: uuid('shipment_id').notNull().references(() => shipments.id),
+  costType: varchar('cost_type', { length: 50 }).notNull(), // customs, handling, storage, etc.
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  description: text('description'),
+  paidDate: timestamp('paid_date'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Sales returns table
+export const salesReturns = pgTable('sales_returns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  orderId: uuid('order_id').notNull().references(() => orders.id),
+  returnNumber: varchar('return_number', { length: 50 }).notNull().unique(),
+  reason: text('reason'),
+  status: operationStatusEnum('status').notNull().default('pending'),
+  refundAmount: decimal('refund_amount', { precision: 15, scale: 2 }),
+  processedBy: uuid('processed_by').references(() => users.id),
+  processedAt: timestamp('processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Shipping costs table
+export const shippingCosts = pgTable('shipping_costs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  shipmentId: uuid('shipment_id').notNull().references(() => shipments.id),
+  carrierId: uuid('carrier_id').references(() => carriers.id),
+  baseCost: decimal('base_cost', { precision: 15, scale: 2 }).notNull(),
+  fuelSurcharge: decimal('fuel_surcharge', { precision: 15, scale: 2 }),
+  additionalFees: decimal('additional_fees', { precision: 15, scale: 2 }),
+  totalCost: decimal('total_cost', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
+});
+
+// Delivery tracking table
+export const deliveryTracking = pgTable('delivery_tracking', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  shipmentId: uuid('shipment_id').notNull().references(() => shipments.id),
+  trackingNumber: varchar('tracking_number', { length: 255 }).notNull(),
+  status: deliveryTrackingStatusEnum('status').notNull().default('pending'),
+  location: varchar('location', { length: 255 }),
+  timestamp: timestamp('timestamp').notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Quality standards table
+export const qualityStandards = pgTable('quality_standards', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: uuid('product_id').references(() => products.id),
+  category: varchar('category', { length: 100 }),
+  standardName: varchar('standard_name', { length: 255 }).notNull(),
+  criteria: json('criteria').notNull(),
+  minScore: decimal('min_score', { precision: 5, scale: 2 }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Quality inspections table
+export const qualityInspections = pgTable('quality_inspections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  batchId: uuid('batch_id').references(() => warehouseBatches.id),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  inspectorId: uuid('inspector_id').notNull().references(() => users.id),
+  qualityStandardId: uuid('quality_standard_id').references(() => qualityStandards.id),
+  score: decimal('score', { precision: 5, scale: 2 }),
+  grade: qualityGradeEnum('grade'),
+  notes: text('notes'),
+  status: operationStatusEnum('status').notNull().default('pending'),
+  inspectedAt: timestamp('inspected_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Inventory consumption table
+export const inventoryConsumption = pgTable('inventory_consumption', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  warehouseStockId: uuid('warehouse_stock_id').references(() => warehouseStock.id),
+  consumedQuantity: decimal('consumed_quantity', { precision: 15, scale: 2 }).notNull(),
+  consumptionType: varchar('consumption_type', { length: 50 }).notNull(), // production, sale, damage, etc.
+  referenceId: uuid('reference_id'), // Reference to order, production batch, etc.
+  referenceType: varchar('reference_type', { length: 50 }),
+  consumedBy: uuid('consumed_by').notNull().references(() => users.id),
+  consumedAt: timestamp('consumed_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Processing operations table
+export const processingOperations = pgTable('processing_operations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  operationType: varchar('operation_type', { length: 50 }).notNull(),
+  inputProducts: json('input_products'), // [{productId, quantity}]
+  outputProducts: json('output_products'), // [{productId, quantity}]
+  status: operationStatusEnum('status').notNull().default('pending'),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  operatedBy: uuid('operated_by').notNull().references(() => users.id),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Stock transfers table
+export const stockTransfers = pgTable('stock_transfers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transferNumber: varchar('transfer_number', { length: 50 }).notNull().unique(),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  fromLocationId: uuid('from_location_id').references(() => warehouseStock.id),
+  toLocationId: uuid('to_location_id').references(() => warehouseStock.id),
+  fromLocation: varchar('from_location', { length: 100 }),
+  toLocation: varchar('to_location', { length: 100 }),
+  quantity: decimal('quantity', { precision: 15, scale: 2 }).notNull(),
+  status: transferStatusEnum('status').notNull().default('pending'),
+  initiatedBy: uuid('initiated_by').notNull().references(() => users.id),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  completedBy: uuid('completed_by').references(() => users.id),
+  notes: text('notes'),
+  initiatedAt: timestamp('initiated_at').defaultNow().notNull(),
+  approvedAt: timestamp('approved_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // Filter records table
 export const filterRecords = pgTable('filter_records', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -603,6 +849,78 @@ export type InsertPurchasePayment = typeof purchasePayments.$inferInsert;
 // AI insights cache types
 export type AiInsightsCache = typeof aiInsightsCache.$inferSelect;
 export type InsertAiInsightsCache = typeof aiInsightsCache.$inferInsert;
+
+// AI conversation types
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type InsertAiConversation = typeof aiConversations.$inferInsert;
+
+// Period types
+export type Period = typeof periods.$inferSelect;
+export type InsertPeriod = typeof periods.$inferInsert;
+
+// Period closing log types
+export type PeriodClosingLog = typeof periodClosingLogs.$inferSelect;
+export type InsertPeriodClosingLog = typeof periodClosingLogs.$inferInsert;
+
+// Period adjustment types
+export type PeriodAdjustment = typeof periodAdjustments.$inferSelect;
+export type InsertPeriodAdjustment = typeof periodAdjustments.$inferInsert;
+
+// Export history types
+export type ExportHistory = typeof exportHistory.$inferSelect;
+export type InsertExportHistory = typeof exportHistory.$inferInsert;
+
+// Export preferences types
+export type ExportPreferences = typeof exportPreferences.$inferSelect;
+export type InsertExportPreferences = typeof exportPreferences.$inferInsert;
+
+// Workflow validation types
+export type WorkflowValidation = typeof workflowValidations.$inferSelect;
+export type InsertWorkflowValidation = typeof workflowValidations.$inferInsert;
+
+// Carrier types
+export type Carrier = typeof carriers.$inferSelect;
+export type InsertCarrier = typeof carriers.$inferInsert;
+
+// Shipment item types
+export type ShipmentItem = typeof shipmentItems.$inferSelect;
+export type InsertShipmentItem = typeof shipmentItems.$inferInsert;
+
+// Arrival cost types
+export type ArrivalCost = typeof arrivalCosts.$inferSelect;
+export type InsertArrivalCost = typeof arrivalCosts.$inferInsert;
+
+// Sales return types
+export type SalesReturn = typeof salesReturns.$inferSelect;
+export type InsertSalesReturn = typeof salesReturns.$inferInsert;
+
+// Shipping cost types  
+export type ShippingCost = typeof shippingCosts.$inferSelect;
+export type InsertShippingCost = typeof shippingCosts.$inferInsert;
+
+// Delivery tracking types
+export type DeliveryTracking = typeof deliveryTracking.$inferSelect;
+export type InsertDeliveryTracking = typeof deliveryTracking.$inferInsert;
+
+// Quality standard types
+export type QualityStandard = typeof qualityStandards.$inferSelect;
+export type InsertQualityStandard = typeof qualityStandards.$inferInsert;
+
+// Quality inspection types
+export type QualityInspection = typeof qualityInspections.$inferSelect;
+export type InsertQualityInspection = typeof qualityInspections.$inferInsert;
+
+// Inventory consumption types
+export type InventoryConsumption = typeof inventoryConsumption.$inferSelect;
+export type InsertInventoryConsumption = typeof inventoryConsumption.$inferInsert;
+
+// Processing operation types
+export type ProcessingOperation = typeof processingOperations.$inferSelect;
+export type InsertProcessingOperation = typeof processingOperations.$inferInsert;
+
+// Stock transfer types
+export type StockTransfer = typeof stockTransfers.$inferSelect;
+export type InsertStockTransfer = typeof stockTransfers.$inferInsert;
 
 // Filter record types
 export type FilterRecord = typeof filterRecords.$inferSelect;
