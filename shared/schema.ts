@@ -700,6 +700,155 @@ export const stockTransfers = pgTable('stock_transfers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// Inventory adjustments table
+export const inventoryAdjustments = pgTable('inventory_adjustments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  adjustmentNumber: varchar('adjustment_number', { length: 50 }).notNull().unique(),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  warehouseStockId: uuid('warehouse_stock_id').references(() => warehouseStock.id),
+  adjustmentType: adjustmentTypeEnum('adjustment_type').notNull(),
+  quantityBefore: decimal('quantity_before', { precision: 15, scale: 2 }),
+  quantityAfter: decimal('quantity_after', { precision: 15, scale: 2 }),
+  adjustmentQuantity: decimal('adjustment_quantity', { precision: 15, scale: 2 }).notNull(),
+  reason: text('reason'),
+  adjustedBy: uuid('adjusted_by').notNull().references(() => users.id),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  adjustedAt: timestamp('adjusted_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Customers table  
+export const customers = pgTable('customers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerNumber: varchar('customer_number', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }),
+  phone: varchar('phone', { length: 50 }),
+  address: text('address'),
+  city: varchar('city', { length: 100 }),
+  country: varchar('country', { length: 100 }),
+  creditLimit: decimal('credit_limit', { precision: 15, scale: 2 }),
+  currentBalance: decimal('current_balance', { precision: 15, scale: 2 }).default('0'),
+  isActive: boolean('is_active').notNull().default(true),
+  customerSince: timestamp('customer_since').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Sales orders table (alias for orders)
+export const salesOrders = orders;
+
+// Sales order items table (alias for orderItems)
+export const salesOrderItems = orderItems;
+
+// Customer communications table
+export const customerCommunications = pgTable('customer_communications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  communicationType: varchar('communication_type', { length: 50 }).notNull(), // email, phone, meeting, etc.
+  subject: varchar('subject', { length: 255 }),
+  content: text('content'),
+  direction: varchar('direction', { length: 10 }).notNull(), // inbound, outbound
+  status: varchar('status', { length: 20 }).default('sent'),
+  communicatedBy: uuid('communicated_by').notNull().references(() => users.id),
+  communicatedAt: timestamp('communicated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Sales performance metrics table
+export const salesPerformanceMetrics = pgTable('sales_performance_metrics', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id),
+  customerId: uuid('customer_id').references(() => customers.id),
+  periodStart: timestamp('period_start').notNull(),
+  periodEnd: timestamp('period_end').notNull(),
+  totalSales: decimal('total_sales', { precision: 15, scale: 2 }).default('0'),
+  totalOrders: integer('total_orders').default(0),
+  averageOrderValue: decimal('average_order_value', { precision: 15, scale: 2 }),
+  conversionRate: decimal('conversion_rate', { precision: 5, scale: 2 }),
+  customerSatisfactionScore: decimal('customer_satisfaction_score', { precision: 3, scale: 2 }),
+  calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Customer credit limits table
+export const customerCreditLimits = pgTable('customer_credit_limits', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  creditLimit: decimal('credit_limit', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  effectiveFrom: timestamp('effective_from').notNull(),
+  effectiveTo: timestamp('effective_to'),
+  isActive: boolean('is_active').notNull().default(true),
+  approvedBy: uuid('approved_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Pricing rules table
+export const pricingRules = pgTable('pricing_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: uuid('product_id').references(() => products.id),
+  customerId: uuid('customer_id').references(() => customers.id),
+  ruleType: varchar('rule_type', { length: 50 }).notNull(), // discount, markup, fixed_price, etc.
+  condition: json('condition'), // quantity thresholds, date ranges, etc.
+  value: decimal('value', { precision: 15, scale: 2 }).notNull(),
+  valueType: varchar('value_type', { length: 20 }).notNull(), // percentage, fixed_amount
+  priority: integer('priority').default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  validFrom: timestamp('valid_from').notNull(),
+  validTo: timestamp('valid_to'),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Financial metrics table
+export const financialMetrics = pgTable('financial_metrics', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  metricType: varchar('metric_type', { length: 50 }).notNull(),
+  periodStart: timestamp('period_start').notNull(),
+  periodEnd: timestamp('period_end').notNull(),
+  value: decimal('value', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  calculationDetails: json('calculation_details'),
+  calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Supplies table (alias for suppliers)
+export const supplies = suppliers;
+
+// Operating expense categories table
+export const operatingExpenseCategories = pgTable('operating_expense_categories', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  description: text('description'),
+  parentCategoryId: uuid('parent_category_id').references(() => operatingExpenseCategories.id),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Operating expenses table
+export const operatingExpenses = pgTable('operating_expenses', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  expenseNumber: varchar('expense_number', { length: 50 }).notNull().unique(),
+  categoryId: uuid('category_id').notNull().references(() => operatingExpenseCategories.id),
+  description: text('description').notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  expenseDate: timestamp('expense_date').notNull(),
+  paymentStatus: paymentStatusEnum('payment_status').notNull().default('pending'),
+  approvalStatus: approvalStatusEnum('approval_status').notNull().default('pending'),
+  receipts: json('receipts'), // File attachments
+  vendor: varchar('vendor', { length: 255 }),
+  notes: text('notes'),
+  submittedBy: uuid('submitted_by').notNull().references(() => users.id),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // Filter records table
 export const filterRecords = pgTable('filter_records', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -921,6 +1070,42 @@ export type InsertProcessingOperation = typeof processingOperations.$inferInsert
 // Stock transfer types
 export type StockTransfer = typeof stockTransfers.$inferSelect;
 export type InsertStockTransfer = typeof stockTransfers.$inferInsert;
+
+// Inventory adjustment types
+export type InventoryAdjustment = typeof inventoryAdjustments.$inferSelect;
+export type InsertInventoryAdjustment = typeof inventoryAdjustments.$inferInsert;
+
+// Customer types
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = typeof customers.$inferInsert;
+
+// Customer communication types
+export type CustomerCommunication = typeof customerCommunications.$inferSelect;
+export type InsertCustomerCommunication = typeof customerCommunications.$inferInsert;
+
+// Sales performance metrics types
+export type SalesPerformanceMetric = typeof salesPerformanceMetrics.$inferSelect;
+export type InsertSalesPerformanceMetric = typeof salesPerformanceMetrics.$inferInsert;
+
+// Customer credit limit types
+export type CustomerCreditLimit = typeof customerCreditLimits.$inferSelect;
+export type InsertCustomerCreditLimit = typeof customerCreditLimits.$inferInsert;
+
+// Pricing rule types
+export type PricingRule = typeof pricingRules.$inferSelect;
+export type InsertPricingRule = typeof pricingRules.$inferInsert;
+
+// Financial metrics types
+export type FinancialMetric = typeof financialMetrics.$inferSelect;
+export type InsertFinancialMetric = typeof financialMetrics.$inferInsert;
+
+// Operating expense category types
+export type OperatingExpenseCategory = typeof operatingExpenseCategories.$inferSelect;
+export type InsertOperatingExpenseCategory = typeof operatingExpenseCategories.$inferInsert;
+
+// Operating expense types
+export type OperatingExpense = typeof operatingExpenses.$inferSelect;
+export type InsertOperatingExpense = typeof operatingExpenses.$inferInsert;
 
 // Filter record types
 export type FilterRecord = typeof filterRecords.$inferSelect;
