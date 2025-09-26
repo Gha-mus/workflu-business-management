@@ -48,6 +48,15 @@ import {
   documentWorkflowStates,
   // Notification system tables
   notifications,
+  notificationQueue,
+  notificationSettings,
+  notificationTemplates,
+  // Additional tables
+  salesOrders,
+  salesOrderItems,
+  revenueLedger,
+  alertConfigurations,
+  supplies,
   // Missing approval and reporting tables
   approvalChains,
   approvalRequests,
@@ -161,6 +170,16 @@ import {
   type InsertReinvestment,
   type Notification,
   type InsertNotification,
+  type NotificationQueue,
+  type InsertNotificationQueue,
+  type NotificationSettings,
+  type InsertNotificationSettings,
+  type NotificationTemplate,
+  type InsertNotificationTemplate,
+  type RevenueLedger,
+  type InsertRevenueLedger,
+  type AlertConfiguration,
+  type InsertAlertConfiguration,
   type ShipmentLeg,
   type InsertShipmentLeg,
   type OrderItem,
@@ -191,7 +210,24 @@ const eq = (a: any, b: any) => ({ type: 'eq', field: a, value: b });
 const desc = (field: any) => ({ type: 'desc', field });
 const and = (...conditions: any[]) => ({ type: 'and', conditions });
 const sum = (field: any) => ({ type: 'sum', field });
-const sql = (strings: TemplateStringsArray, ...values: any[]) => ({ type: 'sql', raw: strings.join('?'), values });
+
+// SQL template literal function
+const sql = function(strings: TemplateStringsArray | string, ...values: any[]) {
+  const result = { 
+    type: 'sql', 
+    raw: typeof strings === 'string' ? strings : strings.join('?'), 
+    values,
+    as: function(alias: string) { return { ...this, alias }; }
+  };
+  return result;
+} as any;
+
+// Add NOW function and other SQL helpers to sql
+Object.assign(sql, {
+  NOW: { type: 'sql', raw: 'NOW()', values: [] },
+  INTERVAL: (value: string) => ({ type: 'sql', raw: `INTERVAL '${value}'`, values: [] })
+});
+
 const gte = (field: any, value: any) => ({ type: 'gte', field, value });
 const lte = (field: any, value: any) => ({ type: 'lte', field, value });
 const count = (field?: any) => ({ type: 'count', field });
@@ -214,6 +250,30 @@ class Decimal {
   
   toNumber() {
     return this.value;
+  }
+  
+  sub(other: Decimal | number) {
+    const otherValue = typeof other === 'number' ? other : other.value;
+    return new Decimal(this.value - otherValue);
+  }
+  
+  div(other: Decimal | number) {
+    const otherValue = typeof other === 'number' ? other : other.value;
+    return new Decimal(this.value / otherValue);
+  }
+  
+  mul(other: Decimal | number) {
+    const otherValue = typeof other === 'number' ? other : other.value;
+    return new Decimal(this.value * otherValue);
+  }
+  
+  add(other: Decimal | number) {
+    const otherValue = typeof other === 'number' ? other : other.value;
+    return new Decimal(this.value + otherValue);
+  }
+  
+  toFixed(digits?: number) {
+    return this.value.toFixed(digits);
   }
 }
 
@@ -687,9 +747,6 @@ class StorageApprovalGuard {
     'warehouse_operation', // May be skipped for automated inventory management
     'shipping_operation'   // May be skipped for routine shipping updates
   ]);
-
-  // SECURITY: Internal token for skipApproval verification
-  private static readonly INTERNAL_SYSTEM_TOKEN = process.env.INTERNAL_SYSTEM_TOKEN || 'internal_system_token_dev';
 
   /**
    * Enforce approval requirement at storage level - CRITICAL SECURITY BOUNDARY

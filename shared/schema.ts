@@ -453,6 +453,90 @@ export const cashFlowAnalysis = pgTable('cash_flow_analysis', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Notification queue table
+export const notificationQueue = pgTable('notification_queue', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  alertType: varchar('alert_type', { length: 100 }).notNull(),
+  alertCategory: varchar('alert_category', { length: 100 }).notNull(),
+  priority: varchar('priority', { length: 20 }).notNull().default('medium'),
+  status: varchar('status', { length: 50 }).notNull().default('pending'),
+  channel: varchar('channel', { length: 50 }).notNull().default('in_app'),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  data: json('data'),
+  entityType: varchar('entity_type', { length: 50 }),
+  entityId: uuid('entity_id'),
+  scheduledFor: timestamp('scheduled_for'),
+  sentAt: timestamp('sent_at'),
+  readAt: timestamp('read_at'),
+  lastAttemptAt: timestamp('last_attempt_at'),
+  attemptCount: integer('attempt_count').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Notification settings table  
+export const notificationSettings = pgTable('notification_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  settingKey: varchar('setting_key', { length: 100 }).notNull(),
+  settingValue: varchar('setting_value', { length: 255 }).notNull(),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Sales orders table (alias for orders with different context)
+export const salesOrders = orders;
+
+// Revenue ledger table
+export const revenueLedger = pgTable('revenue_ledger', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transactionId: uuid('transaction_id').notNull().references(() => revenueTransactions.id),
+  accountType: varchar('account_type', { length: 50 }).notNull(),
+  debitAmount: decimal('debit_amount', { precision: 15, scale: 2 }).default('0'),
+  creditAmount: decimal('credit_amount', { precision: 15, scale: 2 }).default('0'),
+  balance: decimal('balance', { precision: 15, scale: 2 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Alert configurations table
+export const alertConfigurations = pgTable('alert_configurations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  alertType: varchar('alert_type', { length: 100 }).notNull(),
+  alertName: varchar('alert_name', { length: 255 }).notNull(),
+  threshold: decimal('threshold', { precision: 15, scale: 2 }),
+  conditions: json('conditions'),
+  recipients: json('recipients'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Notification templates table
+export const notificationTemplates = pgTable('notification_templates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  templateName: varchar('template_name', { length: 255 }).notNull(),
+  templateType: varchar('template_type', { length: 100 }).notNull(),
+  subject: varchar('subject', { length: 255 }),
+  body: text('body').notNull(),
+  variables: json('variables'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Supplies table (alias for products with supply context)
+export const supplies = products;
+
+// Sales order items table (alias for order items)
+export const salesOrderItems = orderItems;
+
 // Audit logs table
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1284,6 +1368,26 @@ export type InsertProfitLossStatement = typeof profitLossStatements.$inferInsert
 // Cash flow analysis types
 export type CashFlowAnalysis = typeof cashFlowAnalysis.$inferSelect;
 export type InsertCashFlowAnalysis = typeof cashFlowAnalysis.$inferInsert;
+
+// Notification queue types
+export type NotificationQueue = typeof notificationQueue.$inferSelect;
+export type InsertNotificationQueue = typeof notificationQueue.$inferInsert;
+
+// Notification settings types
+export type NotificationSettings = typeof notificationSettings.$inferSelect;
+export type InsertNotificationSettings = typeof notificationSettings.$inferInsert;
+
+// Revenue ledger types
+export type RevenueLedger = typeof revenueLedger.$inferSelect;
+export type InsertRevenueLedger = typeof revenueLedger.$inferInsert;
+
+// Alert configuration types
+export type AlertConfiguration = typeof alertConfigurations.$inferSelect;
+export type InsertAlertConfiguration = typeof alertConfigurations.$inferInsert;
+
+// Notification template types
+export type NotificationTemplate = typeof notificationTemplates.$inferSelect;
+export type InsertNotificationTemplate = typeof notificationTemplates.$inferInsert;
 
 // ========== VALIDATION SCHEMAS ==========
 
