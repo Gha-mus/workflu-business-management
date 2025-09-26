@@ -23,23 +23,104 @@ import {
   Zap,
 } from "lucide-react";
 
+// Interface definitions for AI responses
+interface ExecutiveSummaryResponse {
+  summary: string;
+  keyMetrics?: Array<{
+    label: string;
+    value: string;
+    change: string;
+    trend: 'up' | 'down' | 'stable';
+  }>;
+  priorities?: string[];
+}
+
+interface AnomalyDetectionResponse {
+  anomalies: Array<{
+    type: string;
+    severity: 'high' | 'medium' | 'low';
+    description: string;
+    impact: string;
+    recommendation: string;
+  }>;
+}
+
+interface MarketTimingResponse {
+  recommendation: 'buy_now' | 'wait' | 'sell_first';
+  confidence: number;
+  reasoning: string;
+  priceTargets?: {
+    buy: number;
+    sell: number;
+  };
+}
+
+interface FinancialInsightsResponse {
+  optimizations: Array<{
+    category: string;
+    potential: string;
+    action: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+  cashFlowForecast: Array<{
+    month: string;
+    projected: number;
+    confidence: number;
+  }>;
+  riskAlerts: Array<{
+    risk: string;
+    level: 'high' | 'medium' | 'low';
+    mitigation: string;
+  }>;
+}
+
+interface InventoryInsightsResponse {
+  insights: string;
+  trends: Array<{
+    product: string;
+    trend: 'increasing' | 'decreasing' | 'stable';
+    forecast: string;
+  }>;
+  predictions: Array<{
+    product: string;
+    expectedMovement: string;
+    timeframe: string;
+    confidence: number;
+  }>;
+}
+
+interface OperationalInsightsResponse {
+  insights: string;
+  actions: Array<{
+    category: string;
+    action: string;
+    impact: string;
+    effort: 'low' | 'medium' | 'high';
+  }>;
+  qualityAlerts?: Array<{
+    area: string;
+    issue: string;
+    recommendation: string;
+  }>;
+}
+
 // Dashboard AI Insights Component
 export function DashboardAiInsights() {
-  const { data: executiveSummary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
+  const { data: executiveSummary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery<ExecutiveSummaryResponse>({
     queryKey: ['/api/ai/executive-summary'],
-    queryFn: () => apiRequestJson('GET', '/api/ai/executive-summary'),
+    queryFn: () => apiRequestJson<ExecutiveSummaryResponse>('/api/ai/executive-summary'),
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  const { data: anomalies, isLoading: anomaliesLoading, refetch: refetchAnomalies } = useQuery({
+  const { data: anomalies, isLoading: anomaliesLoading, refetch: refetchAnomalies } = useQuery<AnomalyDetectionResponse>({
     queryKey: ['/api/ai/anomaly-detection'],
-    queryFn: () => apiRequestJson('GET', '/api/ai/anomaly-detection'),
+    queryFn: () => apiRequestJson<AnomalyDetectionResponse>('/api/ai/anomaly-detection'),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const { data: marketTiming, isLoading: marketLoading, refetch: refetchMarket } = useQuery({
+  const { data: marketTiming, isLoading: marketLoading, refetch: refetchMarket } = useQuery<MarketTimingResponse>({
     queryKey: ['/api/ai/market-timing'],
-    queryFn: () => apiRequestJson('GET', '/api/ai/market-timing'),
+    queryFn: () => apiRequestJson<MarketTimingResponse>('/api/ai/market-timing'),
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
@@ -218,9 +299,9 @@ export function DashboardAiInsights() {
 
 // Working Capital AI Insights
 export function WorkingCapitalAiInsights() {
-  const { data: capitalOptimization, isLoading, refetch } = useQuery({
+  const { data: capitalOptimization, isLoading, refetch } = useQuery<FinancialInsightsResponse>({
     queryKey: ['/api/ai/capital-optimization'],
-    queryFn: () => apiRequestJson('POST', '/api/ai/capital-optimization', { timeHorizon: 'monthly' }),
+    queryFn: () => apiRequestJson<FinancialInsightsResponse>('POST', '/api/ai/capital-optimization', { timeHorizon: 'monthly' }),
     staleTime: 30 * 60 * 1000, // 30 minutes
   });
 
@@ -320,9 +401,9 @@ export function WorkingCapitalAiInsights() {
 
 // Reports AI Insights
 export function ReportsAiInsights() {
-  const { data: financialTrends, isLoading, refetch } = useQuery({
+  const { data: financialTrends, isLoading, refetch } = useQuery<InventoryInsightsResponse>({
     queryKey: ['/api/ai/financial-trends'],
-    queryFn: () => apiRequestJson('GET', '/api/ai/financial-trends'),
+    queryFn: () => apiRequestJson<InventoryInsightsResponse>('/api/ai/financial-trends'),
     staleTime: 60 * 60 * 1000, // 1 hour
   });
 
@@ -426,9 +507,9 @@ export function ReportsAiInsights() {
 
 // Warehouse AI Insights  
 export function WarehouseAiInsights() {
-  const { data: inventoryRecs, isLoading, refetch } = useQuery({
+  const { data: inventoryRecs, isLoading, refetch } = useQuery<OperationalInsightsResponse>({
     queryKey: ['/api/ai/inventory-recommendations'],
-    queryFn: () => apiRequestJson('GET', '/api/ai/inventory-recommendations'),
+    queryFn: () => apiRequestJson<OperationalInsightsResponse>('/api/ai/inventory-recommendations'),
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
 

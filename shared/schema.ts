@@ -1127,20 +1127,26 @@ export const userRoleUpdateSchema = z.object({
 
 // Capital entry schemas
 export const insertCapitalEntrySchema = createInsertSchema(capitalEntries, {
-  amount: (schema) => schema.amount.positive(),
+  amount: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num > 0;
+  }, { message: "Amount must be a positive number" }),
   type: z.enum(['investment', 'loan', 'grant', 'profit_retention', 'withdrawal']),
-  currency: (schema) => schema.currency.length(3),
+  currency: z.string().length(3, "Currency must be 3 characters"),
 });
 
 // Supplier schemas
 export const insertSupplierSchema = createInsertSchema(suppliers, {
-  name: (schema) => schema.name.min(1),
-  email: (schema) => schema.email.email().optional(),
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email().optional(),
 });
 
 // Purchase schemas
 export const insertPurchaseSchema = createInsertSchema(purchases, {
-  totalAmount: (schema) => schema.totalAmount.positive(),
+  totalAmount: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num > 0;
+  }, { message: "Total amount must be a positive number" }),
   status: z.enum(['draft', 'pending', 'approved', 'ordered', 'received', 'cancelled']),
   paymentStatus: z.enum(['pending', 'partial', 'paid', 'overdue', 'cancelled']),
 });
@@ -1195,32 +1201,44 @@ export const insertSupplierQualityAssessmentSchema = z.object({
 
 // Warehouse schemas
 export const insertWarehouseStockSchema = createInsertSchema(warehouseStock, {
-  quantity: (schema) => schema.quantity.nonnegative(),
-  availableQuantity: (schema) => schema.availableQuantity.nonnegative(),
+  quantity: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, { message: "Quantity must be a non-negative number" }),
+  availableQuantity: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, { message: "Available quantity must be a non-negative number" }),
   qualityGrade: z.enum(['A', 'B', 'C', 'D', 'rejected']),
 });
 
 export const insertWarehouseBatchSchema = createInsertSchema(warehouseBatches, {
-  quantity: (schema) => schema.quantity.positive(),
+  quantity: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num > 0;
+  }, { message: "Quantity must be a positive number" }),
   qualityGrade: z.enum(['A', 'B', 'C', 'D', 'rejected']),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled', 'failed']),
 });
 
 // Revenue schemas
 export const insertRevenueTransactionSchema = createInsertSchema(revenueTransactions, {
-  amount: (schema) => schema.amount.positive(),
-  type: (schema) => schema.type.min(1),
+  amount: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num > 0;
+  }, { message: "Amount must be a positive number" }),
+  type: z.string().min(1, "Type is required"),
 });
 
 // Approval schemas
 export const insertApprovalRequestSchema = createInsertSchema(approvals, {
-  entityType: (schema) => schema.entityType.min(1),
+  entityType: z.string().min(1, "Entity type is required"),
   status: z.enum(['pending', 'approved', 'rejected', 'escalated']),
 });
 
 // Settings schemas
 export const insertSettingSchema = createInsertSchema(settings, {
-  key: (schema) => schema.key.min(1),
+  key: z.string().min(1, "Key is required"),
 });
 
 // Filter record schemas
