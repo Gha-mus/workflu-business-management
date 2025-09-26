@@ -86,25 +86,25 @@ class ApprovalWorkflowService {
         .from(approvalChains)
         .where(
           and(
-            eq(approvalChains.operationType, operationType as any),
+            eq(approvalChains.entityType, operationType as any),
             eq(approvalChains.isActive, true)
           )
         )
-        .orderBy(desc(approvalChains.priority));
+        .orderBy(desc(approvalChains.sequence));
 
       console.log(`APPROVAL CHAIN SEARCH: Found ${chains.length} active chains for ${operationType}`);
 
       // Find the best matching chain based on amount thresholds
       for (const chain of chains) {
-        const minAmount = chain.minAmount ? parseFloat(chain.minAmount) : null;
-        const maxAmount = chain.maxAmount ? parseFloat(chain.maxAmount) : null;
+        const minAmount = chain.minimumAmount ? parseFloat(chain.minimumAmount) : null;
+        const maxAmount = chain.maximumAmount ? parseFloat(chain.maximumAmount) : null;
         
         // Check if amount falls within this chain's range
         const matchesMinAmount = !minAmount || !amountUsd || amountUsd >= minAmount;
         const matchesMaxAmount = !maxAmount || !amountUsd || amountUsd <= maxAmount;
         
         if (matchesMinAmount && matchesMaxAmount) {
-          console.log(`APPROVAL CHAIN FOUND: ${chain.name} (ID: ${chain.id}) for ${operationType} ${currency} ${amount}`);
+          console.log(`APPROVAL CHAIN FOUND: ${chain.entityType} (ID: ${chain.id}) for ${operationType} ${currency} ${amount}`);
           return chain;
         }
       }
@@ -115,13 +115,13 @@ class ApprovalWorkflowService {
         .from(approvalChains)
         .where(
           and(
-            eq(approvalChains.operationType, operationType as any),
+            eq(approvalChains.entityType, operationType as any),
             eq(approvalChains.isActive, true),
-            isNotNull(approvalChains.minAmount),
-            isNotNull(approvalChains.maxAmount)
+            isNotNull(approvalChains.minimumAmount),
+            isNotNull(approvalChains.maximumAmount)
           )
         )
-        .orderBy(desc(approvalChains.priority))
+        .orderBy(desc(approvalChains.sequence))
         .limit(1);
 
       if (defaultChain) {

@@ -52,6 +52,8 @@ interface MarketTimingResponse {
   priceTargets?: {
     buy: number;
     sell: number;
+    buyBelow?: number;
+    sellAbove?: number;
   };
 }
 
@@ -86,6 +88,16 @@ interface InventoryInsightsResponse {
     expectedMovement: string;
     timeframe: string;
     confidence: number;
+  }>;
+  risks?: Array<{
+    type: string;
+    description: string;
+    mitigation: string;
+  }>;
+  opportunities?: Array<{
+    type: string;
+    description: string;
+    potential: string;
   }>;
 }
 

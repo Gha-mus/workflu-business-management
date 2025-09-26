@@ -818,12 +818,12 @@ export const financialMetrics = pgTable('financial_metrics', {
 export const supplies = suppliers;
 
 // Operating expense categories table
-export const operatingExpenseCategories = pgTable('operating_expense_categories', {
+export const operatingExpenseCategories: any = pgTable('operating_expense_categories', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
   code: varchar('code', { length: 50 }).notNull().unique(),
   description: text('description'),
-  parentCategoryId: uuid('parent_category_id').references(() => operatingExpenseCategories.id),
+  parentCategoryId: uuid('parent_category_id').references((): any => operatingExpenseCategories.id),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
