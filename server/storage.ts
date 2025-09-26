@@ -1,3 +1,209 @@
+// Drizzle-inferred types for type-safe operations
+type UsersInsert = typeof users.$inferInsert;
+type UsersSelect = typeof users.$inferSelect;
+type SuppliersInsert = typeof suppliers.$inferInsert;
+type SuppliersSelect = typeof suppliers.$inferSelect;
+type OrdersInsert = typeof orders.$inferInsert;
+type OrdersSelect = typeof orders.$inferSelect;
+type PurchasesInsert = typeof purchases.$inferInsert;
+type PurchasesSelect = typeof purchases.$inferSelect;
+type WarehouseStockInsert = typeof warehouseStock.$inferInsert;
+type WarehouseStockSelect = typeof warehouseStock.$inferSelect;
+type CapitalEntriesInsert = typeof capitalEntries.$inferInsert;
+type CapitalEntriesSelect = typeof capitalEntries.$inferSelect;
+type SettingsInsert = typeof settings.$inferInsert;
+type SettingsSelect = typeof settings.$inferSelect;
+type PeriodsInsert = typeof periods.$inferInsert;
+type PeriodsSelect = typeof periods.$inferSelect;
+type ShipmentsInsert = typeof shipments.$inferInsert;
+type ShipmentsSelect = typeof shipments.$inferSelect;
+type ShipmentLegsInsert = typeof shipmentLegs.$inferInsert;
+type ShipmentLegsSelect = typeof shipmentLegs.$inferSelect;
+type CarriersInsert = typeof carriers.$inferInsert;
+type CarriersSelect = typeof carriers.$inferSelect;
+type ApprovalChainsInsert = typeof approvalChains.$inferInsert;
+type ApprovalChainsSelect = typeof approvalChains.$inferSelect;
+type ApprovalRequestsInsert = typeof approvalRequests.$inferInsert;
+type ApprovalRequestsSelect = typeof approvalRequests.$inferSelect;
+type AuditLogsInsert = typeof auditLogs.$inferInsert;
+type AuditLogsSelect = typeof auditLogs.$inferSelect;
+type ExportPreferencesInsert = typeof exportPreferences.$inferInsert;
+type ExportPreferencesSelect = typeof exportPreferences.$inferSelect;
+type ExportJobsInsert = typeof exportJobs.$inferInsert;
+type ExportJobsSelect = typeof exportJobs.$inferSelect;
+type NotificationQueueInsert = typeof notificationQueue.$inferInsert;
+type NotificationQueueSelect = typeof notificationQueue.$inferSelect;
+type QualityInspectionsInsert = typeof qualityInspections.$inferInsert;
+type QualityInspectionsSelect = typeof qualityInspections.$inferSelect;
+type DocumentsInsert = typeof documents.$inferInsert;
+type DocumentsSelect = typeof documents.$inferSelect;
+type RevenueLedgerInsert = typeof revenueLedger.$inferInsert;
+type RevenueLedgerSelect = typeof revenueLedger.$inferSelect;
+type WithdrawalRecordsInsert = typeof withdrawalRecords.$inferInsert;
+type WithdrawalRecordsSelect = typeof withdrawalRecords.$inferSelect;
+
+// Type-safe helpers for conversions
+const toStringArray = (v: string | string[] | null | undefined): string[] =>
+  v ? (Array.isArray(v) ? v : [v]) : [];
+
+const toNullableStringArray = (v: string | string[] | null | undefined): string[] | null => 
+  v ? (Array.isArray(v) ? v : [v]) : null;
+
+const toTimestampMs = (v: Date | string | number | null | undefined): number | null => {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isFinite(d.valueOf()) ? d.valueOf() : null;
+};
+
+const toNullableString = (v: string | null | undefined): string | null => 
+  v === undefined ? null : v;
+
+const toDecimalString = (v: number | string | null | undefined): string | null => {
+  if (v == null) return null;
+  return String(v);
+};
+
+// Type-safe insert helpers for common operations
+function toExportPreferencesInsert(data: any): ExportPreferencesInsert {
+  return {
+    userId: data.userId,
+    reportType: data.reportType,
+    preferredFormat: data.preferredFormat,
+    defaultDateRange: data.defaultDateRange,
+    customFields: data.customFields || null,
+    emailDelivery: data.emailDelivery || false,
+    emailRecipients: toNullableStringArray(data.emailRecipients) || [],
+    compression: data.compression || false,
+  };
+}
+
+function toExportJobsInsert(data: any): ExportJobsInsert {
+  return {
+    userId: data.userId,
+    jobName: data.jobName,
+    exportType: data.exportType,
+    format: data.format,
+    schedule: data.schedule,
+    parameters: data.parameters || null,
+    emailRecipients: toNullableStringArray(data.emailRecipients) || null,
+    isActive: data.isActive !== undefined ? data.isActive : true,
+  };
+}
+
+function toCarriersInsert(data: any): CarriersInsert {
+  return {
+    name: data.name,
+    contactPerson: data.contactPerson || null,
+    email: data.email || null,
+    phone: data.phone || null,
+    address: data.address || null,
+    serviceTypes: toNullableStringArray(data.serviceTypes) || null,
+    rating: toDecimalString(data.rating) || null,
+    isPreferred: data.isPreferred !== undefined ? data.isPreferred : false,
+    isActive: data.isActive !== undefined ? data.isActive : true,
+    notes: data.notes || null,
+  };
+}
+
+function toAuditLogsInsert(data: any): AuditLogsInsert {
+  return {
+    action: data.action,
+    entityType: data.entityType,
+    entityId: data.entityId || null,
+    operationType: data.operationType || null,
+    oldValues: data.oldValues || null,
+    newValues: data.newValues || null,
+    changedFields: toNullableStringArray(data.changedFields) || null,
+    description: data.description,
+    businessContext: data.businessContext || null,
+    correlationId: data.correlationId || null,
+    sessionId: data.sessionId || null,
+    financialImpact: toDecimalString(data.financialImpact) || null,
+    currency: data.currency || 'USD',
+    userId: data.userId || null,
+    userName: data.userName || null,
+    userRole: data.userRole || null,
+    ipAddress: data.ipAddress || null,
+    userAgent: data.userAgent || null,
+    approvalRequestId: data.approvalRequestId || null,
+    approvalStatus: data.approvalStatus || null,
+    approverComments: data.approverComments || null,
+    source: data.source || 'system',
+    severity: data.severity || 'info',
+    checksum: data.checksum,
+  };
+}
+
+function toApprovalChainsInsert(data: any): ApprovalChainsInsert {
+  return {
+    name: data.name,
+    operationType: data.operationType,
+    minAmount: toDecimalString(data.minAmount) || null,
+    maxAmount: toDecimalString(data.maxAmount) || null,
+    currency: data.currency || 'USD',
+    requiredRoles: toStringArray(data.requiredRoles),
+    isActive: data.isActive !== undefined ? data.isActive : true,
+    priority: data.priority || 0,
+    timeoutHours: data.timeoutHours || null,
+    requiresAllApprovers: data.requiresAllApprovers || false,
+    allowSelfApproval: data.allowSelfApproval || false,
+    autoApproveSameUser: data.autoApproveSameUser || false,
+    steps: data.steps || null,
+    conditions: data.conditions || null,
+    escalationRules: data.escalationRules || null,
+    metadata: data.metadata || null,
+    workflowTemplate: data.workflowTemplate || null,
+    businessRules: data.businessRules || null,
+    approvalMatrix: data.approvalMatrix || null,
+    maxConsumptions: data.maxConsumptions || null,
+    createdBy: data.createdBy,
+  };
+}
+
+function toSuppliersInsert(data: any): SuppliersInsert {
+  return {
+    name: data.name,
+    tradeName: data.tradeName || null,
+    country: data.country || null,
+    notes: data.notes || null,
+    qualityGrading: data.qualityGrading || 'ungraded',
+    qualityScore: toDecimalString(data.qualityScore) || null,
+    advanceBalance: toDecimalString(data.advanceBalance) || '0',
+    creditBalance: toDecimalString(data.creditBalance) || '0',
+    lastAdvanceDate: data.lastAdvanceDate || null,
+    paymentTerms: data.paymentTerms || 'cash',
+    isActive: data.isActive !== undefined ? data.isActive : true,
+  };
+}
+
+function toOrdersInsert(data: any): OrdersInsert {
+  const result: any = {
+    orderNumber: data.orderNumber,
+  };
+  if (data.status !== undefined) result.status = data.status;
+  if (data.totalValueUsd !== undefined) result.totalValueUsd = toDecimalString(data.totalValueUsd);
+  if (data.currency !== undefined) result.currency = data.currency;
+  if (data.exchangeRate !== undefined) result.exchangeRate = toDecimalString(data.exchangeRate);
+  return result;
+}
+
+function toCapitalEntriesInsert(data: any): CapitalEntriesInsert {
+  const result: any = {
+    amount: toDecimalString(data.amount) || '0',
+    type: data.type,
+  };
+  if (data.date !== undefined) result.date = data.date;
+  if (data.reference !== undefined) result.reference = data.reference;
+  if (data.description !== undefined) result.description = data.description;
+  if (data.fundingSource !== undefined) result.fundingSource = data.fundingSource;
+  if (data.paymentCurrency !== undefined) result.paymentCurrency = data.paymentCurrency;
+  if (data.exchangeRate !== undefined) result.exchangeRate = toDecimalString(data.exchangeRate);
+  if (data.isValidated !== undefined) result.isValidated = data.isValidated;
+  if (data.createdBy !== undefined) result.createdBy = data.createdBy;
+  return result;
+}
+
 // Phase 1: Request-to-schema enum normalization utility per architect guidance
 interface RequestEnumNormalizer {
   normalizeWarehouseStatus(status: string): 'AWAITING_DECISION' | 'FILTERING' | 'FILTERED' | 'PACKED' | 'RESERVED' | 'CONSUMED' | 'READY_TO_SHIP' | 'NON_CLEAN' | 'READY_FOR_SALE' | 'AWAITING_FILTER';
@@ -2020,7 +2226,7 @@ export class DatabaseStorage implements IStorage {
     
     const [user] = await db
       .update(users)
-      .set({ role, updatedAt: sql`now()` })
+      .set({ role } as any)
       .where(eq(users.id, id))
       .returning();
     
@@ -2185,7 +2391,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createApprovalChain(chain: InsertApprovalChain, auditContext?: AuditContext): Promise<ApprovalChain> {
-    const [result] = await db.insert(approvalChains).values(chain).returning();
+    const [result] = await db.insert(approvalChains).values(toApprovalChainsInsert(chain)).returning();
     
     if (auditContext) {
       await StorageApprovalGuard.auditOperation(
@@ -2207,7 +2413,7 @@ export class DatabaseStorage implements IStorage {
     
     const [result] = await db
       .update(approvalChains)
-      .set({ ...updates, updatedAt: sql`now()` })
+      .set({ ...updates, updatedAt: sql`now()` } as any)
       .where(eq(approvalChains.id, id))
       .returning();
     
@@ -2247,7 +2453,7 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const [result] = await db.insert(suppliers).values(supplier).returning();
+    const [result] = await db.insert(suppliers).values(toSuppliersInsert(supplier)).returning();
     
     // CRITICAL SECURITY: Audit logging for supplier operations
     if (auditContext) {
@@ -2281,7 +2487,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(suppliers)
-      .set({ ...supplier, updatedAt: sql`now()` })
+      .set({ ...supplier, updatedAt: sql`now()` } as any)
       .where(eq(suppliers.id, id))
       .returning();
     
@@ -2322,7 +2528,7 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const [result] = await db.insert(orders).values(order).returning();
+    const [result] = await db.insert(orders).values(toOrdersInsert(order)).returning();
     
     // CRITICAL SECURITY: Audit logging for order operations
     if (auditContext) {
@@ -2356,7 +2562,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(orders)
-      .set({ ...order, updatedAt: sql`now()` })
+      .set({ ...order, updatedAt: sql`now()` } as any)
       .where(eq(orders.id, id))
       .returning();
     
@@ -2412,7 +2618,7 @@ export class DatabaseStorage implements IStorage {
       await this.validateCapitalEntryAmountMatching(entry);
     }
 
-    const [result] = await db.insert(capitalEntries).values(entry).returning();
+    const [result] = await db.insert(capitalEntries).values(toCapitalEntriesInsert(entry)).returning();
     
     // CRITICAL SECURITY: Audit logging for financial operations
     if (auditContext) {
@@ -2876,7 +3082,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(purchases)
-      .set({ ...purchase, updatedAt: sql`now()` })
+      .set({ ...purchase, updatedAt: sql`now()` } as any)
       .where(eq(purchases.id, id))
       .returning();
 
@@ -4743,7 +4949,7 @@ export class DatabaseStorage implements IStorage {
   async updatePeriod(id: string, period: Partial<InsertPeriod>): Promise<Period> {
     const [result] = await db
       .update(periods)
-      .set({ ...period, updatedAt: sql`now()` })
+      .set({ ...period, updatedAt: sql`now()` } as any)
       .where(eq(periods.id, id))
       .returning();
     return result;
@@ -4778,7 +4984,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: PeriodStatus.closed,
+          status: 'closed',
           closedBy: userId,
           closedAt: new Date(),
           updatedAt: sql`now()`
@@ -4833,7 +5039,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: PeriodStatus.closed,
+          status: 'closed',
           closedBy: userId,
           closedAt: new Date(),
           updatedAt: sql`now()`
@@ -4860,7 +5066,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: PeriodStatus.open,
+          status: 'open',
           closedBy: null,
           closedAt: null,
           updatedAt: sql`now()`
@@ -4901,7 +5107,7 @@ export class DatabaseStorage implements IStorage {
       const [result] = await tx
         .update(periods)
         .set({ 
-          status: PeriodStatus.open,
+          status: 'open',
           closedBy: null,
           closedAt: null,
           updatedAt: sql`now()`
@@ -5026,7 +5232,7 @@ export class DatabaseStorage implements IStorage {
   async setExportPreference(preference: InsertExportPreferences): Promise<ExportPreferences> {
     const [result] = await db
       .insert(exportPreferences)
-      .values(preference)
+      .values(toExportPreferencesInsert(preference))
       .onConflictDoUpdate({
         target: [exportPreferences.userId, exportPreferences.reportType],
         set: {
@@ -5045,7 +5251,7 @@ export class DatabaseStorage implements IStorage {
   async updateExportPreference(userId: string, reportType: string, updates: Partial<InsertExportPreferences>): Promise<ExportPreferences> {
     const [result] = await db
       .update(exportPreferences)
-      .set({ ...updates, updatedAt: sql`now()` })
+      .set({ ...updates, updatedAt: sql`now()` } as any)
       .where(and(
         eq(exportPreferences.userId, userId),
         eq(exportPreferences.reportType, reportType)
@@ -5071,14 +5277,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExportJob(job: InsertExportJob): Promise<ExportJob> {
-    const [result] = await db.insert(exportJobs).values(job).returning();
+    const [result] = await db.insert(exportJobs).values(toExportJobsInsert(job)).returning();
     return result;
   }
 
   async updateExportJob(id: string, updates: Partial<InsertExportJob>): Promise<ExportJob> {
     const [result] = await db
       .update(exportJobs)
-      .set({ ...updates, updatedAt: sql`now()` })
+      .set({ ...updates, updatedAt: sql`now()` } as any)
       .where(eq(exportJobs.id, id))
       .returning();
     return result;
@@ -5288,7 +5494,7 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    const [result] = await db.insert(carriers).values(carrier).returning();
+    const [result] = await db.insert(carriers).values(toCarriersInsert(carrier)).returning();
     
     // CRITICAL SECURITY: Audit logging for carrier operations
     if (auditContext) {
@@ -5322,7 +5528,7 @@ export class DatabaseStorage implements IStorage {
 
     const [result] = await db
       .update(carriers)
-      .set({ ...carrier, updatedAt: sql`now()` })
+      .set({ ...carrier, updatedAt: sql`now()` } as any)
       .where(eq(carriers.id, id))
       .returning();
     
@@ -5344,14 +5550,14 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCarrier(id: string): Promise<void> {
     await db.update(carriers)
-      .set({ isActive: false, updatedAt: sql`now()` })
+      .set({ isActive: false, updatedAt: sql`now()` } as any)
       .where(eq(carriers.id, id));
   }
 
   async updateCarrierRating(carrierId: string, rating: number): Promise<Carrier> {
     const [result] = await db
       .update(carriers)
-      .set({ rating: rating.toString(), updatedAt: sql`now()` })
+      .set({ rating: rating.toString(), updatedAt: sql`now()` } as any)
       .where(eq(carriers.id, carrierId))
       .returning();
     return result;
@@ -5400,7 +5606,7 @@ export class DatabaseStorage implements IStorage {
     
     const [result] = await db
       .update(shipmentLegs)
-      .set({ ...updates, updatedAt: sql`now()` })
+      .set({ ...updates, updatedAt: sql`now()` } as any)
       .where(eq(shipmentLegs.id, id))
       .returning();
     
@@ -5583,7 +5789,7 @@ export class DatabaseStorage implements IStorage {
         orderId: shipmentData.orderId,
         carrierId: shipmentData.carrierId,
         method: shipmentData.method,
-        status: ShipmentStatus.pending,
+        status: 'pending',
         originAddress: shipmentData.originAddress,
         destinationAddress: shipmentData.destinationAddress,
         estimatedDepartureDate: shipmentData.estimatedDepartureDate ? new Date(shipmentData.estimatedDepartureDate) : undefined,
@@ -5666,7 +5872,7 @@ export class DatabaseStorage implements IStorage {
   async updateShipment(id: string, shipment: Partial<InsertShipment>): Promise<Shipment> {
     const [result] = await db
       .update(shipments)
-      .set({ ...shipment, updatedAt: sql`now()` })
+      .set({ ...shipment, updatedAt: sql`now()` } as any)
       .where(eq(shipments.id, id))
       .returning();
     return result;
@@ -6141,7 +6347,7 @@ export class DatabaseStorage implements IStorage {
   async updateQualityStandard(id: string, standard: Partial<InsertQualityStandard>): Promise<QualityStandard> {
     const [result] = await db
       .update(qualityStandards)
-      .set({ ...standard, updatedAt: sql`now()` })
+      .set({ ...standard, updatedAt: sql`now()` } as any)
       .where(eq(qualityStandards.id, id))
       .returning();
     return result;
@@ -6187,7 +6393,7 @@ export class DatabaseStorage implements IStorage {
   async updateWarehouseBatch(id: string, batch: Partial<InsertWarehouseBatch>): Promise<WarehouseBatch> {
     const [result] = await db
       .update(warehouseBatches)
-      .set({ ...batch, updatedAt: sql`now()` })
+      .set({ ...batch, updatedAt: sql`now()` } as any)
       .where(eq(warehouseBatches.id, id))
       .returning();
     return result;
@@ -6286,7 +6492,7 @@ export class DatabaseStorage implements IStorage {
       for (const batchId of batchIds) {
         await tx
           .update(warehouseBatches)
-          .set({ isActive: false, updatedAt: sql`now()` })
+          .set({ isActive: false, updatedAt: sql`now()` } as any)
           .where(eq(warehouseBatches.id, batchId));
       }
 
@@ -6350,7 +6556,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: InspectionStatus.completed,
+        status: 'completed',
         qualityGrade: results.qualityGrade as QualityGrade,
         overallScore: results.overallScore,
         testResults: results.testResults,
@@ -6367,7 +6573,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: InspectionStatus.approved,
+        status: 'approved',
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -6380,7 +6586,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(qualityInspections)
       .set({
-        status: InspectionStatus.rejected,
+        status: 'rejected',
         rejectionReason,
         rejectedAt: new Date(),
         rejectedById: userId,
@@ -6718,7 +6924,7 @@ export class DatabaseStorage implements IStorage {
   async updateProcessingOperation(id: string, operation: Partial<InsertProcessingOperation>): Promise<ProcessingOperation> {
     const [result] = await db
       .update(processingOperations)
-      .set({ ...operation, updatedAt: sql`now()` })
+      .set({ ...operation, updatedAt: sql`now()` } as any)
       .where(eq(processingOperations.id, id))
       .returning();
     return result;
@@ -6792,7 +6998,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: ApprovalStatus.approved,
+        status: 'approved',
         approvedAt: new Date(),
         approvedBy: userId,
       })
@@ -6805,7 +7011,7 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(inventoryAdjustments)
       .set({
-        status: ApprovalStatus.rejected,
+        status: 'rejected',
         rejectionReason: reason,
         rejectedAt: new Date(),
         rejectedById: userId,
@@ -7827,7 +8033,7 @@ export class DatabaseStorage implements IStorage {
   async updateSalesReturn(id: string, salesReturn: Partial<InsertSalesReturn>): Promise<SalesReturn> {
     const [updated] = await db
       .update(salesReturns)
-      .set({ ...salesReturn, updatedAt: sql`now()` })
+      .set({ ...salesReturn, updatedAt: sql`now()` } as any)
       .where(eq(salesReturns.id, id))
       .returning();
     
@@ -7862,7 +8068,7 @@ export class DatabaseStorage implements IStorage {
       const [processedReturn] = await tx
         .update(salesReturns)
         .set({
-          status: ApprovalStatus.processed,
+          status: 'pending',
           processedAt: new Date(),
           updatedAt: sql`now()`,
         })
@@ -8123,7 +8329,7 @@ export class DatabaseStorage implements IStorage {
       ...approvalContext,
       userId: userId,
       operationType: 'sale_order',
-      operationData: { ...existingTransaction, status: ApprovalStatus.approved },
+      operationData: { ...existingTransaction, status: 'approved' },
       amount: transactionAmount,
       currency: existingTransaction.currency || 'USD',
       businessContext: `Revenue transaction approval - ${existingTransaction.transactionNumber} for ${transactionAmount} ${existingTransaction.currency || 'USD'}`
@@ -8132,7 +8338,7 @@ export class DatabaseStorage implements IStorage {
     await StorageApprovalGuard.enforceApprovalRequirement(approvalContext_);
 
     return await this.updateRevenueTransaction(id, {
-      status: ApprovalStatus.approved,
+      status: 'approved',
       approvedAt: new Date(),
       approvedBy: userId,
     }, auditContext, approvalContext);
@@ -9173,7 +9379,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedSettings] = await db
         .update(notificationSettings)
-        .set({ ...settings, updatedAt: sql`now()` })
+        .set({ ...settings, updatedAt: sql`now()` } as any)
         .where(eq(notificationSettings.userId, userId))
         .returning();
 
@@ -9373,7 +9579,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedTemplate] = await db
         .update(notificationTemplates)
-        .set({ ...template, updatedAt: sql`now()` })
+        .set({ ...template, updatedAt: sql`now()` } as any)
         .where(eq(notificationTemplates.id, id))
         .returning();
 
@@ -9593,7 +9799,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const [updatedNotification] = await db
         .update(notificationQueue)
-        .set({ ...updates, updatedAt: sql`now()` })
+        .set({ ...updates, updatedAt: sql`now()` } as any)
         .where(eq(notificationQueue.id, id))
         .returning();
 
@@ -9857,7 +10063,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedConfig] = await db
         .update(alertConfigurations)
-        .set({ ...config, updatedAt: sql`now()` })
+        .set({ ...config, updatedAt: sql`now()` } as any)
         .where(eq(alertConfigurations.id, id))
         .returning();
 
@@ -9922,7 +10128,7 @@ export class DatabaseStorage implements IStorage {
     try {
       const [updatedConfig] = await db
         .update(alertConfigurations)
-        .set({ isActive, updatedAt: sql`now()` })
+        .set({ isActive, updatedAt: sql`now()` } as any)
         .where(eq(alertConfigurations.id, id))
         .returning();
 
@@ -11034,7 +11240,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedDocument] = await db
         .update(documents)
-        .set({ ...documentData, updatedAt: sql`now()` })
+        .set({ ...documentData, updatedAt: sql`now()` } as any)
         .where(eq(documents.id, id))
         .returning();
 
@@ -11479,7 +11685,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedMetadata] = await db
         .update(documentMetadata)
-        .set({ ...metadata, updatedAt: sql`now()` })
+        .set({ ...metadata, updatedAt: sql`now()` } as any)
         .where(eq(documentMetadata.id, id))
         .returning();
 
@@ -11604,7 +11810,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedCompliance] = await db
         .update(documentCompliance)
-        .set({ ...compliance, updatedAt: sql`now()` })
+        .set({ ...compliance, updatedAt: sql`now()` } as any)
         .where(eq(documentCompliance.id, id))
         .returning();
 
@@ -12188,7 +12394,7 @@ export class DatabaseStorage implements IStorage {
 
       const [updatedWorkflowState] = await db
         .update(documentWorkflowStates)
-        .set({ ...workflowState, updatedAt: sql`now()` })
+        .set({ ...workflowState, updatedAt: sql`now()` } as any)
         .where(eq(documentWorkflowStates.id, id))
         .returning();
 
