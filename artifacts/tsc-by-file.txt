@@ -1,5 +1,5 @@
-    217 server/storage.ts
-    183 server/core/storage.ts
+    223 server/storage.ts
+    195 server/core/storage.ts
      27 server/routes/sales.ts
      25 server/domains/purchases/service.ts
      13 server/notificationSchedulerService.ts
@@ -9,10 +9,10 @@
      12 server/routes/purchases.ts
      12 server/domains/capital/service.ts
      11 server/routes/warehouse.ts
+      9 server/modules/approvals/workflowService.ts
       9 server/domains/sales/repository.ts
       7 server/routes/shipping.ts
       7 server/modules/warehouse/service.ts
-      7 server/modules/approvals/workflowService.ts
       7 server/domains/sales/service.ts
       6 server/services/openai/aiService.ts
       6 server/routes/documents.ts
@@ -29,6 +29,8 @@
       4 server/domains/purchases/repository.ts
       3 server/supplyInventoryService.ts
       3 server/routes/notifications.ts
+      3 server/approvalWorkflowService.ts
+      2 server/schedulerService.ts
       2 server/salesEnhancementService.ts
       2 server/routes/capital.ts
       2 server/notificationService.ts
@@ -36,14 +38,20 @@
       2 server/modules/notifications/service.ts
       2 server/domains/warehouse/repository.ts
       2 server/domains/users/repository.ts
+      2 server/core/audit.ts
+      2 server/auditService.ts
       1 server/warehouseEnhancementService.ts
       1 server/shared/base/BaseService.ts
       1 server/shared/base/BaseRepository.ts
+      1 server/routes/superAdmin.ts
       1 server/routes/revenues.ts
       1 server/routes/operating-expenses.ts
       1 server/routes/export.ts
       1 server/routes/ai.ts
       1 server/periodGuard.ts
+      1 server/modules/export/service.ts
       1 server/modules/documents/service.ts
       1 server/landedCostService.ts
+      1 server/exportService.ts
       1 server/documentService.ts
+      1 server/alertMonitoringService.ts
