@@ -57,7 +57,6 @@ import {
   salesOrderItems,
   revenueLedger,
   alertConfigurations,
-  supplies,
   // Missing approval and reporting tables
   approvalChains,
   approvalRequests,
@@ -85,6 +84,9 @@ import {
   type InsertCapitalEntry,
   type WarehouseStock,
   type InsertWarehouseStock,
+  type InsertOperatingExpenseCategory,
+  type OperatingExpense,
+  type InsertOperatingExpense,
   type FilterRecord,
   type InsertFilterRecord,
   type Setting,
@@ -751,6 +753,7 @@ type AdjustmentType = 'increase' | 'decrease' | 'correction' | 'damage' | 'expir
 
 // Type aliases
 type Supply = Supplier;
+type InsertSupply = InsertSupplier;
 
 // ===== STORAGE-LEVEL APPROVAL ENFORCEMENT UTILITIES =====
 // These prevent bypass of approval requirements at the storage boundary
