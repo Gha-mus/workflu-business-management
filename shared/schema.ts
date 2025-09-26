@@ -298,18 +298,244 @@ export const notifications = pgTable('notifications', {
 // Documents table
 export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
+  title: varchar('title', { length: 255 }).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
+  category: varchar('category', { length: 100 }),
+  status: varchar('status', { length: 50 }).default('active'),
+  accessLevel: varchar('access_level', { length: 50 }).default('private'),
   type: documentTypeEnum('type').notNull(),
   filePath: varchar('file_path', { length: 500 }).notNull(),
+  originalFileName: varchar('original_file_name', { length: 255 }),
   fileSize: integer('file_size'),
   mimeType: varchar('mime_type', { length: 100 }),
+  contentType: varchar('content_type', { length: 100 }),
+  checksum: varchar('checksum', { length: 255 }),
   entityType: varchar('entity_type', { length: 50 }),
   entityId: uuid('entity_id'),
   uploadedBy: uuid('uploaded_by').notNull().references(() => users.id),
+  createdBy: uuid('created_by').references(() => users.id),
+  currentVersion: integer('current_version').default(1),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 });
+
+// Document versions table
+export const documentVersions = pgTable('document_versions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id),
+  version: integer('version').notNull(),
+  filePath: varchar('file_path', { length: 500 }).notNull(),
+  fileName: varchar('file_name', { length: 255 }).notNull(),
+  fileSize: integer('file_size').notNull(),
+  checksum: varchar('checksum', { length: 255 }).notNull(),
+  changeDescription: text('change_description'),
+  changeReason: varchar('change_reason', { length: 100 }),
+  changeType: varchar('change_type', { length: 50 }),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Document metadata table
+export const documentMetadata = pgTable('document_metadata', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id),
+  metadataKey: varchar('metadata_key', { length: 100 }).notNull(),
+  metadataValue: text('metadata_value').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Document compliance table
+export const documentCompliance = pgTable('document_compliance', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id),
+  requirementName: varchar('requirement_name', { length: 255 }).notNull(),
+  requirementType: varchar('requirement_type', { length: 100 }).notNull(),
+  complianceType: varchar('compliance_type', { length: 100 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('pending'),
+  expiryDate: timestamp('expiry_date'),
+  renewalRequired: boolean('renewal_required').default(false),
+  correctionRequired: boolean('correction_required').default(false),
+  issuingAuthority: varchar('issuing_authority', { length: 255 }),
+  lastReviewedBy: uuid('last_reviewed_by').references(() => users.id),
+  lastReviewedAt: timestamp('last_reviewed_at'),
+  lastReminderSent: timestamp('last_reminder_sent'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Document access logs table
+export const documentAccessLogs = pgTable('document_access_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id),
+  versionId: uuid('version_id').references(() => documentVersions.id),
+  accessType: varchar('access_type', { length: 50 }).notNull(),
+  accessMethod: varchar('access_method', { length: 50 }).notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  userName: varchar('user_name', { length: 255 }),
+  userRole: varchar('user_role', { length: 50 }),
+  ipAddress: varchar('ip_address', { length: 45 }),
+  userAgent: varchar('user_agent', { length: 500 }),
+  wasSuccessful: boolean('was_successful').notNull().default(true),
+  businessContext: text('business_context'),
+  accessedAt: timestamp('accessed_at').defaultNow().notNull(),
+});
+
+// Document workflow states table  
+export const documentWorkflowStates = pgTable('document_workflow_states', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  documentId: uuid('document_id').notNull().references(() => documents.id),
+  workflowName: varchar('workflow_name', { length: 255 }).notNull(),
+  currentStep: varchar('current_step', { length: 255 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull(),
+  assignedTo: uuid('assigned_to').references(() => users.id),
+  dueDate: timestamp('due_date'),
+  outcome: varchar('outcome', { length: 100 }),
+  comments: text('comments'),
+  completedBy: uuid('completed_by').references(() => users.id),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Financial periods table
+export const financialPeriods = pgTable('financial_periods', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  startDate: timestamp('start_date').notNull(),
+  endDate: timestamp('end_date').notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('current'),
+  exchangeRates: json('exchange_rates'),
+  closedBy: uuid('closed_by').references(() => users.id),
+  closedAt: timestamp('closed_at'),
+  reopenedBy: uuid('reopened_by').references(() => users.id),
+  reopenedAt: timestamp('reopened_at'),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Profit & Loss statements table
+export const profitLossStatements = pgTable('profit_loss_statements', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  periodId: uuid('period_id').notNull().references(() => financialPeriods.id),
+  statementType: varchar('statement_type', { length: 50 }).notNull(),
+  totalRevenue: decimal('total_revenue', { precision: 15, scale: 2 }).notNull().default('0'),
+  totalCosts: decimal('total_costs', { precision: 15, scale: 2 }).notNull().default('0'),
+  grossProfit: decimal('gross_profit', { precision: 15, scale: 2 }).notNull().default('0'),
+  operatingExpenses: decimal('operating_expenses', { precision: 15, scale: 2 }).notNull().default('0'),
+  operatingProfit: decimal('operating_profit', { precision: 15, scale: 2 }).notNull().default('0'),
+  nonOperatingIncome: decimal('non_operating_income', { precision: 15, scale: 2 }).default('0'),
+  nonOperatingExpenses: decimal('non_operating_expenses', { precision: 15, scale: 2 }).default('0'),
+  netProfit: decimal('net_profit', { precision: 15, scale: 2 }).notNull().default('0'),
+  generatedBy: uuid('generated_by').notNull().references(() => users.id),
+  generatedAt: timestamp('generated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Cash flow analysis table
+export const cashFlowAnalysis = pgTable('cash_flow_analysis', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  periodId: uuid('period_id').notNull().references(() => financialPeriods.id),
+  analysisType: varchar('analysis_type', { length: 50 }).notNull(),
+  operatingCashFlow: decimal('operating_cash_flow', { precision: 15, scale: 2 }).notNull().default('0'),
+  investingCashFlow: decimal('investing_cash_flow', { precision: 15, scale: 2 }).notNull().default('0'),
+  financingCashFlow: decimal('financing_cash_flow', { precision: 15, scale: 2 }).notNull().default('0'),
+  netCashFlow: decimal('net_cash_flow', { precision: 15, scale: 2 }).notNull().default('0'),
+  beginningCash: decimal('beginning_cash', { precision: 15, scale: 2 }).notNull().default('0'),
+  endingCash: decimal('ending_cash', { precision: 15, scale: 2 }).notNull().default('0'),
+  forecastDays: integer('forecast_days').default(30),
+  generatedBy: uuid('generated_by').notNull().references(() => users.id),
+  generatedAt: timestamp('generated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Notification queue table
+export const notificationQueue = pgTable('notification_queue', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  alertType: varchar('alert_type', { length: 100 }).notNull(),
+  alertCategory: varchar('alert_category', { length: 100 }).notNull(),
+  priority: varchar('priority', { length: 20 }).notNull().default('medium'),
+  status: varchar('status', { length: 50 }).notNull().default('pending'),
+  channel: varchar('channel', { length: 50 }).notNull().default('in_app'),
+  title: varchar('title', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  data: json('data'),
+  entityType: varchar('entity_type', { length: 50 }),
+  entityId: uuid('entity_id'),
+  scheduledFor: timestamp('scheduled_for'),
+  sentAt: timestamp('sent_at'),
+  readAt: timestamp('read_at'),
+  lastAttemptAt: timestamp('last_attempt_at'),
+  attemptCount: integer('attempt_count').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Notification settings table  
+export const notificationSettings = pgTable('notification_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  settingKey: varchar('setting_key', { length: 100 }).notNull(),
+  settingValue: varchar('setting_value', { length: 255 }).notNull(),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Sales orders table (alias for orders with different context)
+export const salesOrders = orders;
+
+// Revenue ledger table
+export const revenueLedger = pgTable('revenue_ledger', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transactionId: uuid('transaction_id').notNull().references(() => revenueTransactions.id),
+  accountType: varchar('account_type', { length: 50 }).notNull(),
+  debitAmount: decimal('debit_amount', { precision: 15, scale: 2 }).default('0'),
+  creditAmount: decimal('credit_amount', { precision: 15, scale: 2 }).default('0'),
+  balance: decimal('balance', { precision: 15, scale: 2 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Alert configurations table
+export const alertConfigurations = pgTable('alert_configurations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  alertType: varchar('alert_type', { length: 100 }).notNull(),
+  alertName: varchar('alert_name', { length: 255 }).notNull(),
+  threshold: decimal('threshold', { precision: 15, scale: 2 }),
+  conditions: json('conditions'),
+  recipients: json('recipients'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Notification templates table
+export const notificationTemplates = pgTable('notification_templates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  templateName: varchar('template_name', { length: 255 }).notNull(),
+  templateType: varchar('template_type', { length: 100 }).notNull(),
+  subject: varchar('subject', { length: 255 }),
+  body: text('body').notNull(),
+  variables: json('variables'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Supplies table (alias for products with supply context)
+export const supplies = products;
+
+// Sales order items table (alias for order items)
+export const salesOrderItems = orderItems;
 
 // Audit logs table
 export const auditLogs = pgTable('audit_logs', {
@@ -1110,6 +1336,58 @@ export type InsertOperatingExpense = typeof operatingExpenses.$inferInsert;
 // Filter record types
 export type FilterRecord = typeof filterRecords.$inferSelect;
 export type InsertFilterRecord = typeof filterRecords.$inferInsert;
+
+// Document version types
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+export type InsertDocumentVersion = typeof documentVersions.$inferInsert;
+
+// Document metadata types
+export type DocumentMetadata = typeof documentMetadata.$inferSelect;
+export type InsertDocumentMetadata = typeof documentMetadata.$inferInsert;
+
+// Document compliance types
+export type DocumentCompliance = typeof documentCompliance.$inferSelect;
+export type InsertDocumentCompliance = typeof documentCompliance.$inferInsert;
+
+// Document access log types
+export type DocumentAccessLog = typeof documentAccessLogs.$inferSelect;
+export type InsertDocumentAccessLog = typeof documentAccessLogs.$inferInsert;
+
+// Document workflow state types
+export type DocumentWorkflowState = typeof documentWorkflowStates.$inferSelect;
+export type InsertDocumentWorkflowState = typeof documentWorkflowStates.$inferInsert;
+
+// Financial period types
+export type FinancialPeriod = typeof financialPeriods.$inferSelect;
+export type InsertFinancialPeriod = typeof financialPeriods.$inferInsert;
+
+// Profit & Loss statement types
+export type ProfitLossStatement = typeof profitLossStatements.$inferSelect;
+export type InsertProfitLossStatement = typeof profitLossStatements.$inferInsert;
+
+// Cash flow analysis types
+export type CashFlowAnalysis = typeof cashFlowAnalysis.$inferSelect;
+export type InsertCashFlowAnalysis = typeof cashFlowAnalysis.$inferInsert;
+
+// Notification queue types
+export type NotificationQueue = typeof notificationQueue.$inferSelect;
+export type InsertNotificationQueue = typeof notificationQueue.$inferInsert;
+
+// Notification settings types
+export type NotificationSettings = typeof notificationSettings.$inferSelect;
+export type InsertNotificationSettings = typeof notificationSettings.$inferInsert;
+
+// Revenue ledger types
+export type RevenueLedger = typeof revenueLedger.$inferSelect;
+export type InsertRevenueLedger = typeof revenueLedger.$inferInsert;
+
+// Alert configuration types
+export type AlertConfiguration = typeof alertConfigurations.$inferSelect;
+export type InsertAlertConfiguration = typeof alertConfigurations.$inferInsert;
+
+// Notification template types
+export type NotificationTemplate = typeof notificationTemplates.$inferSelect;
+export type InsertNotificationTemplate = typeof notificationTemplates.$inferInsert;
 
 // ========== VALIDATION SCHEMAS ==========
 
