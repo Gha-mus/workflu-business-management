@@ -7,6 +7,7 @@ import type { User } from '@shared/schema';
 
 export interface AuthContextType {
   user: User | null;
+  session: any; // Session data
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;

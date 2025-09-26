@@ -368,6 +368,92 @@ export const userWarehouseScopes = pgTable('user_warehouse_scopes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Approval requests table
+export const approvalRequests = pgTable('approval_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  entityType: varchar('entity_type', { length: 50 }).notNull(),
+  entityId: uuid('entity_id').notNull(),
+  requestedBy: uuid('requested_by').notNull().references(() => users.id),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  status: approvalStatusEnum('status').notNull().default('pending'),
+  priority: varchar('priority', { length: 20 }).default('normal'),
+  amount: decimal('amount', { precision: 15, scale: 2 }),
+  currency: varchar('currency', { length: 3 }).default('USD'),
+  comments: text('comments'),
+  approvalChainId: uuid('approval_chain_id').references(() => approvalChains.id),
+  requestedAt: timestamp('requested_at').defaultNow().notNull(),
+  approvedAt: timestamp('approved_at'),
+  rejectedAt: timestamp('rejected_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Settings history table
+export const settingsHistory = pgTable('settings_history', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  settingKey: varchar('setting_key', { length: 100 }).notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  changedBy: uuid('changed_by').notNull().references(() => users.id),
+  changeReason: text('change_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Numbering schemes table
+export const numberingSchemes = pgTable('numbering_schemes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  entityType: varchar('entity_type', { length: 50 }).notNull(),
+  prefix: varchar('prefix', { length: 10 }),
+  suffix: varchar('suffix', { length: 10 }),
+  currentNumber: integer('current_number').notNull().default(0),
+  numberLength: integer('number_length').notNull().default(6),
+  isActive: boolean('is_active').notNull().default(true),
+  resetFrequency: varchar('reset_frequency', { length: 20 }), // yearly, monthly, never
+  lastReset: timestamp('last_reset'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Configuration snapshots table
+export const configurationSnapshots = pgTable('configuration_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  configurationData: json('configuration_data').notNull(),
+  version: varchar('version', { length: 50 }),
+  isActive: boolean('is_active').notNull().default(false),
+  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Purchase payments table
+export const purchasePayments = pgTable('purchase_payments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  purchaseId: uuid('purchase_id').notNull().references(() => purchases.id),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  paymentDate: timestamp('payment_date').notNull(),
+  paymentMethod: varchar('payment_method', { length: 50 }).notNull(),
+  reference: varchar('reference', { length: 255 }),
+  notes: text('notes'),
+  status: paymentStatusEnum('status').notNull().default('pending'),
+  processedBy: uuid('processed_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// AI insights cache table
+export const aiInsightsCache = pgTable('ai_insights_cache', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  cacheKey: varchar('cache_key', { length: 255 }).notNull().unique(),
+  insightType: varchar('insight_type', { length: 50 }).notNull(),
+  requestParameters: json('request_parameters'),
+  responseData: json('response_data'),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  lastAccessed: timestamp('last_accessed').defaultNow().notNull(),
+});
+
 // Filter records table
 export const filterRecords = pgTable('filter_records', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -493,6 +579,30 @@ export type InsertExportJob = typeof exportJobs.$inferInsert;
 // User warehouse scope types
 export type UserWarehouseScope = typeof userWarehouseScopes.$inferSelect;
 export type InsertUserWarehouseScope = typeof userWarehouseScopes.$inferInsert;
+
+// Approval request types
+export type ApprovalRequest = typeof approvalRequests.$inferSelect;
+export type InsertApprovalRequest = typeof approvalRequests.$inferInsert;
+
+// Settings history types
+export type SettingsHistory = typeof settingsHistory.$inferSelect;
+export type InsertSettingsHistory = typeof settingsHistory.$inferInsert;
+
+// Numbering scheme types
+export type NumberingScheme = typeof numberingSchemes.$inferSelect;
+export type InsertNumberingScheme = typeof numberingSchemes.$inferInsert;
+
+// Configuration snapshot types
+export type ConfigurationSnapshot = typeof configurationSnapshots.$inferSelect;
+export type InsertConfigurationSnapshot = typeof configurationSnapshots.$inferInsert;
+
+// Purchase payment types
+export type PurchasePayment = typeof purchasePayments.$inferSelect;
+export type InsertPurchasePayment = typeof purchasePayments.$inferInsert;
+
+// AI insights cache types
+export type AiInsightsCache = typeof aiInsightsCache.$inferSelect;
+export type InsertAiInsightsCache = typeof aiInsightsCache.$inferInsert;
 
 // Filter record types
 export type FilterRecord = typeof filterRecords.$inferSelect;
