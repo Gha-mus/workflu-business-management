@@ -492,20 +492,20 @@ export function ReportsAiInsights() {
             <div className="space-y-2">
               <h4 className="font-semibold text-sm">Next Quarter Outlook</h4>
               
-              {financialTrends.predictions.risks && financialTrends.predictions.risks.length > 0 && (
+              {financialTrends.risks && financialTrends.risks.length > 0 && (
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-red-600">Risks:</span>
-                  {financialTrends.predictions.risks.slice(0, 2).map((risk: string, index: number) => (
-                    <div key={index} className="text-xs text-red-600 ml-2">• {risk}</div>
+                  {financialTrends.risks.slice(0, 2).map((risk: any, index: number) => (
+                    <div key={index} className="text-xs text-red-600 ml-2">• {risk.description || risk}</div>
                   ))}
                 </div>
               )}
 
-              {financialTrends.predictions.opportunities && financialTrends.predictions.opportunities.length > 0 && (
+              {financialTrends.opportunities && financialTrends.opportunities.length > 0 && (
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-green-600">Opportunities:</span>
-                  {financialTrends.predictions.opportunities.slice(0, 2).map((opp: string, index: number) => (
-                    <div key={index} className="text-xs text-green-600 ml-2">• {opp}</div>
+                  {financialTrends.opportunities.slice(0, 2).map((opp: any, index: number) => (
+                    <div key={index} className="text-xs text-green-600 ml-2">• {opp.description || opp}</div>
                   ))}
                 </div>
               )}

@@ -1271,6 +1271,11 @@ export interface FinancialSummaryResponse {
     start: Date;
     end: Date;
   };
+  summary?: {
+    trend: 'up' | 'down' | 'stable';
+    highlights: string[];
+    concerns: string[];
+  };
 }
 
 // Inventory analytics response type
@@ -1318,4 +1323,14 @@ export interface TradingActivityResponse {
     date: Date;
     description: string;
   }>;
+  orderFulfillment?: {
+    totalOrders: number;
+    fulfilledOrders: number;
+    fulfillmentRate: number;
+  };
+  volumeAnalysis?: {
+    totalVolume: number;
+    averageOrderSize: number;
+    volumeTrend: 'up' | 'down' | 'stable';
+  };
 }
