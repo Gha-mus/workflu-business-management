@@ -961,12 +961,6 @@ export const customers = pgTable('customers', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// Sales orders table (alias for orders)
-export const salesOrders = orders;
-
-// Sales order items table (alias for orderItems)
-export const salesOrderItems = orderItems;
-
 // Customer communications table
 export const customerCommunications = pgTable('customer_communications', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1039,9 +1033,6 @@ export const financialMetrics = pgTable('financial_metrics', {
   calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
-
-// Supplies table (alias for suppliers)
-export const supplies = suppliers;
 
 // Operating expense categories table
 export const operatingExpenseCategories: any = pgTable('operating_expense_categories', {
