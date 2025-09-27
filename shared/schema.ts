@@ -1131,6 +1131,23 @@ export const shipmentInspections = pgTable('shipment_inspections', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Supply consumption table
+export const supplyConsumption = pgTable('supply_consumption', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  consumptionNumber: varchar('consumption_number', { length: 50 }).notNull().unique(),
+  supplyId: uuid('supply_id').notNull().references(() => products.id),
+  orderId: uuid('order_id').references(() => orders.id),
+  quantityConsumed: decimal('quantity_consumed', { precision: 15, scale: 4 }).notNull(),
+  unitCostUsd: decimal('unit_cost_usd', { precision: 15, scale: 4 }).notNull(),
+  totalCostUsd: decimal('total_cost_usd', { precision: 15, scale: 2 }).notNull(),
+  consumedBy: uuid('consumed_by').notNull().references(() => users.id),
+  consumptionDate: timestamp('consumption_date').defaultNow().notNull(),
+  notes: text('notes'),
+  reference: varchar('reference', { length: 255 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // Supplier quality assessments table
 export const supplierQualityAssessments = pgTable('supplier_quality_assessments', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1160,6 +1177,12 @@ export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = typeof suppliers.$inferInsert;
 export type SupplierQualityAssessment = typeof supplierQualityAssessments.$inferSelect;
 export type InsertSupplierQualityAssessment = typeof supplierQualityAssessments.$inferInsert;
+
+// Supply types (supplies is aliased to products)
+export type Supply = typeof products.$inferSelect;
+export type InsertSupply = typeof products.$inferInsert;
+export type SupplyConsumption = typeof supplyConsumption.$inferSelect;
+export type InsertSupplyConsumption = typeof supplyConsumption.$inferInsert;
 
 // Product types
 export type Product = typeof products.$inferSelect;
