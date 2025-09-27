@@ -31,6 +31,9 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   password: varchar('password', { length: 255 }),
   name: varchar('name', { length: 255 }).notNull(),
+  firstName: varchar('first_name', { length: 255 }),
+  lastName: varchar('last_name', { length: 255 }),
+  profileImageUrl: varchar('profile_image_url', { length: 500 }),
   role: userRoleEnum('role').notNull().default('employee'),
   isActive: boolean('is_active').notNull().default(true),
   lastLogin: timestamp('last_login'),
@@ -272,10 +275,13 @@ export const approvals = pgTable('approvals', {
 export const approvalChains = pgTable('approval_chains', {
   id: uuid('id').defaultRandom().primaryKey(),
   entityType: varchar('entity_type', { length: 50 }).notNull(),
+  operationType: varchar('operation_type', { length: 50 }).notNull(),
   sequence: integer('sequence').notNull(),
   requiredRole: userRoleEnum('required_role').notNull(),
   minimumAmount: decimal('minimum_amount', { precision: 15, scale: 2 }),
   maximumAmount: decimal('maximum_amount', { precision: 15, scale: 2 }),
+  autoApproveBelow: decimal('auto_approve_below', { precision: 15, scale: 2 }),
+  name: varchar('name', { length: 255 }),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -597,10 +603,13 @@ export const userWarehouseScopes = pgTable('user_warehouse_scopes', {
 // Approval requests table
 export const approvalRequests = pgTable('approval_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
+  requestNumber: varchar('request_number', { length: 50 }).notNull().unique(),
   entityType: varchar('entity_type', { length: 50 }).notNull(),
   entityId: uuid('entity_id').notNull(),
   requestedBy: uuid('requested_by').notNull().references(() => users.id),
   approvedBy: uuid('approved_by').references(() => users.id),
+  currentApprover: uuid('current_approver').references(() => users.id),
+  totalSteps: integer('total_steps').default(1),
   status: approvalStatusEnum('status').notNull().default('pending'),
   priority: varchar('priority', { length: 20 }).default('normal'),
   amount: decimal('amount', { precision: 15, scale: 2 }),
@@ -608,6 +617,7 @@ export const approvalRequests = pgTable('approval_requests', {
   comments: text('comments'),
   approvalChainId: uuid('approval_chain_id').references(() => approvalChains.id),
   requestedAt: timestamp('requested_at').defaultNow().notNull(),
+  submittedAt: timestamp('submitted_at').defaultNow().notNull(),
   approvedAt: timestamp('approved_at'),
   rejectedAt: timestamp('rejected_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1635,6 +1645,23 @@ export const warehouseStockFilterSchema = z.object({
 });
 
 // Other missing schemas - removed upsertUserSchema as it already exists above
+export const insertShipmentSchema = createInsertSchema(shipments, {
+  number: (schema) => schema.number.min(1),
+  status: (schema) => schema.status.optional(),
+});
+
+export const insertShipmentInspectionSchema = createInsertSchema(shipmentInspections, {
+  inspectionDate: (schema) => schema.inspectionDate.optional(),
+  status: (schema) => schema.status.optional(),
+});
+
+export const commissionCalculationSchema = z.object({
+  shipmentId: z.string().uuid(),
+  baseAmount: z.number().positive(),
+  commissionRate: z.number().min(0).max(1),
+  additionalFees: z.number().min(0).optional(),
+  currency: z.string().length(3).default('USD'),
+});
 
 // ========== UTILITY TYPES ==========
 

@@ -174,16 +174,16 @@ import {
   type InsertReinvestment,
   type Notification,
   type InsertNotification,
-  type NotificationQueue,
-  type InsertNotificationQueue,
+  // NotificationQueue - using local interface LocalNotificationQueue instead
+  // InsertNotificationQueue - using local interface
   type NotificationSettings,
   type InsertNotificationSettings,
-  type NotificationTemplate,
-  type InsertNotificationTemplate,
+  // NotificationTemplate - using local interface LocalNotificationTemplate instead
+  // InsertNotificationTemplate - using local interface
   type RevenueLedger,
   type InsertRevenueLedger,
-  type AlertConfiguration,
-  type InsertAlertConfiguration,
+  // AlertConfiguration - using local interface LocalAlertConfiguration instead
+  // InsertAlertConfiguration - using local interface
   type ShipmentLeg,
   type InsertShipmentLeg,
   type OrderItem,
@@ -585,7 +585,7 @@ interface NotificationTemplateFilter {
   isActive?: boolean;
 }
 
-interface NotificationTemplate {
+interface LocalNotificationTemplate {
   id: string;
   templateName: string;
   templateType: string;
@@ -612,7 +612,7 @@ interface UpdateNotificationTemplate {
   isActive?: boolean;
 }
 
-interface NotificationQueue {
+interface LocalNotificationQueue {
   id: string;
   notificationId: string;
   recipientId: string;
@@ -659,7 +659,7 @@ interface CreateNotification {
   entityId?: string;
 }
 
-interface AlertConfiguration {
+interface LocalAlertConfiguration {
   id: string;
   alertType: string;
   threshold: number;

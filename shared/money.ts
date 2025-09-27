@@ -9,6 +9,10 @@ export class Money {
     return MoneyUtils.format(this.amount, this.currency);
   }
   
+  toNumber(): number {
+    return this.amount;
+  }
+  
   add(other: Money): Money {
     if (other.currency !== this.currency) {
       throw new Error('Cannot add different currencies');
