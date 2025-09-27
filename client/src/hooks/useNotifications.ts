@@ -8,8 +8,14 @@ interface Notification {
   title: string;
   message: string;
   type: 'info' | 'warning' | 'error' | 'success';
+  status: 'unread' | 'read';
   timestamp: Date;
   read: boolean;
+}
+
+export interface NotificationWithActions extends Notification {
+  onMarkAsRead?: () => void;
+  onDismiss?: () => void;
 }
 
 export function useNotifications() {
@@ -18,6 +24,8 @@ export function useNotifications() {
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const [isBulkMarking, setIsBulkMarking] = useState(false);
 
   useEffect(() => {
     // Calculate unread count
@@ -25,11 +33,11 @@ export function useNotifications() {
     setUnreadCount(unread);
   }, [notifications]);
 
-  const markAsRead = async (id: string) => {
+  const markAsRead = async () => {
     setIsMarkingAsRead(true);
     try {
       setNotifications(prev => 
-        prev.map(n => n.id === id ? { ...n, read: true } : n)
+        prev.map(n => ({ ...n, read: true, status: 'read' as const }))
       );
     } finally {
       setIsMarkingAsRead(false);
@@ -48,12 +56,13 @@ export function useNotifications() {
     );
   };
 
-  const addNotification = (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+  const addNotification = (notification: Omit<Notification, 'id' | 'timestamp' | 'read' | 'status'>) => {
     const newNotification: Notification = {
       ...notification,
       id: crypto.randomUUID(),
       timestamp: new Date(),
       read: false,
+      status: 'unread',
     };
     setNotifications(prev => [newNotification, ...prev]);
   };
@@ -85,6 +94,23 @@ export function useNotifications() {
     total: notifications.length,
     unread: unreadCount,
     recent: notifications.slice(0, 5),
+    critical: notifications.filter(n => n.type === 'error').length,
+    high: notifications.filter(n => n.type === 'error').length,
+    medium: notifications.filter(n => n.type === 'warning').length,
+    low: notifications.filter(n => n.type === 'info').length,
+  };
+
+  // Mock settings and additional functions for compatibility
+  const settings = {
+    emailNotifications: true,
+    pushNotifications: true,
+    smsNotifications: false,
+    frequency: 'immediate',
+  };
+
+  const updateSettings = async (newSettings: any) => {
+    // Mock implementation
+    Object.assign(settings, newSettings);
   };
 
   return {
@@ -94,7 +120,12 @@ export function useNotifications() {
     isOpen,
     setIsOpen,
     isMarkingAsRead,
+    isDismissing,
+    isBulkMarking,
     summary,
+    settings,
+    isLoadingSettings: false,
+    updateSettings,
     markAsRead,
     markAllAsRead,
     bulkMarkAsRead,
