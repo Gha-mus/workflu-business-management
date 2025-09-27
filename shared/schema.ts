@@ -961,12 +961,6 @@ export const customers = pgTable('customers', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// Sales orders table (alias for orders)
-export const salesOrders = orders;
-
-// Sales order items table (alias for orderItems)
-export const salesOrderItems = orderItems;
-
 // Customer communications table
 export const customerCommunications = pgTable('customer_communications', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1039,9 +1033,6 @@ export const financialMetrics = pgTable('financial_metrics', {
   calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
-
-// Supplies table (alias for suppliers)
-export const supplies = suppliers;
 
 // Operating expense categories table
 export const operatingExpenseCategories: any = pgTable('operating_expense_categories', {
@@ -1180,6 +1171,7 @@ export type InsertApprovalChain = typeof approvalChains.$inferInsert;
 // Notification types
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+export type CreateNotification = InsertNotification; // Alias for compatibility
 
 // Document types
 export type Document = typeof documents.$inferSelect;
@@ -1553,6 +1545,10 @@ export interface FinancialSummaryResponse {
     trend: 'up' | 'down' | 'stable';
     highlights: string[];
     concerns: string[];
+    currentBalance: number;
+    totalInventoryValue: number;
+    netPosition: number;
+    totalPurchases: number;
   };
 }
 
@@ -1611,4 +1607,61 @@ export interface TradingActivityResponse {
     averageOrderSize: number;
     volumeTrend: 'up' | 'down' | 'stable';
   };
+  trend: 'up' | 'down' | 'stable';
+  highlights: string[];
+  concerns: string[];
+}
+
+// Orders response type
+export interface OrdersResponse {
+  orders: Array<{
+    id: string;
+    number: string;
+    status: string;
+    total: number;
+    currency: string;
+    customerName: string;
+    createdAt: Date;
+  }>;
+  totalCount: number;
+  totalValue: number;
+  filter?: (predicate: (order: any) => boolean) => any;
+}
+
+// Settings response type
+export interface SettingsResponse {
+  settings: Record<string, any>;
+  exchangeRate?: number;
+}
+
+// Capital entries response type  
+export interface CapitalEntriesResponse {
+  entries: Array<{
+    id: string;
+    number: string;
+    type: string;
+    amount: number;
+    currency: string;
+    description: string;
+    createdAt: Date;
+  }>;
+  totalCount: number;
+  totalAmount: number;
+  map?: (callback: (entry: any, index: number) => any) => any[];
+}
+
+// Purchases response type
+export interface PurchasesResponse {
+  purchases: Array<{
+    id: string;
+    number: string;
+    status: string;
+    total: number;
+    currency: string;
+    supplierName: string;
+    createdAt: Date;
+  }>;
+  totalCount: number;
+  totalValue: number;
+  slice?: (start: number, end?: number) => any[];
 }

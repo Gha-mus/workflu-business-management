@@ -384,9 +384,16 @@ export function WorkingCapitalAiInsights() {
 
           <TabsContent value="forecast" className="mt-4">
             {capitalOptimization.cashFlowForecast && (
-              <div className="p-3 bg-muted/30 rounded-lg">
-                <h4 className="font-medium text-sm mb-2">Cash Flow Forecast</h4>
-                <p className="text-sm">{capitalOptimization.cashFlowForecast}</p>
+              <div className="space-y-2">
+                {capitalOptimization.cashFlowForecast.map((forecast, index) => (
+                  <div key={index} className="p-3 bg-muted/30 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-sm">{forecast.month}</span>
+                      <span className="text-sm">Confidence: {forecast.confidence}%</span>
+                    </div>
+                    <p className="text-sm mt-1">Projected: ${forecast.projected.toLocaleString()}</p>
+                  </div>
+                ))}
               </div>
             )}
           </TabsContent>
@@ -394,11 +401,17 @@ export function WorkingCapitalAiInsights() {
           <TabsContent value="risks" className="mt-4">
             {capitalOptimization.riskAlerts && (
               <div className="space-y-2">
-                {capitalOptimization.riskAlerts.map((alert: string, index: number) => (
+                {capitalOptimization.riskAlerts.map((alert, index: number) => (
                   <Alert key={index} variant="default">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription className="text-sm">
-                      {alert}
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">{alert.risk}</span>
+                        <Badge variant={alert.level === 'high' ? 'destructive' : alert.level === 'medium' ? 'default' : 'secondary'}>
+                          {alert.level}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{alert.mitigation}</p>
                     </AlertDescription>
                   </Alert>
                 ))}
@@ -598,10 +611,13 @@ export function WarehouseAiInsights() {
                 <AlertTriangle className="h-4 w-4 text-yellow-500" />
                 Quality Alerts
               </h4>
-              {inventoryRecs.qualityAlerts.map((alert: string, index: number) => (
+              {inventoryRecs.qualityAlerts.map((alert, index: number) => (
                 <Alert key={index} variant="default">
                   <AlertDescription className="text-sm">
-                    {alert}
+                    <div>
+                      <div className="font-medium mb-1">{alert.area}: {alert.issue}</div>
+                      <div className="text-xs text-muted-foreground">{alert.recommendation}</div>
+                    </div>
                   </AlertDescription>
                 </Alert>
               ))}

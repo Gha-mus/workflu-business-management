@@ -1,0 +1,1 @@
+export const Select = ({ children }: any) => children; export const SelectContent = ({ children }: any) => children; export const SelectItem = ({ children }: any) => children; export const SelectTrigger = ({ children }: any) => children; export const SelectValue = ({ children }: any) => children;
