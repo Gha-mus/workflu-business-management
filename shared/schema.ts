@@ -1112,6 +1112,39 @@ export const withdrawalRecords = pgTable('withdrawal_records', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Shipment inspections table
+export const shipmentInspections = pgTable('shipment_inspections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  shipmentId: uuid('shipment_id').notNull().references(() => shipments.id),
+  inspectorId: uuid('inspector_id').notNull().references(() => users.id),
+  inspectionDate: timestamp('inspection_date').defaultNow().notNull(),
+  inspectionType: varchar('inspection_type', { length: 50 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('pending'),
+  qualityGrade: qualityGradeEnum('quality_grade'),
+  notes: text('notes'),
+  findings: json('findings'),
+  documentsChecked: boolean('documents_checked').default(false),
+  physicalInspectionCompleted: boolean('physical_inspection_completed').default(false),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedAt: timestamp('approved_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Supplier quality assessments table
+export const supplierQualityAssessments = pgTable('supplier_quality_assessments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  supplierId: uuid('supplier_id').notNull().references(() => suppliers.id),
+  qualityScore: integer('quality_score').notNull(),
+  deliveryScore: integer('delivery_score').notNull(),
+  serviceScore: integer('service_score').notNull(),
+  overallRating: integer('overall_rating').notNull(),
+  comments: text('comments'),
+  assessedBy: uuid('assessed_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // ========== TYPE EXPORTS ==========
 
 // User types
@@ -1125,6 +1158,8 @@ export type InsertCapitalEntry = typeof capitalEntries.$inferInsert;
 // Supplier types
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = typeof suppliers.$inferInsert;
+export type SupplierQualityAssessment = typeof supplierQualityAssessments.$inferSelect;
+export type InsertSupplierQualityAssessment = typeof supplierQualityAssessments.$inferInsert;
 
 // Product types
 export type Product = typeof products.$inferSelect;
@@ -1153,6 +1188,8 @@ export type Shipment = typeof shipments.$inferSelect;
 export type InsertShipment = typeof shipments.$inferInsert;
 export type ShipmentLeg = typeof shipmentLegs.$inferSelect;
 export type InsertShipmentLeg = typeof shipmentLegs.$inferInsert;
+export type ShipmentInspection = typeof shipmentInspections.$inferSelect;
+export type InsertShipmentInspection = typeof shipmentInspections.$inferInsert;
 
 // Revenue types
 export type RevenueTransaction = typeof revenueTransactions.$inferSelect;
@@ -1524,6 +1561,57 @@ export const insertUserWarehouseScopeSchema = createInsertSchema(userWarehouseSc
 
 // Export type schema
 export const exportTypeSchema = z.enum(['pdf', 'excel', 'csv', 'json']);
+
+// Warehouse cost validation schemas
+export const warehouseCostValidationSchema = z.object({
+  warehouseId: z.string().uuid(),
+  costType: z.string().min(1),
+  amount: z.number().positive(),
+  currency: z.string().length(3).default('USD'),
+  description: z.string().optional(),
+  date: z.string().or(z.date()),
+});
+
+export const warehouseCostCorrectionSchema = z.object({
+  costId: z.string().uuid(),
+  correctedAmount: z.number().positive(),
+  correctionReason: z.string().min(1),
+  correctionNotes: z.string().optional(),
+});
+
+// Additional warehouse schemas
+export const warehouseStatusUpdateSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string().min(1),
+  notes: z.string().optional(),
+});
+
+export const warehouseFilterOperationSchema = z.object({
+  warehouseId: z.string().uuid(),
+  operation: z.string().min(1),
+  filters: z.record(z.string(), z.any()).optional(),
+  dateRange: z.object({
+    from: z.string().or(z.date()),
+    to: z.string().or(z.date()),
+  }).optional(),
+});
+
+export const warehouseMoveToFinalSchema = z.object({
+  itemId: z.string().uuid(),
+  destinationLocation: z.string().min(1),
+  quantity: z.number().positive(),
+  notes: z.string().optional(),
+});
+
+export const warehouseStockFilterSchema = z.object({
+  warehouseId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
+  status: z.string().optional(),
+  minQuantity: z.number().min(0).optional(),
+  maxQuantity: z.number().min(0).optional(),
+});
+
+// Other missing schemas - removed upsertUserSchema as it already exists above
 
 // ========== UTILITY TYPES ==========
 
