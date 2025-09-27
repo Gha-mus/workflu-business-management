@@ -31,6 +31,9 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   password: varchar('password', { length: 255 }),
   name: varchar('name', { length: 255 }).notNull(),
+  firstName: varchar('first_name', { length: 255 }),
+  lastName: varchar('last_name', { length: 255 }),
+  profileImageUrl: varchar('profile_image_url', { length: 500 }),
   role: userRoleEnum('role').notNull().default('employee'),
   isActive: boolean('is_active').notNull().default(true),
   lastLogin: timestamp('last_login'),
@@ -272,10 +275,13 @@ export const approvals = pgTable('approvals', {
 export const approvalChains = pgTable('approval_chains', {
   id: uuid('id').defaultRandom().primaryKey(),
   entityType: varchar('entity_type', { length: 50 }).notNull(),
+  operationType: varchar('operation_type', { length: 50 }).notNull(),
   sequence: integer('sequence').notNull(),
   requiredRole: userRoleEnum('required_role').notNull(),
   minimumAmount: decimal('minimum_amount', { precision: 15, scale: 2 }),
   maximumAmount: decimal('maximum_amount', { precision: 15, scale: 2 }),
+  autoApproveBelow: decimal('auto_approve_below', { precision: 15, scale: 2 }),
+  name: varchar('name', { length: 255 }),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -597,10 +603,13 @@ export const userWarehouseScopes = pgTable('user_warehouse_scopes', {
 // Approval requests table
 export const approvalRequests = pgTable('approval_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
+  requestNumber: varchar('request_number', { length: 50 }).notNull().unique(),
   entityType: varchar('entity_type', { length: 50 }).notNull(),
   entityId: uuid('entity_id').notNull(),
   requestedBy: uuid('requested_by').notNull().references(() => users.id),
   approvedBy: uuid('approved_by').references(() => users.id),
+  currentApprover: uuid('current_approver').references(() => users.id),
+  totalSteps: integer('total_steps').default(1),
   status: approvalStatusEnum('status').notNull().default('pending'),
   priority: varchar('priority', { length: 20 }).default('normal'),
   amount: decimal('amount', { precision: 15, scale: 2 }),
@@ -608,6 +617,7 @@ export const approvalRequests = pgTable('approval_requests', {
   comments: text('comments'),
   approvalChainId: uuid('approval_chain_id').references(() => approvalChains.id),
   requestedAt: timestamp('requested_at').defaultNow().notNull(),
+  submittedAt: timestamp('submitted_at').defaultNow().notNull(),
   approvedAt: timestamp('approved_at'),
   rejectedAt: timestamp('rejected_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1112,6 +1122,56 @@ export const withdrawalRecords = pgTable('withdrawal_records', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Shipment inspections table
+export const shipmentInspections = pgTable('shipment_inspections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  shipmentId: uuid('shipment_id').notNull().references(() => shipments.id),
+  inspectorId: uuid('inspector_id').notNull().references(() => users.id),
+  inspectionDate: timestamp('inspection_date').defaultNow().notNull(),
+  inspectionType: varchar('inspection_type', { length: 50 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('pending'),
+  qualityGrade: qualityGradeEnum('quality_grade'),
+  notes: text('notes'),
+  findings: json('findings'),
+  documentsChecked: boolean('documents_checked').default(false),
+  physicalInspectionCompleted: boolean('physical_inspection_completed').default(false),
+  approvedBy: uuid('approved_by').references(() => users.id),
+  approvedAt: timestamp('approved_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Supply consumption table
+export const supplyConsumption = pgTable('supply_consumption', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  consumptionNumber: varchar('consumption_number', { length: 50 }).notNull().unique(),
+  supplyId: uuid('supply_id').notNull().references(() => products.id),
+  orderId: uuid('order_id').references(() => orders.id),
+  quantityConsumed: decimal('quantity_consumed', { precision: 15, scale: 4 }).notNull(),
+  unitCostUsd: decimal('unit_cost_usd', { precision: 15, scale: 4 }).notNull(),
+  totalCostUsd: decimal('total_cost_usd', { precision: 15, scale: 2 }).notNull(),
+  consumedBy: uuid('consumed_by').notNull().references(() => users.id),
+  consumptionDate: timestamp('consumption_date').defaultNow().notNull(),
+  notes: text('notes'),
+  reference: varchar('reference', { length: 255 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Supplier quality assessments table
+export const supplierQualityAssessments = pgTable('supplier_quality_assessments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  supplierId: uuid('supplier_id').notNull().references(() => suppliers.id),
+  qualityScore: integer('quality_score').notNull(),
+  deliveryScore: integer('delivery_score').notNull(),
+  serviceScore: integer('service_score').notNull(),
+  overallRating: integer('overall_rating').notNull(),
+  comments: text('comments'),
+  assessedBy: uuid('assessed_by').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // ========== TYPE EXPORTS ==========
 
 // User types
@@ -1125,6 +1185,14 @@ export type InsertCapitalEntry = typeof capitalEntries.$inferInsert;
 // Supplier types
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = typeof suppliers.$inferInsert;
+export type SupplierQualityAssessment = typeof supplierQualityAssessments.$inferSelect;
+export type InsertSupplierQualityAssessment = typeof supplierQualityAssessments.$inferInsert;
+
+// Supply types (supplies is aliased to products)
+export type Supply = typeof products.$inferSelect;
+export type InsertSupply = typeof products.$inferInsert;
+export type SupplyConsumption = typeof supplyConsumption.$inferSelect;
+export type InsertSupplyConsumption = typeof supplyConsumption.$inferInsert;
 
 // Product types
 export type Product = typeof products.$inferSelect;
@@ -1153,6 +1221,8 @@ export type Shipment = typeof shipments.$inferSelect;
 export type InsertShipment = typeof shipments.$inferInsert;
 export type ShipmentLeg = typeof shipmentLegs.$inferSelect;
 export type InsertShipmentLeg = typeof shipmentLegs.$inferInsert;
+export type ShipmentInspection = typeof shipmentInspections.$inferSelect;
+export type InsertShipmentInspection = typeof shipmentInspections.$inferInsert;
 
 // Revenue types
 export type RevenueTransaction = typeof revenueTransactions.$inferSelect;
@@ -1524,6 +1594,74 @@ export const insertUserWarehouseScopeSchema = createInsertSchema(userWarehouseSc
 
 // Export type schema
 export const exportTypeSchema = z.enum(['pdf', 'excel', 'csv', 'json']);
+
+// Warehouse cost validation schemas
+export const warehouseCostValidationSchema = z.object({
+  warehouseId: z.string().uuid(),
+  costType: z.string().min(1),
+  amount: z.number().positive(),
+  currency: z.string().length(3).default('USD'),
+  description: z.string().optional(),
+  date: z.string().or(z.date()),
+});
+
+export const warehouseCostCorrectionSchema = z.object({
+  costId: z.string().uuid(),
+  correctedAmount: z.number().positive(),
+  correctionReason: z.string().min(1),
+  correctionNotes: z.string().optional(),
+});
+
+// Additional warehouse schemas
+export const warehouseStatusUpdateSchema = z.object({
+  id: z.string().uuid(),
+  status: z.string().min(1),
+  notes: z.string().optional(),
+});
+
+export const warehouseFilterOperationSchema = z.object({
+  warehouseId: z.string().uuid(),
+  operation: z.string().min(1),
+  filters: z.record(z.string(), z.any()).optional(),
+  dateRange: z.object({
+    from: z.string().or(z.date()),
+    to: z.string().or(z.date()),
+  }).optional(),
+});
+
+export const warehouseMoveToFinalSchema = z.object({
+  itemId: z.string().uuid(),
+  destinationLocation: z.string().min(1),
+  quantity: z.number().positive(),
+  notes: z.string().optional(),
+});
+
+export const warehouseStockFilterSchema = z.object({
+  warehouseId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
+  status: z.string().optional(),
+  minQuantity: z.number().min(0).optional(),
+  maxQuantity: z.number().min(0).optional(),
+});
+
+// Other missing schemas - removed upsertUserSchema as it already exists above
+export const insertShipmentSchema = createInsertSchema(shipments, {
+  number: (schema) => schema.number.min(1),
+  status: (schema) => schema.status.optional(),
+});
+
+export const insertShipmentInspectionSchema = createInsertSchema(shipmentInspections, {
+  inspectionDate: (schema) => schema.inspectionDate.optional(),
+  status: (schema) => schema.status.optional(),
+});
+
+export const commissionCalculationSchema = z.object({
+  shipmentId: z.string().uuid(),
+  baseAmount: z.number().positive(),
+  commissionRate: z.number().min(0).max(1),
+  additionalFees: z.number().min(0).optional(),
+  currency: z.string().length(3).default('USD'),
+});
 
 // ========== UTILITY TYPES ==========
 

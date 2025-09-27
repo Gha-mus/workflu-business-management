@@ -9,6 +9,10 @@ export class Money {
     return MoneyUtils.format(this.amount, this.currency);
   }
   
+  toNumber(): number {
+    return this.amount;
+  }
+  
   add(other: Money): Money {
     if (other.currency !== this.currency) {
       throw new Error('Cannot add different currencies');
@@ -83,5 +87,20 @@ export class MoneyUtils {
    */
   static round(amount: number): number {
     return Math.round(amount * 100) / 100;
+  }
+
+  /**
+   * Parse money input from string with currency
+   */
+  static parseMoneyInput(input: string, currency: string = 'USD'): Money {
+    // Remove currency symbols and non-numeric characters except decimal point and minus
+    const cleanedInput = input.replace(/[^0-9.-]/g, '');
+    const amount = parseFloat(cleanedInput);
+    
+    if (isNaN(amount)) {
+      return new Money(0, currency);
+    }
+    
+    return new Money(amount, currency);
   }
 }
