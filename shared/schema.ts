@@ -1640,6 +1640,7 @@ export interface OrdersResponse {
 // Settings response type
 export interface SettingsResponse {
   settings: Record<string, any>;
+  exchangeRate?: number;
 }
 
 // Capital entries response type  
@@ -1655,6 +1656,7 @@ export interface CapitalEntriesResponse {
   }>;
   totalCount: number;
   totalAmount: number;
+  map?: (callback: (entry: any, index: number) => any) => any[];
 }
 
 // Purchases response type
@@ -1670,4 +1672,5 @@ export interface PurchasesResponse {
   }>;
   totalCount: number;
   totalValue: number;
+  slice?: (start: number, end?: number) => any[];
 }

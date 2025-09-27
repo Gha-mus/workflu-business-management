@@ -22,7 +22,7 @@ export function DashboardStats() {
     queryKey: ['/api/reports/trading/activity'],
   });
 
-  const activeOrders = orders?.filter((order: any) => order.status !== 'completed')?.length || 0;
+  const activeOrders = orders?.orders?.filter((order: any) => order.status !== 'completed')?.length || 0;
   
   // Get values from financial summary for consistency
   const currentBalance = financialSummary?.summary?.currentBalance || 0;
@@ -42,7 +42,7 @@ export function DashboardStats() {
     {
       title: "Active Orders",
       value: ordersLoading ? "Loading..." : activeOrders.toString(),
-      change: tradingActivity ? `${tradingActivity.orderFulfillment.fulfillmentRate.toFixed(1)}% fulfillment rate` : "3 pending shipping",
+      change: tradingActivity ? `${tradingActivity.orderFulfillment?.fulfillmentRate?.toFixed(1) || 0}% fulfillment rate` : "3 pending shipping",
       changeType: "neutral",
       icon: Package,
       bgColor: "bg-blue-500/10",
@@ -52,7 +52,7 @@ export function DashboardStats() {
     {
       title: "Inventory Value",
       value: financialLoading ? "Loading..." : `$${inventoryValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-      change: tradingActivity ? `${tradingActivity.volumeAnalysis.totalVolume.toLocaleString()} kg total` : "Real-time valuation",
+      change: tradingActivity ? `${tradingActivity.volumeAnalysis?.totalVolume?.toLocaleString() || 0} kg total` : "Real-time valuation",
       changeType: "neutral",
       icon: Warehouse,
       bgColor: "bg-green-500/10",

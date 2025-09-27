@@ -16,6 +16,13 @@ interface Notification {
 export interface NotificationWithActions extends Notification {
   onMarkAsRead?: () => void;
   onDismiss?: () => void;
+  alertCategory?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  timeAgo?: string;
+  actionUrl?: string;
+  actionText?: string;
+  canMarkAsRead?: boolean;
+  canDismiss?: boolean;
 }
 
 export function useNotifications() {
@@ -33,12 +40,18 @@ export function useNotifications() {
     setUnreadCount(unread);
   }, [notifications]);
 
-  const markAsRead = async () => {
+  const markAsRead = async (id?: string) => {
     setIsMarkingAsRead(true);
     try {
-      setNotifications(prev => 
-        prev.map(n => ({ ...n, read: true, status: 'read' as const }))
-      );
+      if (id) {
+        setNotifications(prev => 
+          prev.map(n => n.id === id ? { ...n, read: true, status: 'read' as const } : n)
+        );
+      } else {
+        setNotifications(prev => 
+          prev.map(n => ({ ...n, read: true, status: 'read' as const }))
+        );
+      }
     } finally {
       setIsMarkingAsRead(false);
     }
@@ -106,6 +119,16 @@ export function useNotifications() {
     pushNotifications: true,
     smsNotifications: false,
     frequency: 'immediate',
+    enableInApp: true,
+    enableEmail: true,
+    enableSms: false,
+    enableWebhook: false,
+    defaultFrequency: 'immediate',
+    digestTime: '09:00',
+    weeklyDigestDay: 'monday',
+    monthlyDigestDay: 1,
+    escalationEnabled: false,
+    escalationTimeoutMinutes: 30,
   };
 
   const updateSettings = async (newSettings: any) => {
